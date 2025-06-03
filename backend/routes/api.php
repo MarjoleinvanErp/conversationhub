@@ -14,14 +14,10 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+
 // Health check endpoint
-Route::get('/health', function () {
-    return response()->json([
-        'status' => 'ok',
-        'timestamp' => now()->toISOString(),
-        'version' => '1.0.0',
-    ]);
-});
+Route::get('/health', [\App\Http\Controllers\Api\HealthController::class, 'check']);
+
 
 // Public routes
 Route::prefix('auth')->group(function () {

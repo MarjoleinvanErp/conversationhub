@@ -20,3 +20,7 @@ Route::get('/', function () {
         'documentation' => '/api/documentation',
     ]);
 });
+
+Route::get('/test', function () {
+    return 'Laravel werkt!';
+});
