@@ -1,27 +1,32 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
 
 const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  
+  const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
     
     try {
-      // TODO: Implement actual login logic
-      console.log('Login attempt:', { email, password });
+      const result = await login(email, password);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Redirect to dashboard
-      navigate('/dashboard');
+      if (result.success) {
+        navigate('/dashboard');
+      } else {
+        setError(result.message || 'Login mislukt');
+      }
     } catch (error) {
       console.error('Login error:', error);
+      setError('Er is een fout opgetreden');
     } finally {
       setLoading(false);
     }
@@ -38,6 +43,13 @@ const Login = () => {
             Intelligente gespreksondersteuning met privacy-first design
           </p>
         </div>
+        
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
+            {error}
+          </div>
+        )}
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
@@ -78,10 +90,16 @@ const Login = () => {
             <button
               type="submit"
               disabled={loading}
-              className="conversation-button w-full"
+              className="conversation-button w-full disabled:opacity-50"
             >
               {loading ? 'Inloggen...' : 'Inloggen'}
             </button>
+          </div>
+
+          <div className="text-center text-sm text-gray-600">
+            <p>Test account:</p>
+            <p>Email: test@conversationhub.nl</p>
+            <p>Wachtwoord: password123</p>
           </div>
         </form>
       </div>

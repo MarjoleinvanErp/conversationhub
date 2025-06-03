@@ -2,25 +2,31 @@
 
 use Illuminate\Support\Facades\Route;
 
-/*
-|--------------------------------------------------------------------------
-| Web Routes
-|--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "web" middleware group. Make something great!
-|
-*/
-
-Route::get('/', function () {
-    return response()->json([
-        'message' => 'ConversationHub API',
-        'version' => '1.0.0',
-        'documentation' => '/api/documentation',
-    ]);
+// Ultra simpele test route
+Route::get('/test', function () {
+    return 'Laravel Basic Test Works!';
 });
 
-Route::get('/test', function () {
-    return 'Laravel werkt!';
+// JSON test route
+Route::get('/json-test', function () {
+    return [
+        'status' => 'success',
+        'message' => 'JSON response works',
+        'timestamp' => date('Y-m-d H:i:s')
+    ];
+});
+
+// Debug route
+Route::get('/debug', function () {
+    return [
+        'app_key' => config('app.key') ? 'Set' : 'Missing',
+        'app_env' => config('app.env'),
+        'php_version' => PHP_VERSION,
+        'laravel_version' => app()->version(),
+    ];
+});
+
+// Root route
+Route::get('/', function () {
+    return 'ConversationHub Backend is running!';
 });

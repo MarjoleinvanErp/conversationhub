@@ -5,6 +5,7 @@ namespace App\Exceptions;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -31,10 +32,10 @@ class Handler extends ExceptionHandler
     /**
      * Render an exception into an HTTP response.
      */
-    public function render($request, Throwable $e): JsonResponse|\Symfony\Component\HttpFoundation\Response
+    public function render($request, Throwable $e): Response
     {
-        // API Error Response
-        if ($request->is('api/*')) {
+        // Voor API routes, geef een simpele JSON response
+        if ($request->is('api/*') || $request->expectsJson()) {
             return $this->handleApiException($request, $e);
         }
 
@@ -46,20 +47,27 @@ class Handler extends ExceptionHandler
      */
     private function handleApiException(Request $request, Throwable $e): JsonResponse
     {
-        $statusCode = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
-        
-        if ($statusCode === 0) {
+        // Bepaal status code
+        $statusCode = 500;
+        if (method_exists($e, 'getStatusCode')) {
+            $statusCode = $e->getStatusCode();
+        } elseif (method_exists($e, 'getCode') && $e->getCode() > 0) {
+            $statusCode = $e->getCode();
+        }
+
+        // Zorg ervoor dat we een geldige HTTP status code hebben
+        if ($statusCode < 100 || $statusCode > 599) {
             $statusCode = 500;
         }
 
         $response = [
             'success' => false,
-            'message' => $e->getMessage() ?: 'An error occurred',
-            'timestamp' => now()->toISOString(),
+            'message' => $e->getMessage() ?: 'Er is een fout opgetreden',
+            'timestamp' => date('c'), // ISO 8601 format
         ];
 
-        // Add additional debug info in development
-        if (config('app.debug')) {
+        // Voeg debug info toe in development
+        if (config('app.debug', false)) {
             $response['debug'] = [
                 'exception' => get_class($e),
                 'file' => $e->getFile(),
@@ -68,6 +76,9 @@ class Handler extends ExceptionHandler
             ];
         }
 
-        return response()->json($response, $statusCode);
+        // Gebruik native PHP response creation om circulaire dependency te vermijden
+        return new JsonResponse($response, $statusCode, [
+            'Content-Type' => 'application/json',
+        ]);
     }
 }
