@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:15-alpine
+    container_name: conversationhub_db_test
+    environment:
+      POSTGRES_DB: conversationhub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: conversationhub_redis_test
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres_data:

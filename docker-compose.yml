@@ -1,0 +1,98 @@
+services:
+  # Laravel Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: conversationhub_backend
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./backend:/var/www
+      - ./backend/storage/app:/var/www/storage/app
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - DB_HOST=database
+      - DB_DATABASE=conversationhub
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=secret
+      - REDIS_HOST=redis
+    depends_on:
+      - database
+      - redis
+    networks:
+      - conversationhub
+
+  # React Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: conversationhub_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+    networks:
+      - conversationhub
+
+  # PostgreSQL Database
+  database:
+    image: postgres:15-alpine
+    container_name: conversationhub_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: conversationhub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - conversationhub
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: conversationhub_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - conversationhub
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: conversationhub_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - conversationhub
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  conversationhub:
+    driver: bridge

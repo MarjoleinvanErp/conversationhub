@@ -1,0 +1,111 @@
+# Environment files
+.env
+.env.local
+.env.production
+.env.docker
+
+# Dependencies
+node_modules/
+vendor/
+
+# Build outputs
+/backend/public/build
+/frontend/build
+/frontend/dist
+
+# Storage & Uploads
+/backend/storage/app/audio/*
+!/backend/storage/app/audio/.gitkeep
+/backend/storage/app/exports/*
+!/backend/storage/app/exports/.gitkeep
+/backend/storage/app/temp/*
+!/backend/storage/app/temp/.gitkeep
+/backend/storage/logs/*
+!/backend/storage/logs/.gitkeep
+/backend/storage/framework/cache/*
+!/backend/storage/framework/cache/.gitkeep
+/backend/storage/framework/sessions/*
+!/backend/storage/framework/sessions/.gitkeep
+/backend/storage/framework/views/*
+!/backend/storage/framework/views/.gitkeep
+
+# Database
+*.sqlite
+*.sqlite3
+
+# Docker
+docker-compose.override.yml
+.docker/
+
+# IDE & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.sublime-*
+
+# OS Generated
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+laravel.log
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp
+.cache/
+
+# Laravel specific
+/backend/bootstrap/compiled.php
+/backend/vendor
+/backend/node_modules
+/backend/.env.*.php
+/backend/.env.php
+/backend/public/storage
+/backend/public/hot
+/backend/storage/*.key
+
+# React specific
+/frontend/.env.local
+/frontend/.env.development.local
+/frontend/.env.test.local
+/frontend/.env.production.local
+/frontend/npm-debug.log*
+/frontend/yarn-debug.log*
+/frontend/yarn-error.log*
+
+# Audio processing temp files
+*.wav.tmp
+*.mp3.tmp
+*.webm.tmp
+
+# Export files (these contain sensitive data)
+*.xlsx
+*.docx
+*.pdf
+exports/
+
+# Backup files
+*.bak
+*.backup

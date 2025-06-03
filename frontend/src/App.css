@@ -1,0 +1,46 @@
+.App {
+  text-align: left;
+}
+
+.App-header {
+  background-color: #282c34;
+  padding: 20px;
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+/* ConversationHub specific styles */
+.meeting-room {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.transcription-area {
+  max-height: 400px;
+  overflow-y: auto;
+  background-color: #f9fafb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.participant-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.agenda-progress {
+  background-color: #e5e7eb;
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.agenda-progress-bar {
+  background-color: #10b981;
+  height: 8px;
+  border-radius: 9999px;
+  transition: width 0.3s ease;
+}
