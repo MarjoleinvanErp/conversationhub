@@ -27,6 +27,9 @@ class RouteServiceProvider extends ServiceProvider
         RateLimiter::for('audio', function (Request $request) {
             return Limit::perMinute(10)->by($request->ip());
         });
+    RateLimiter::for('speech', function (Request $request) {
+        return Limit::perMinute(20)->by($request->ip());
+    });
 
         $this->routes(function () {
             Route::middleware('api')

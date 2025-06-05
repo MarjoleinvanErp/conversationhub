@@ -12,8 +12,8 @@ const CreateMeeting = () => {
     title: '',
     description: '',
     type: 'general',
-    scheduled_at: '',
-    duration_minutes: 60,
+    scheduled_date: '',
+    scheduled_time: '',
     privacy_level: 'standard',
     auto_transcription: true,
   });
@@ -22,15 +22,23 @@ const CreateMeeting = () => {
     { name: '', email: '', role: 'participant' }
   ]);
 
-  const [agendaItems, setAgendaItems] = useState([
-    { title: '', description: '', estimated_duration: 10 }
-  ]);
+  // Agenda als simpele string die we splitsen op enters
+  const [agendaText, setAgendaText] = useState('');
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const setToday = () => {
+    const today = new Date();
+    const dateString = today.toISOString().split('T')[0];
+    setFormData(prev => ({
+      ...prev,
+      scheduled_date: dateString
     }));
   };
 
@@ -49,35 +57,43 @@ const CreateMeeting = () => {
     setParticipants(updated);
   };
 
-  const addAgendaItem = () => {
-    setAgendaItems([...agendaItems, { title: '', description: '', estimated_duration: 10 }]);
-  };
-
-  const removeAgendaItem = (index) => {
-    setAgendaItems(agendaItems.filter((_, i) => i !== index));
-  };
-
-  const updateAgendaItem = (index, field, value) => {
-    const updated = agendaItems.map((item, i) => 
-      i === index ? { ...item, [field]: value } : item
-    );
-    setAgendaItems(updated);
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
 
     try {
-      // Filter out empty participants and agenda items
+      // Filter out empty participants
       const validParticipants = participants.filter(p => p.name.trim() !== '');
-      const validAgendaItems = agendaItems.filter(item => item.title.trim() !== '');
+
+      // Convert agenda text to agenda items
+      const agendaItems = agendaText
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line !== '')
+        .map((title, index) => ({
+          title: title,
+          description: '',
+          estimated_duration: 10,
+          order: index + 1
+        }));
+
+      // Combine date and time for scheduled_at
+      let scheduled_at = null;
+      if (formData.scheduled_date && formData.scheduled_time) {
+        scheduled_at = `${formData.scheduled_date}T${formData.scheduled_time}:00`;
+      }
 
       const meetingData = {
-        ...formData,
+        title: formData.title,
+        description: formData.description,
+        type: formData.type,
+        scheduled_at: scheduled_at,
+        duration_minutes: 60, // Default duration
+        privacy_level: formData.privacy_level,
+        auto_transcription: formData.auto_transcription,
         participants: validParticipants,
-        agenda_items: validAgendaItems,
+        agenda_items: agendaItems,
       };
 
       const result = await meetingService.createMeeting(meetingData);
@@ -112,7 +128,7 @@ const CreateMeeting = () => {
         <div className="conversation-card">
           <h2 className="text-lg font-medium mb-4">Gesprek Details</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Titel *
@@ -145,47 +161,56 @@ const CreateMeeting = () => {
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Geplande Tijd
-              </label>
-              <input
-                type="datetime-local"
-                name="scheduled_at"
-                value={formData.scheduled_at}
-                onChange={handleInputChange}
-                className="conversation-input w-full"
-              />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Geplande Datum
+                </label>
+                <div className="flex space-x-2">
+                  <input
+                    type="date"
+                    name="scheduled_date"
+                    value={formData.scheduled_date}
+                    onChange={handleInputChange}
+                    className="conversation-input flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={setToday}
+                    className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded border"
+                  >
+                    Vandaag
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Geplande Tijd
+                </label>
+                <input
+                  type="time"
+                  name="scheduled_time"
+                  value={formData.scheduled_time}
+                  onChange={handleInputChange}
+                  className="conversation-input w-full"
+                />
+              </div>
             </div>
 
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Duur (minuten)
+                Beschrijving Gesprek
               </label>
-              <input
-                type="number"
-                name="duration_minutes"
-                value={formData.duration_minutes}
+              <textarea
+                name="description"
+                value={formData.description}
                 onChange={handleInputChange}
                 className="conversation-input w-full"
-                min="15"
-                max="480"
+                rows="3"
+                placeholder="Korte beschrijving van het gesprek"
               />
             </div>
-          </div>
-
-          <div className="mt-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Beschrijving
-            </label>
-            <textarea
-              name="description"
-              value={formData.description}
-              onChange={handleInputChange}
-              className="conversation-input w-full"
-              rows="3"
-              placeholder="Optionele beschrijving van het gesprek"
-            />
           </div>
         </div>
 
@@ -214,7 +239,7 @@ const CreateMeeting = () => {
                 />
                 <input
                   type="email"
-                  placeholder="Email (optioneel)"
+                  placeholder="Email"
                   value={participant.email}
                   onChange={(e) => updateParticipant(index, 'email', e.target.value)}
                   className="conversation-input"
@@ -240,55 +265,24 @@ const CreateMeeting = () => {
           </div>
         </div>
 
-        {/* Agenda Items */}
+        {/* Simplified Agenda */}
         <div className="conversation-card">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium">Agenda</h2>
-            <button
-              type="button"
-              onClick={addAgendaItem}
-              className="conversation-button text-sm"
-            >
-              + Agenda Punt Toevoegen
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            {agendaItems.map((item, index) => (
-              <div key={index} className="p-3 border rounded">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-2">
-                  <input
-                    type="text"
-                    placeholder="Agenda punt titel"
-                    value={item.title}
-                    onChange={(e) => updateAgendaItem(index, 'title', e.target.value)}
-                    className="conversation-input"
-                  />
-                  <input
-                    type="number"
-                    placeholder="Tijd (min)"
-                    value={item.estimated_duration}
-                    onChange={(e) => updateAgendaItem(index, 'estimated_duration', parseInt(e.target.value))}
-                    className="conversation-input"
-                    min="1"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => removeAgendaItem(index)}
-                    className="text-red-600 hover:text-red-800 text-sm"
-                  >
-                    Verwijderen
-                  </button>
-                </div>
-                <textarea
-                  placeholder="Beschrijving (optioneel)"
-                  value={item.description}
-                  onChange={(e) => updateAgendaItem(index, 'description', e.target.value)}
-                  className="conversation-input w-full"
-                  rows="2"
-                />
-              </div>
-            ))}
+          <h2 className="text-lg font-medium mb-4">Agenda</h2>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Agenda Punten (elk punt op een nieuwe regel)
+            </label>
+            <textarea
+              value={agendaText}
+              onChange={(e) => setAgendaText(e.target.value)}
+              className="conversation-input w-full"
+              rows="6"
+              placeholder="Welkom en kennismaking&#10;Huidige situatie bespreken&#10;Doelen opstellen&#10;Vervolgstappen&#10;Afsluiting"
+            />
+            <p className="text-sm text-gray-500 mt-1">
+              Typ elk agendapunt op een nieuwe regel. Druk op Enter voor het volgende punt.
+            </p>
           </div>
         </div>
 

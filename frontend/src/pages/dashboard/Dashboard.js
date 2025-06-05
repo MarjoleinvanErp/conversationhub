@@ -212,17 +212,31 @@ const Dashboard = () => {
                     )}
                   </div>
                 </div>
-                <div className="flex space-x-2">
-                  {meeting.status === 'scheduled' && (
-                    <button className="text-sm text-green-600 hover:text-green-700">
-                      Start
-                    </button>
-                  )}
-                  <button className="text-sm text-primary-600 hover:text-primary-700">
-                    Bekijk
-                  </button>
-                </div>
-              </div>
+<div className="flex space-x-2">
+  {meeting.status === 'scheduled' && (
+    <button 
+      onClick={() => navigate(`/meetings/${meeting.id}/room`)}
+      className="text-sm text-green-600 hover:text-green-700"
+    >
+      Start
+    </button>
+  )}
+  {meeting.status === 'active' && (
+    <button 
+      onClick={() => navigate(`/meetings/${meeting.id}/room`)}
+      className="text-sm text-orange-600 hover:text-orange-700"
+    >
+      Deelnemen
+    </button>
+
+  )}
+  <button className="text-sm text-primary-600 hover:text-primary-700">
+    Bekijk
+  </button>
+</div>
+
+
+   </div>
             ))}
           </div>
         )}

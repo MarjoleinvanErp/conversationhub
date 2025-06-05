@@ -1,4 +1,5 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Gebruik direct backend poort om nginx te omzeilen
+const API_BASE_URL = 'http://localhost:8000';
 
 class AuthService {
   constructor() {
@@ -8,15 +9,28 @@ class AuthService {
 
   async login(email, password) {
     try {
+      console.log('Attempting login to:', `${API_BASE_URL}/api/auth/login`);
+      
       const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
+        mode: 'cors', // Expliciete CORS mode
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
         },
         body: JSON.stringify({ email, password }),
       });
 
+      console.log('Login response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('Error response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
+      console.log('Login response data:', data);
 
       if (data.success) {
         this.token = data.data.token;
@@ -28,8 +42,11 @@ class AuthService {
         return { success: false, message: data.message };
       }
     } catch (error) {
-      console.error('Login error:', error);
-      return { success: false, message: 'Verbindingsfout' };
+      console.error('Login error details:', error);
+      return { 
+        success: false, 
+        message: `Verbindingsfout: ${error.message}` 
+      };
     }
   }
 
@@ -38,6 +55,7 @@ class AuthService {
       if (this.token) {
         await fetch(`${API_BASE_URL}/api/auth/logout`, {
           method: 'POST',
+          mode: 'cors',
           headers: {
             'Authorization': `Bearer ${this.token}`,
             'Content-Type': 'application/json',

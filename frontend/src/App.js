@@ -10,6 +10,7 @@ import Layout from './components/common/Layout/Layout';
 import Dashboard from './pages/dashboard/Dashboard';
 import Login from './pages/auth/Login';
 import CreateMeeting from './pages/meeting/CreateMeeting';
+import MeetingRoom from './pages/meeting/MeetingRoom';  // ← NIEUWE IMPORT
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -47,6 +48,7 @@ function App() {
               <Route index element={<Navigate to="/dashboard" />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="meetings/create" element={<CreateMeeting />} />
+              <Route path="meetings/:id/room" element={<MeetingRoom />} />  {/* ← NIEUWE ROUTE */}
             </Route>
           </Routes>
         </div>

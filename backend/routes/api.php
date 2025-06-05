@@ -32,6 +32,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
+    // Speech processing routes
+    Route::middleware('throttle:speech')->group(function () {
+        Route::post('/speech/transcribe', [\App\Http\Controllers\Api\SpeechController::class, 'transcribe']);
+    });
+});
     Route::post('/auth/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
 
     // Meeting routes
