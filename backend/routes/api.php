@@ -41,15 +41,17 @@ Route::middleware('auth:sanctum')->group(function () {
     // Participant routes
     Route::apiResource('meetings.participants', \App\Http\Controllers\Api\ParticipantController::class);
 
-    // Audio processing routes
+// Audio processing routes
     Route::middleware('throttle:audio')->group(function () {
         Route::post('/audio/upload', [\App\Http\Controllers\Api\AudioController::class, 'upload']);
-        Route::post('/audio/process', [\App\Http\Controllers\Api\AudioController::class, 'process']);
+        Route::get('/audio/list', [\App\Http\Controllers\Api\AudioController::class, 'list']);
+        Route::delete('/audio/{filename}', [\App\Http\Controllers\Api\AudioController::class, 'delete']);
     });
 
-    // Speech processing routes
+// Speech processing routes
     Route::middleware('throttle:speech')->group(function () {
         Route::post('/speech/transcribe', [\App\Http\Controllers\Api\SpeechController::class, 'transcribe']);
+        Route::get('/speech/test', [\App\Http\Controllers\Api\SpeechController::class, 'test']); // Deze regel toevoegen
     });
 
     // Transcription routes

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService';
 import SimpleAudioRecorder from '../../components/recording/AudioRecorder/SimpleAudioRecorder';
+import AudioUploadRecorder from '../../components/recording/AudioRecorder/AudioUploadRecorder';
 
 
 const MeetingRoom = () => {
@@ -477,8 +478,10 @@ const [transcriptions, setTranscriptions] = useState([]);
           </div>
 
 {/* Audio Recorder */}
-          <SimpleAudioRecorder 
+         {/* Audio Upload Recorder */}
+          <AudioUploadRecorder 
             onTranscriptionReceived={handleTranscriptionReceived}
+            meetingId={id}
             disabled={false}
           />
 

@@ -3,116 +3,98 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Services\AzureWhisperService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class SpeechController extends Controller
 {
-/**
-     * Process audio and return transcription using Azure Whisper
+    private $azureWhisperService;
+
+    public function __construct(AzureWhisperService $azureWhisperService)
+    {
+        $this->azureWhisperService = $azureWhisperService;
+    }
+
+    /**
+     * Process audio and return transcription
      */
     public function transcribe(Request $request): JsonResponse
     {
         try {
-            $request->validate([
-                'audio' => 'required|file|mimes:wav,mp3,webm,m4a,ogg,flac|max:25600', // Max 25MB
+            // Validate input
+            $validator = Validator::make($request->all(), [
+                'audio' => 'required|file|mimes:wav,mp3,webm,m4a,ogg|max:25600', // 25MB max
             ]);
 
-            $audioFile = $request->file('audio');
-            $whisperEndpoint = config('conversation.azure_whisper.endpoint');
-            $whisperKey = config('conversation.azure_whisper.key');
-            $whisperModel = config('conversation.azure_whisper.model', 'whisper');
-
-            if (!$whisperEndpoint || !$whisperKey) {
+            if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Azure Whisper Service niet geconfigureerd'
+                    'message' => 'Ongeldige audio file',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $audioFile = $request->file('audio');
+
+            // Log request
+            Log::info('Audio transcription request', [
+                'user_id' => $request->user()->id,
+                'file_size' => $audioFile->getSize(),
+                'file_type' => $audioFile->getMimeType(),
+            ]);
+
+            // Check service
+            if (!$this->azureWhisperService->isConfigured()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Azure Whisper service niet geconfigureerd'
                 ], 500);
             }
 
-            // Build correct Azure OpenAI Whisper endpoint
-            $endpoint = rtrim($whisperEndpoint, '/') . '/openai/deployments/' . $whisperModel . '/audio/transcriptions?api-version=2024-06-01';
-            
-            Log::info('Azure Whisper Request', [
-                'endpoint' => $endpoint,
-                'file_size' => $audioFile->getSize(),
-                'file_type' => $audioFile->getMimeType(),
-                'model' => $whisperModel
-            ]);
+            // Transcribe
+            $result = $this->azureWhisperService->transcribeAudio($audioFile);
 
- // Save uploaded file for debugging
-            $debugFileName = 'debug_' . time() . '_' . $audioFile->getClientOriginalName();
-            $savedPath = $audioFile->storeAs('audio', $debugFileName);
-            
-            Log::info('Audio file saved for debugging', [
-                'saved_path' => $savedPath,
-                'full_path' => storage_path('app/' . $savedPath),
-                'original_name' => $audioFile->getClientOriginalName(),
-                'file_size' => $audioFile->getSize(),
-            ]);
-
-            // Read file contents
-            $fileContents = file_get_contents($audioFile->getPathname());
-            $fileName = $audioFile->getClientOriginalName();
-
-            $response = Http::withHeaders([
-                'api-key' => $whisperKey,
-            ])
-            ->asMultipart()
-            ->attach(
-                'file', 
-                $fileContents, 
-                $fileName
-            )
-            ->post($endpoint, [
-                'model' => $whisperModel,
-                'language' => 'nl',
-                'response_format' => 'json',
-            ]);
-
-            Log::info('Azure Whisper Response', [
-                'status' => $response->status(),
-                'body' => $response->body()
-            ]);
-
-            if ($response->successful()) {
-                $result = $response->json();
-                
-                if (isset($result['text']) && !empty($result['text'])) {
-                    return response()->json([
-                        'success' => true,
-                        'data' => [
-                            'text' => $result['text'],
-                            'language' => $result['language'] ?? 'nl',
-                            'duration' => $result['duration'] ?? 0,
-                        ]
-                    ]);
-                } else {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Geen spraak gedetecteerd in audio'
-                    ]);
-                }
-            } else {
-                Log::error('Azure Whisper API Error', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
+            if ($result['success']) {
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'text' => $result['text'],
+                        'language' => $result['language'],
+                        'duration' => $result['duration'],
+                    ]
                 ]);
-                
+            } else {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Azure API fout: ' . $response->body()
+                    'message' => 'Transcriptie mislukt: ' . $result['error']
                 ], 500);
             }
 
         } catch (\Exception $e) {
-            Log::error('Speech transcription error: ' . $e->getMessage());
+            Log::error('Transcription error: ' . $e->getMessage());
+            
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij audio verwerking: ' . $e->getMessage()
+                'message' => 'Fout bij transcriptie: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Test Azure connection
+     */
+    public function test(Request $request): JsonResponse
+    {
+        $configured = $this->azureWhisperService->isConfigured();
+        
+        return response()->json([
+            'success' => $configured,
+            'message' => $configured ? 'Azure Whisper geconfigureerd' : 'Azure Whisper niet geconfigureerd',
+            'endpoint_set' => !empty(config('conversation.azure_whisper.endpoint')),
+            'key_set' => !empty(config('conversation.azure_whisper.key')),
+        ]);
     }
 }
