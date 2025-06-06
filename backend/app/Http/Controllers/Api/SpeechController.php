@@ -10,56 +10,83 @@ use Illuminate\Support\Facades\Log;
 
 class SpeechController extends Controller
 {
-    /**
-     * Process audio and return transcription
+/**
+     * Process audio and return transcription using Azure Whisper
      */
     public function transcribe(Request $request): JsonResponse
     {
         try {
             $request->validate([
-                'audio' => 'required|file|mimes:wav,mp3,webm,m4a|max:10240', // Max 10MB
+                'audio' => 'required|file|mimes:wav,mp3,webm,m4a,ogg,flac|max:25600', // Max 25MB
             ]);
 
             $audioFile = $request->file('audio');
-            $speechKey = config('conversation.azure_speech.key');
-            $speechRegion = config('conversation.azure_speech.region');
+            $whisperEndpoint = config('conversation.azure_whisper.endpoint');
+            $whisperKey = config('conversation.azure_whisper.key');
+            $whisperModel = config('conversation.azure_whisper.model', 'whisper');
 
-            if (!$speechKey || !$speechRegion) {
+            if (!$whisperEndpoint || !$whisperKey) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Azure Speech Service niet geconfigureerd'
+                    'message' => 'Azure Whisper Service niet geconfigureerd'
                 ], 500);
             }
 
-            // Prepare Azure Speech API request
-            $endpoint = "https://{$speechRegion}.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1";
+            // Build correct Azure OpenAI Whisper endpoint
+            $endpoint = rtrim($whisperEndpoint, '/') . '/openai/deployments/' . $whisperModel . '/audio/transcriptions?api-version=2024-06-01';
             
+            Log::info('Azure Whisper Request', [
+                'endpoint' => $endpoint,
+                'file_size' => $audioFile->getSize(),
+                'file_type' => $audioFile->getMimeType(),
+                'model' => $whisperModel
+            ]);
+
+ // Save uploaded file for debugging
+            $debugFileName = 'debug_' . time() . '_' . $audioFile->getClientOriginalName();
+            $savedPath = $audioFile->storeAs('audio', $debugFileName);
+            
+            Log::info('Audio file saved for debugging', [
+                'saved_path' => $savedPath,
+                'full_path' => storage_path('app/' . $savedPath),
+                'original_name' => $audioFile->getClientOriginalName(),
+                'file_size' => $audioFile->getSize(),
+            ]);
+
+            // Read file contents
+            $fileContents = file_get_contents($audioFile->getPathname());
+            $fileName = $audioFile->getClientOriginalName();
+
             $response = Http::withHeaders([
-                'Ocp-Apim-Subscription-Key' => $speechKey,
-                'Content-Type' => 'audio/wav; codecs=audio/pcm; samplerate=16000',
-                'Accept' => 'application/json',
+                'api-key' => $whisperKey,
             ])
-            ->withOptions([
-                'query' => [
-                    'language' => 'nl-NL',
-                    'format' => 'detailed',
-                    'profanityFilterMode' => 'Masked',
-                ],
-            ])
-            ->withBody(file_get_contents($audioFile->getPathname()), 'audio/wav')
-            ->post($endpoint);
+            ->asMultipart()
+            ->attach(
+                'file', 
+                $fileContents, 
+                $fileName
+            )
+            ->post($endpoint, [
+                'model' => $whisperModel,
+                'language' => 'nl',
+                'response_format' => 'json',
+            ]);
+
+            Log::info('Azure Whisper Response', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
 
             if ($response->successful()) {
                 $result = $response->json();
                 
-                if (isset($result['DisplayText']) && !empty($result['DisplayText'])) {
+                if (isset($result['text']) && !empty($result['text'])) {
                     return response()->json([
                         'success' => true,
                         'data' => [
-                            'text' => $result['DisplayText'],
-                            'confidence' => $result['Confidence'] ?? 0.8,
-                            'duration' => $result['Duration'] ?? 0,
-                            'offset' => $result['Offset'] ?? 0,
+                            'text' => $result['text'],
+                            'language' => $result['language'] ?? 'nl',
+                            'duration' => $result['duration'] ?? 0,
                         ]
                     ]);
                 } else {
@@ -69,10 +96,14 @@ class SpeechController extends Controller
                     ]);
                 }
             } else {
-                Log::error('Azure Speech API Error: ' . $response->body());
+                Log::error('Azure Whisper API Error', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                
                 return response()->json([
                     'success' => false,
-                    'message' => 'Fout bij transcriptie verwerking'
+                    'message' => 'Azure API fout: ' . $response->body()
                 ], 500);
             }
 

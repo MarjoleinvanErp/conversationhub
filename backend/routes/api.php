@@ -14,10 +14,8 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-
 // Health check endpoint
 Route::get('/health', [\App\Http\Controllers\Api\HealthController::class, 'check']);
-
 
 // Public routes
 Route::prefix('auth')->group(function () {
@@ -32,11 +30,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
-    // Speech processing routes
-    Route::middleware('throttle:speech')->group(function () {
-        Route::post('/speech/transcribe', [\App\Http\Controllers\Api\SpeechController::class, 'transcribe']);
-    });
-});
+    
     Route::post('/auth/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
 
     // Meeting routes
@@ -51,6 +45,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('throttle:audio')->group(function () {
         Route::post('/audio/upload', [\App\Http\Controllers\Api\AudioController::class, 'upload']);
         Route::post('/audio/process', [\App\Http\Controllers\Api\AudioController::class, 'process']);
+    });
+
+    // Speech processing routes
+    Route::middleware('throttle:speech')->group(function () {
+        Route::post('/speech/transcribe', [\App\Http\Controllers\Api\SpeechController::class, 'transcribe']);
     });
 
     // Transcription routes

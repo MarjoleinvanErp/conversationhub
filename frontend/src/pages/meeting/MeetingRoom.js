@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService';
+import SimpleAudioRecorder from '../../components/recording/AudioRecorder/SimpleAudioRecorder';
+
 
 const MeetingRoom = () => {
   const { id } = useParams();
@@ -25,7 +27,21 @@ const MeetingRoom = () => {
   const [interimTranscript, setInterimTranscript] = useState('');
 
   // Transcription state
-  const [transcriptions, setTranscriptions] = useState([]);
+const [transcriptions, setTranscriptions] = useState([]);
+
+  // Handle transcription from audio recorder
+  const handleTranscriptionReceived = (transcription) => {
+    const newTranscription = {
+      id: Date.now(),
+      text: transcription.text,
+      timestamp: transcription.timestamp,
+      speaker: transcription.speaker || 'Audio Opname',
+      confidence: 0.9, // Azure Whisper is usually high confidence
+      isFinal: true
+    };
+
+    setTranscriptions(prev => [...prev, newTranscription]);
+  };
 
   // Agenda tracking
   const [currentAgendaIndex, setCurrentAgendaIndex] = useState(0);
@@ -460,9 +476,17 @@ const MeetingRoom = () => {
             </div>
           </div>
 
+{/* Audio Recorder */}
+          <SimpleAudioRecorder 
+            onTranscriptionReceived={handleTranscriptionReceived}
+            disabled={false}
+          />
+
           {/* Live Transcription */}
           <div className="conversation-card">
             <h2 className="text-lg font-medium mb-4">Live Transcriptie</h2>
+
+
             
             <div className="bg-gray-50 rounded-lg p-4 h-96 overflow-y-auto">
               {transcriptions.length === 0 && !interimTranscript ? (

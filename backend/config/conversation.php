@@ -6,8 +6,13 @@ return [
         'endpoint' => env('AZURE_WHISPER_ENDPOINT'),
         'key' => env('AZURE_WHISPER_KEY'),
         'region' => env('AZURE_WHISPER_REGION', 'westeurope'),
+        'model' => env('AZURE_WHISPER_MODEL', 'Whisper'),
         'language' => env('AZURE_WHISPER_LANGUAGE', 'nl-NL'),
         'timeout' => env('AZURE_WHISPER_TIMEOUT', 30),
+        'api_version' => env('AZURE_WHISPER_API_VERSION', '2024-02-01'),
+        'response_format' => env('AZURE_WHISPER_RESPONSE_FORMAT', 'verbose_json'),
+        'temperature' => env('AZURE_WHISPER_TEMPERATURE', 0),
+        'timestamp_granularities' => ['word', 'segment'],
     ],
 
     // Azure Speech Service Configuration
