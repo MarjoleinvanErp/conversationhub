@@ -54,9 +54,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/speech/test', [\App\Http\Controllers\Api\SpeechController::class, 'test']); // Deze regel toevoegen
     });
 
-    // Transcription routes
+// Transcription routes
     Route::get('/meetings/{meeting}/transcriptions', [\App\Http\Controllers\Api\TranscriptionController::class, 'index']);
+    Route::post('/transcriptions', [\App\Http\Controllers\Api\TranscriptionController::class, 'store']);
     Route::get('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'show']);
+    Route::put('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'update']);
+    Route::delete('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'destroy']);
+
 
     // Export routes
     Route::post('/meetings/{meeting}/export', [\App\Http\Controllers\Api\ExportController::class, 'export']);
