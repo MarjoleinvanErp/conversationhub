@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService';
 import SimpleAudioRecorder from '../../components/recording/AudioRecorder/SimpleAudioRecorder';
 import AudioUploadRecorder from '../../components/recording/AudioRecorder/AudioUploadRecorder';
-
+import SpeakerDetection from '../../components/recording/VoiceAnalytics/SpeakerDetection';
 
 const MeetingRoom = () => {
   const { id } = useParams();
@@ -28,21 +28,13 @@ const MeetingRoom = () => {
   const [interimTranscript, setInterimTranscript] = useState('');
 
   // Transcription state
-const [transcriptions, setTranscriptions] = useState([]);
+  const [transcriptions, setTranscriptions] = useState([]);
 
-  // Handle transcription from audio recorder
-  const handleTranscriptionReceived = (transcription) => {
-    const newTranscription = {
-      id: Date.now(),
-      text: transcription.text,
-      timestamp: transcription.timestamp,
-      speaker: transcription.speaker || 'Audio Opname',
-      confidence: 0.9, // Azure Whisper is usually high confidence
-      isFinal: true
-    };
-
-    setTranscriptions(prev => [...prev, newTranscription]);
-  };
+  // Speaker detection state
+  const [currentSpeaker, setCurrentSpeaker] = useState(null);
+  const [availableSpeakers, setAvailableSpeakers] = useState([]);
+  const [speakerStats, setSpeakerStats] = useState({});
+  const [voiceActivityLevel, setVoiceActivityLevel] = useState(0);
 
   // Agenda tracking
   const [currentAgendaIndex, setCurrentAgendaIndex] = useState(0);
@@ -54,6 +46,100 @@ const [transcriptions, setTranscriptions] = useState([]);
   const analyserRef = useRef(null);
   const transcriptEndRef = useRef(null);
   const recognitionRef = useRef(null);
+
+  // Initialize speakers from meeting participants
+  useEffect(() => {
+    if (meeting?.participants?.length > 0) {
+      const speakers = meeting.participants.map((participant, index) => ({
+        id: `participant_${participant.id || index}`,
+        name: participant.name,
+        displayName: participant.name,
+        role: participant.role,
+        color: getSpeakerColor(index + 1),
+        totalSpeakingTime: 0,
+        segmentCount: 0,
+        isActive: false,
+        isParticipant: true
+      }));
+
+      // Add a "Unknown Speaker" option
+      speakers.push({
+        id: 'unknown_speaker',
+        name: 'Onbekende Spreker',
+        displayName: 'Onbekende Spreker', 
+        role: 'unknown',
+        color: '#6B7280',
+        totalSpeakingTime: 0,
+        segmentCount: 0,
+        isActive: false,
+        isParticipant: false
+      });
+
+      setAvailableSpeakers(speakers);
+      
+      // Initialize speaker stats
+      const initialStats = {};
+      speakers.forEach(speaker => {
+        initialStats[speaker.id] = {
+          totalTime: 0,
+          segments: 0
+        };
+      });
+      setSpeakerStats(initialStats);
+    }
+  }, [meeting]);
+
+  const getSpeakerColor = (number) => {
+    const colors = [
+      '#3B82F6', // Blue
+      '#EF4444', // Red  
+      '#10B981', // Green
+      '#F59E0B', // Amber
+      '#8B5CF6', // Purple
+      '#EC4899', // Pink
+      '#14B8A6', // Teal
+      '#F97316'  // Orange
+    ];
+    return colors[(number - 1) % colors.length];
+  };
+
+  // Handle transcription from audio recorder
+  const handleTranscriptionReceived = (transcription) => {
+    const newTranscription = {
+      id: Date.now(),
+      text: transcription.text,
+      timestamp: transcription.timestamp,
+      speaker: currentSpeaker?.displayName || transcription.speaker || 'Audio Opname',
+      speakerId: currentSpeaker?.id,
+      speakerColor: currentSpeaker?.color,
+      confidence: 0.9,
+      isFinal: true
+    };
+
+    setTranscriptions(prev => [...prev, newTranscription]);
+  };
+
+  // Handle speaker change (simplified)
+  const handleSpeakerChange = (speaker) => {
+    console.log('Speaker changed to:', speaker);
+    setCurrentSpeaker(speaker);
+  };
+
+  // Handle voice activity from SpeakerDetection
+  const handleVoiceActivity = (level) => {
+    setVoiceActivityLevel(level);
+  };
+
+  // Manual speaker selection
+  const selectSpeaker = (speaker) => {
+    setCurrentSpeaker(speaker);
+    
+    // Mark speaker as active
+    setAvailableSpeakers(prev => prev.map(s => ({
+      ...s,
+      isActive: s.id === speaker.id
+    })));
+  };
 
   // Check speech recognition support on mount
   useEffect(() => {
@@ -104,13 +190,15 @@ const [transcriptions, setTranscriptions] = useState([]);
 
       setInterimTranscript(interimTranscript);
 
-      // Add final transcript to transcriptions
+      // Add final transcript to transcriptions with current speaker
       if (finalTranscript.trim()) {
         const newTranscription = {
           id: Date.now(),
           text: finalTranscript.trim(),
           timestamp: new Date(),
-          speaker: 'Spreker',
+          speaker: currentSpeaker?.displayName || currentSpeaker?.name || 'Onbekende Spreker',
+          speakerId: currentSpeaker?.id,
+          speakerColor: currentSpeaker?.color,
           confidence: event.results[event.results.length - 1][0].confidence || 0.8,
           isFinal: true
         };
@@ -276,8 +364,12 @@ const [transcriptions, setTranscriptions] = useState([]);
       setAudioStream(null);
     }
 
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      try {
+        audioContextRef.current.close();
+      } catch (error) {
+        console.warn('Error closing audio context:', error);
+      }
     }
 
     if (recordingIntervalRef.current) {
@@ -349,6 +441,12 @@ const [transcriptions, setTranscriptions] = useState([]);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const formatSpeakingTime = (ms) => {
+    const seconds = Math.floor(ms / 1000);
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}:${(seconds % 60).toString().padStart(2, '0')}`;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -370,8 +468,6 @@ const [transcriptions, setTranscriptions] = useState([]);
       </div>
     );
   }
-
-  const currentAgendaItem = meeting?.agenda_items?.[currentAgendaIndex];
 
   return (
     <div className="max-w-7xl mx-auto">
@@ -477,19 +573,23 @@ const [transcriptions, setTranscriptions] = useState([]);
             </div>
           </div>
 
-{/* Audio Recorder */}
-         {/* Audio Upload Recorder */}
+          {/* Audio Upload Recorder */}
           <AudioUploadRecorder 
             onTranscriptionReceived={handleTranscriptionReceived}
             meetingId={id}
             disabled={false}
           />
 
+          {/* Voice Activity Monitoring */}
+          <SpeakerDetection 
+            isRecording={isRecording}
+            audioStream={audioStream}
+            onVoiceActivity={handleVoiceActivity}
+          />
+
           {/* Live Transcription */}
           <div className="conversation-card">
             <h2 className="text-lg font-medium mb-4">Live Transcriptie</h2>
-
-
             
             <div className="bg-gray-50 rounded-lg p-4 h-96 overflow-y-auto">
               {transcriptions.length === 0 && !interimTranscript ? (
@@ -512,6 +612,12 @@ const [transcriptions, setTranscriptions] = useState([]);
                       </div>
                       <div className="flex-1">
                         <div className="text-sm font-medium text-gray-700 mb-1 flex items-center space-x-2">
+                          {transcript.speakerColor && (
+                            <div 
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: transcript.speakerColor }}
+                            ></div>
+                          )}
                           <span>{transcript.speaker}</span>
                           <span className="text-xs text-gray-400">
                             ({Math.round((transcript.confidence || 0) * 100)}% zekerheid)
@@ -533,8 +639,14 @@ const [transcriptions, setTranscriptions] = useState([]);
                         })}
                       </div>
                       <div className="flex-1">
-                        <div className="text-sm font-medium text-gray-700 mb-1">
-                          Spreker (aan het typen...)
+                        <div className="text-sm font-medium text-gray-700 mb-1 flex items-center space-x-2">
+                          {currentSpeaker?.color && (
+                            <div 
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: currentSpeaker.color }}
+                            ></div>
+                          )}
+                          <span>{currentSpeaker?.displayName || 'Onbekende Spreker'} (aan het typen...)</span>
                         </div>
                         <div className="text-gray-600 italic">{interimTranscript}</div>
                       </div>
@@ -550,6 +662,72 @@ const [transcriptions, setTranscriptions] = useState([]);
 
         {/* Sidebar */}
         <div className="space-y-6">
+          {/* Speaker Selection Panel */}
+          <div className="conversation-card">
+            <h2 className="text-lg font-medium mb-4">Huidige Spreker</h2>
+            
+            {/* Current Speaker Display */}
+            <div className="mb-4 p-3 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center space-x-3">
+                <div 
+                  className="w-4 h-4 rounded-full"
+                  style={{ backgroundColor: currentSpeaker?.color || '#E5E7EB' }}
+                ></div>
+                <span className="font-medium">
+                  {currentSpeaker ? currentSpeaker.displayName : 'Selecteer spreker'}
+                </span>
+              </div>
+              
+              {/* Voice Level */}
+              {isRecording && (
+                <div className="mt-2">
+                  <div className="w-full bg-gray-200 rounded-full h-1">
+                    <div 
+                      className="bg-green-500 h-1 rounded-full transition-all duration-200"
+                      style={{ width: `${Math.min((voiceActivityLevel / 80) * 100, 100)}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    Geluid: {Math.round(voiceActivityLevel)}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Speaker Selection Buttons */}
+            <div className="space-y-2">
+              <h4 className="font-medium text-sm text-gray-700">Selecteer spreker:</h4>
+              {availableSpeakers.map((speaker) => (
+                <button
+                  key={speaker.id}
+                  onClick={() => selectSpeaker(speaker)}
+                  className={`w-full flex items-center justify-between p-3 border rounded-lg text-left transition-colors ${
+                    currentSpeaker?.id === speaker.id 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div 
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: speaker.color }}
+                    ></div>
+                    <div>
+                      <div className="font-medium text-sm">{speaker.displayName}</div>
+                      {speaker.isParticipant && (
+                        <div className="text-xs text-gray-500">{speaker.role}</div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="text-xs text-gray-500">
+                    {formatSpeakingTime(speakerStats[speaker.id]?.totalTime || 0)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Agenda Tracking */}
           <div className="conversation-card">
             <h2 className="text-lg font-medium mb-4">Agenda Voortgang</h2>
@@ -607,30 +785,77 @@ const [transcriptions, setTranscriptions] = useState([]);
             )}
           </div>
 
-          {/* Participants Status */}
+          {/* Meeting Participants */}
           <div className="conversation-card">
-            <h2 className="text-lg font-medium mb-4">Deelnemers</h2>
+            <h2 className="text-lg font-medium mb-4">Deelnemers Status</h2>
             
             {meeting?.participants?.length > 0 ? (
               <div className="space-y-2">
-                {meeting.participants.map((participant, index) => (
-                  <div key={participant.id || index} className="flex items-center justify-between p-2 border rounded">
-                    <div>
-                      <div className="font-medium text-sm">{participant.name}</div>
-                      <div className="text-xs text-gray-500">{participant.role}</div>
-                    </div>
-                    <div className="w-3 h-3 bg-green-500 rounded-full" title="Aanwezig"></div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm">Geen deelnemers</p>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+                {meeting.participants.map((participant, index) => {
+                  const speaker = availableSpeakers.find(s => s.name === participant.name);
+const speakingTime = speakerStats[speaker?.id]?.totalTime || 0;
+const isCurrentSpeaker = currentSpeaker?.name === participant.name;
+
+
+
+                 
+                 return (
+                   <div key={participant.id || index} className="flex items-center justify-between p-2 border rounded">
+                     <div className="flex items-center space-x-2">
+                       <div 
+                         className={`w-3 h-3 rounded-full ${isCurrentSpeaker ? 'animate-pulse' : ''}`}
+                         style={{ backgroundColor: speaker?.color || '#10B981' }}
+                         title={isCurrentSpeaker ? 'Spreekt nu' : 'Aanwezig'}
+                       ></div>
+                       <div>
+                         <div className="font-medium text-sm">{participant.name}</div>
+                         <div className="text-xs text-gray-500">{participant.role}</div>
+                       </div>
+                     </div>
+                     <div className="text-xs text-gray-500">
+                       {formatSpeakingTime(speakingTime)}
+                     </div>
+                   </div>
+                 );
+               })}
+             </div>
+           ) : (
+             <p className="text-gray-500 text-sm">Geen deelnemers</p>
+           )}
+
+           {/* Speaking Time Summary */}
+           {Object.values(speakerStats).some(stat => stat.totalTime > 0) && (
+             <div className="mt-4 pt-3 border-t">
+               <h4 className="font-medium text-sm mb-2">Spreektijd Verdeling:</h4>
+               <div className="space-y-1">
+                 {availableSpeakers
+                   .filter(speaker => speakerStats[speaker.id]?.totalTime > 0)
+                   .sort((a, b) => (speakerStats[b.id]?.totalTime || 0) - (speakerStats[a.id]?.totalTime || 0))
+                   .map((speaker) => {
+                     const totalTime = Object.values(speakerStats).reduce((sum, stat) => sum + (stat.totalTime || 0), 0);
+                     const speakerTime = speakerStats[speaker.id]?.totalTime || 0;
+                     const percentage = totalTime > 0 ? (speakerTime / totalTime) * 100 : 0;
+                     
+                     return (
+                       <div key={speaker.id} className="flex items-center space-x-2">
+                         <div 
+                           className="w-2 h-2 rounded-full"
+                           style={{ backgroundColor: speaker.color }}
+                         ></div>
+                         <span className="text-xs flex-1">{speaker.displayName}</span>
+                         <span className="text-xs text-gray-500">{Math.round(percentage)}%</span>
+                       </div>
+                     );
+                   })}
+               </div>
+             </div>
+           )}
+         </div>
+       </div>
+     </div>
+   </div>
+ );
 };
 
 export default MeetingRoom;
+
