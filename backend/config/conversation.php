@@ -66,7 +66,7 @@ return [
         'timeout' => env('N8N_TIMEOUT', 10),
         'enabled' => env('N8N_ENABLED', false),
         'retry_attempts' => env('N8N_RETRY_ATTEMPTS', 3),
-        'retry_delay' => env('N8N_RETRY_DELAY', 5), // seconds
+        'retry_delay' => env('N8N_RETRY_DELAY', 5),
         'include_audio' => env('N8N_INCLUDE_AUDIO', false),
         'include_participants' => env('N8N_INCLUDE_PARTICIPANTS', true),
         'include_agenda' => env('N8N_INCLUDE_AGENDA', true),
@@ -74,12 +74,12 @@ return [
 
     // Audio Processing
     'audio' => [
-        'max_file_size' => env('AUDIO_MAX_FILE_SIZE', 50), // MB
+        'max_file_size' => env('AUDIO_MAX_FILE_SIZE', 50),
         'allowed_formats' => ['wav', 'mp3', 'webm', 'm4a', 'ogg', 'flac'],
-        'chunk_duration' => env('AUDIO_CHUNK_DURATION', 30), // seconds
+        'chunk_duration' => env('AUDIO_CHUNK_DURATION', 30),
         'quality' => env('AUDIO_QUALITY', 'high'),
         'sample_rate' => env('AUDIO_SAMPLE_RATE', 44100),
-        'channels' => env('AUDIO_CHANNELS', 1), // mono
+        'channels' => env('AUDIO_CHANNELS', 1),
         'compression' => env('AUDIO_COMPRESSION', true),
         'noise_reduction' => env('AUDIO_NOISE_REDUCTION', true),
         'echo_cancellation' => env('AUDIO_ECHO_CANCELLATION', true),
@@ -90,13 +90,13 @@ return [
 
     // Meeting Settings
     'meeting' => [
-        'max_duration' => env('MEETING_MAX_DURATION', 240), // minutes
+        'max_duration' => env('MEETING_MAX_DURATION', 240),
         'max_participants' => env('MEETING_MAX_PARTICIPANTS', 20),
-        'auto_save_interval' => env('MEETING_AUTO_SAVE_INTERVAL', 60), // seconds
+        'auto_save_interval' => env('MEETING_AUTO_SAVE_INTERVAL', 60),
         'default_privacy_level' => env('MEETING_DEFAULT_PRIVACY_LEVEL', 'standard'),
         'auto_transcription_default' => env('MEETING_AUTO_TRANSCRIPTION_DEFAULT', true),
-        'agenda_reminder_interval' => env('MEETING_AGENDA_REMINDER_INTERVAL', 900), // 15 minutes
-        'inactivity_timeout' => env('MEETING_INACTIVITY_TIMEOUT', 1800), // 30 minutes
+        'agenda_reminder_interval' => env('MEETING_AGENDA_REMINDER_INTERVAL', 900),
+        'inactivity_timeout' => env('MEETING_INACTIVITY_TIMEOUT', 1800),
         'auto_end_on_inactivity' => env('MEETING_AUTO_END_INACTIVITY', false),
         'recording_quality' => env('MEETING_RECORDING_QUALITY', 'high'),
         'speaker_identification' => env('MEETING_SPEAKER_IDENTIFICATION', true),
@@ -105,11 +105,11 @@ return [
 
     // Transcription Settings
     'transcription' => [
-        'provider' => env('TRANSCRIPTION_PROVIDER', 'azure_speech'), // azure_speech, azure_whisper, web_speech
+        'provider' => env('TRANSCRIPTION_PROVIDER', 'azure_speech'),
         'fallback_provider' => env('TRANSCRIPTION_FALLBACK_PROVIDER', 'web_speech'),
         'min_confidence' => env('TRANSCRIPTION_MIN_CONFIDENCE', 0.7),
         'max_retries' => env('TRANSCRIPTION_MAX_RETRIES', 2),
-        'chunk_overlap' => env('TRANSCRIPTION_CHUNK_OVERLAP', 2), // seconds
+        'chunk_overlap' => env('TRANSCRIPTION_CHUNK_OVERLAP', 2),
         'punctuation' => env('TRANSCRIPTION_PUNCTUATION', true),
         'capitalization' => env('TRANSCRIPTION_CAPITALIZATION', true),
         'profanity_filter' => env('TRANSCRIPTION_PROFANITY_FILTER', true),
@@ -129,7 +129,7 @@ return [
         'include_participant_info' => env('EXPORT_INCLUDE_PARTICIPANT_INFO', true),
         'apply_privacy_filters' => env('EXPORT_APPLY_PRIVACY_FILTERS', true),
         'watermark' => env('EXPORT_WATERMARK', true),
-        'max_export_size' => env('EXPORT_MAX_SIZE', 100), // MB
+        'max_export_size' => env('EXPORT_MAX_SIZE', 100),
         'compression' => env('EXPORT_COMPRESSION', true),
     ],
 
@@ -148,11 +148,11 @@ return [
     'security' => [
         'encryption_enabled' => env('SECURITY_ENCRYPTION_ENABLED', true),
         'encryption_algorithm' => env('SECURITY_ENCRYPTION_ALGORITHM', 'AES-256-CBC'),
-        'api_rate_limit' => env('SECURITY_API_RATE_LIMIT', 60), // per minute
-        'audio_rate_limit' => env('SECURITY_AUDIO_RATE_LIMIT', 10), // per minute
-        'speech_rate_limit' => env('SECURITY_SPEECH_RATE_LIMIT', 20), // per minute
+        'api_rate_limit' => env('SECURITY_API_RATE_LIMIT', 60),
+        'audio_rate_limit' => env('SECURITY_AUDIO_RATE_LIMIT', 10),
+        'speech_rate_limit' => env('SECURITY_SPEECH_RATE_LIMIT', 20),
         'max_concurrent_sessions' => env('SECURITY_MAX_CONCURRENT_SESSIONS', 5),
-        'session_timeout' => env('SECURITY_SESSION_TIMEOUT', 3600), // seconds
+        'session_timeout' => env('SECURITY_SESSION_TIMEOUT', 3600),
         'audit_logging' => env('SECURITY_AUDIT_LOGGING', true),
         'ip_whitelist' => env('SECURITY_IP_WHITELIST', null),
         'require_2fa' => env('SECURITY_REQUIRE_2FA', false),
@@ -161,13 +161,13 @@ return [
     // Performance Settings
     'performance' => [
         'cache_enabled' => env('PERFORMANCE_CACHE_ENABLED', true),
-        'cache_ttl' => env('PERFORMANCE_CACHE_TTL', 3600), // seconds
+        'cache_ttl' => env('PERFORMANCE_CACHE_TTL', 3600),
         'queue_enabled' => env('PERFORMANCE_QUEUE_ENABLED', true),
         'async_processing' => env('PERFORMANCE_ASYNC_PROCESSING', true),
         'batch_processing' => env('PERFORMANCE_BATCH_PROCESSING', true),
         'batch_size' => env('PERFORMANCE_BATCH_SIZE', 10),
         'memory_limit' => env('PERFORMANCE_MEMORY_LIMIT', '512M'),
-        'max_execution_time' => env('PERFORMANCE_MAX_EXECUTION_TIME', 300), // seconds
+        'max_execution_time' => env('PERFORMANCE_MAX_EXECUTION_TIME', 300),
         'database_connections' => env('PERFORMANCE_DB_CONNECTIONS', 10),
     ],
 
@@ -195,5 +195,23 @@ return [
         'timeout' => env('WEBHOOK_TIMEOUT', 10),
         'retry_attempts' => env('WEBHOOK_RETRY_ATTEMPTS', 3),
         'verify_ssl' => env('WEBHOOK_VERIFY_SSL', true),
+    ],
+
+    // Live Transcription Settings (ADD THESE NEW SECTIONS)
+    'live_transcription' => [
+        'enabled' => env('LIVE_TRANSCRIPTION_ENABLED', true),
+        'chunk_duration' => env('LIVE_TRANSCRIPTION_CHUNK_DURATION', 30),
+        'max_session_duration' => env('LIVE_TRANSCRIPTION_MAX_SESSION', 7200),
+        'auto_save_chunks' => env('LIVE_TRANSCRIPTION_AUTO_SAVE', true),
+        'combine_live_and_whisper' => env('LIVE_TRANSCRIPTION_COMBINE', true),
+        'cost_limit_per_session' => env('LIVE_TRANSCRIPTION_COST_LIMIT', 5.00),
+    ],
+
+    // Voice Recognition Settings
+    'voice_recognition' => [
+        'enabled' => env('VOICE_RECOGNITION_ENABLED', true),
+        'confidence_threshold' => env('VOICE_CONFIDENCE_THRESHOLD', 0.7),
+        'learning_enabled' => env('VOICE_LEARNING_ENABLED', true),
+        'fallback_to_manual' => env('VOICE_FALLBACK_MANUAL', true),
     ],
 ];

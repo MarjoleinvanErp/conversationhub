@@ -11,13 +11,21 @@ class AppServiceProvider extends ServiceProvider
      * Register any application services.
      */
     public function register(): void
-    {
-        // Register ConversationHub services
-        $this->app->singleton(\App\Services\AudioProcessingService::class);
-        $this->app->singleton(\App\Services\AzureWhisperService::class);
-        $this->app->singleton(\App\Services\PrivacyFilterService::class);
-        $this->app->singleton(\App\Services\N8nIntegrationService::class);
-    }
+
+{
+    // Existing services
+    $this->app->singleton(\App\Services\AudioProcessingService::class);
+    $this->app->singleton(\App\Services\AzureWhisperService::class);
+    $this->app->singleton(\App\Services\PrivacyFilterService::class);
+    $this->app->singleton(\App\Services\N8nIntegrationService::class);
+    
+    // Enhanced services - ADD THESE
+    $this->app->singleton(\App\Services\VoiceFingerprintService::class);
+    $this->app->singleton(\App\Services\EnhancedLiveTranscriptionService::class);
+    $this->app->singleton(\App\Services\AudioChunkingService::class);
+}
+
+
 
     /**
      * Bootstrap any application services.

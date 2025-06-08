@@ -54,6 +54,14 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/speech/test', [\App\Http\Controllers\Api\SpeechController::class, 'test']); // Deze regel toevoegen
     });
 
+// Enhanced Live Transcription routes
+Route::middleware('throttle:speech')->group(function () {
+    Route::post('/live-transcription/enhanced/start', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'startEnhancedSession']);
+    Route::post('/live-transcription/setup-voice', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'setupVoiceProfile']);
+    Route::post('/live-transcription/process-live', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'processLive']);
+    Route::post('/live-transcription/verify-whisper', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'verifyWithWhisper']);
+});
+
 // Transcription routes
     Route::get('/meetings/{meeting}/transcriptions', [\App\Http\Controllers\Api\TranscriptionController::class, 'index']);
     Route::post('/transcriptions', [\App\Http\Controllers\Api\TranscriptionController::class, 'store']);
