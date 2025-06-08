@@ -7,6 +7,7 @@ use App\Services\EnhancedLiveTranscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;  // ← DEZE REGEL TOEVOEGEN
 
 class LiveTranscriptionController extends Controller
 {
@@ -49,68 +50,68 @@ class LiveTranscriptionController extends Controller
      * Setup voice profile
      */
     public function setupVoiceProfile(Request $request): JsonResponse
-{
-    try {
-        Log::info('Voice profile setup request received', [
-            'session_id' => $request->input('session_id'),
-            'speaker_id' => $request->input('speaker_id'),
-            'has_voice_sample' => $request->hasFile('voice_sample'),
-            'file_size' => $request->hasFile('voice_sample') ? $request->file('voice_sample')->getSize() : 0,
-        ]);
-
-        $validator = Validator::make($request->all(), [
-            'session_id' => 'required|string',
-            'speaker_id' => 'required|string',
-            'voice_sample' => 'required|file|mimes:webm,wav,mp3|max:2048',
-        ]);
-
-        if ($validator->fails()) {
-            Log::warning('Voice profile validation failed', [
-                'errors' => $validator->errors()->toArray(),
+    {
+        try {
+            Log::info('Voice profile setup request received', [
+                'session_id' => $request->input('session_id'),
+                'speaker_id' => $request->input('speaker_id'),
+                'has_voice_sample' => $request->hasFile('voice_sample'),
+                'file_size' => $request->hasFile('voice_sample') ? $request->file('voice_sample')->getSize() : 0,
             ]);
-            
+
+            $validator = Validator::make($request->all(), [
+                'session_id' => 'required|string',
+                'speaker_id' => 'required|string',
+                'voice_sample' => 'required|file|mimes:webm,wav,mp3|max:2048',
+            ]);
+
+            if ($validator->fails()) {
+                Log::warning('Voice profile validation failed', [
+                    'errors' => $validator->errors()->toArray(),
+                ]);
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $voiceSample = file_get_contents($request->file('voice_sample')->getPathname());
+
+            Log::info('Processing voice profile', [
+                'session_id' => $request->session_id,
+                'speaker_id' => $request->speaker_id,
+                'voice_sample_size' => strlen($voiceSample),
+            ]);
+
+            $result = $this->liveTranscriptionService->setupVoiceProfile(
+                $request->session_id,
+                $request->speaker_id,
+                $voiceSample
+            );
+
+            Log::info('Voice profile setup completed', [
+                'session_id' => $request->session_id,
+                'speaker_id' => $request->speaker_id,
+                'result' => $result,
+            ]);
+
+            return response()->json($result);
+        } catch (\Exception $e) {
+            Log::error('Voice profile setup exception', [
+                'session_id' => $request->input('session_id'),
+                'speaker_id' => $request->input('speaker_id'),
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
+                'error' => 'Voice profile setup failed: ' . $e->getMessage()
+            ], 500);
         }
-
-        $voiceSample = file_get_contents($request->file('voice_sample')->getPathname());
-
-        Log::info('Processing voice profile', [
-            'session_id' => $request->session_id,
-            'speaker_id' => $request->speaker_id,
-            'voice_sample_size' => strlen($voiceSample),
-        ]);
-
-        $result = $this->liveTranscriptionService->setupVoiceProfile(
-            $request->session_id,
-            $request->speaker_id,
-            $voiceSample
-        );
-
-        Log::info('Voice profile setup completed', [
-            'session_id' => $request->session_id,
-            'speaker_id' => $request->speaker_id,
-            'result' => $result,
-        ]);
-
-        return response()->json($result);
-    } catch (\Exception $e) {
-        Log::error('Voice profile setup exception', [
-            'session_id' => $request->input('session_id'),
-            'speaker_id' => $request->input('speaker_id'),
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'error' => 'Voice profile setup failed: ' . $e->getMessage()
-        ], 500);
     }
-}
 
     /**
      * Process live transcription

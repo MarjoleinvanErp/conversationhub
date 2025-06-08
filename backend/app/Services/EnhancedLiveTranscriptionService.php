@@ -6,12 +6,13 @@ use App\Services\VoiceFingerprintService;
 use App\Services\AzureWhisperService;
 use App\Models\Transcription;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redis;
 
 class EnhancedLiveTranscriptionService
 {
     private $voiceService;
     private $whisperService;
-    private $activeSessions = [];
+    private $sessionPrefix = 'enhanced_session:';
 
     public function __construct(
         VoiceFingerprintService $voiceService,
@@ -22,15 +23,61 @@ class EnhancedLiveTranscriptionService
     }
 
     /**
+     * Get session from Redis
+     */
+    private function getSession(string $sessionId): ?array
+    {
+        try {
+            $sessionData = Redis::get($this->sessionPrefix . $sessionId);
+            if ($sessionData) {
+                return json_decode($sessionData, true);
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to get session from Redis', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage()
+            ]);
+        }
+        return null;
+    }
+
+    /**
+     * Save session to Redis
+     */
+    private function saveSession(string $sessionId, array $sessionData): void
+    {
+        try {
+            // Session expires in 24 hours
+            Redis::setex(
+                $this->sessionPrefix . $sessionId,
+                86400, // 24 hours
+                json_encode($sessionData)
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to save session to Redis', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
      * Start enhanced session with voice setup
      */
     public function startEnhancedSession(int $meetingId, array $participants = []): array
     {
         $sessionId = uniqid('enhanced_', true);
         
-        $this->activeSessions[$sessionId] = [
+        Log::info('Creating new enhanced session', [
+            'session_id' => $sessionId,
             'meeting_id' => $meetingId,
-            'started_at' => now(),
+            'participants_count' => count($participants),
+            'participants' => $participants
+        ]);
+        
+        $sessionData = [
+            'meeting_id' => $meetingId,
+            'started_at' => now()->toISOString(),
             'participants' => $participants,
             'transcriptions' => [],
             'voice_setup_complete' => false,
@@ -38,7 +85,14 @@ class EnhancedLiveTranscriptionService
             'chunk_counter' => 0,
         ];
 
+        // Save to Redis
+        $this->saveSession($sessionId, $sessionData);
+
         $this->voiceService->loadVoiceProfiles($meetingId);
+
+        Log::info('Enhanced session created and saved to Redis', [
+            'session_id' => $sessionId,
+        ]);
 
         return [
             'success' => true,
@@ -53,30 +107,56 @@ class EnhancedLiveTranscriptionService
      */
     public function setupVoiceProfile(string $sessionId, string $speakerId, $voiceSample): array
     {
-        if (!isset($this->activeSessions[$sessionId])) {
-            return ['success' => false, 'error' => 'Invalid session'];
+        Log::info('Setting up voice profile', [
+            'session_id' => $sessionId,
+            'speaker_id' => $speakerId,
+        ]);
+
+        $sessionData = $this->getSession($sessionId);
+        if (!$sessionData) {
+            Log::error('Session not found in Redis', [
+                'session_id' => $sessionId,
+                'speaker_id' => $speakerId,
+            ]);
+            return ['success' => false, 'error' => 'Invalid session - session not found'];
         }
+
+        Log::info('Session found, creating voice profile', [
+            'session_id' => $sessionId,
+            'speaker_id' => $speakerId,
+            'session_data' => $sessionData,
+        ]);
 
         $result = $this->voiceService->createVoiceProfile($speakerId, $voiceSample);
         
         if ($result['success']) {
-            $session = &$this->activeSessions[$sessionId];
-            foreach ($session['participants'] as &$participant) {
+            // Update participants in session
+            foreach ($sessionData['participants'] as &$participant) {
                 if ($participant['id'] === $speakerId) {
                     $participant['voice_setup'] = true;
                     break;
                 }
             }
 
+            // Check if all participants have voice setup
             $allSetup = true;
-            foreach ($session['participants'] as $participant) {
+            foreach ($sessionData['participants'] as $participant) {
                 if (!($participant['voice_setup'] ?? false)) {
                     $allSetup = false;
                     break;
                 }
             }
             
-            $session['voice_setup_complete'] = $allSetup;
+            $sessionData['voice_setup_complete'] = $allSetup;
+            
+            // Save updated session
+            $this->saveSession($sessionId, $sessionData);
+
+            Log::info('Voice profile setup completed and session updated', [
+                'session_id' => $sessionId,
+                'speaker_id' => $speakerId,
+                'all_setup' => $allSetup,
+            ]);
         }
 
         return $result;
@@ -91,20 +171,20 @@ class EnhancedLiveTranscriptionService
         $audioSample = null,
         float $confidence = 0.8
     ): array {
-        if (!isset($this->activeSessions[$sessionId])) {
+        $sessionData = $this->getSession($sessionId);
+        if (!$sessionData) {
             return ['success' => false, 'error' => 'Invalid session'];
         }
 
-        $session = &$this->activeSessions[$sessionId];
-        $session['chunk_counter']++;
+        $sessionData['chunk_counter']++;
 
         $speakerInfo = ['speaker_id' => 'unknown_speaker', 'confidence' => 0.0];
         
-        if ($audioSample && $session['voice_setup_complete']) {
+        if ($audioSample && $sessionData['voice_setup_complete']) {
             $speakerInfo = $this->voiceService->identifySpeaker($audioSample);
         }
 
-        $speaker = $this->findSpeakerDetails($session['participants'], $speakerInfo['speaker_id']);
+        $speaker = $this->findSpeakerDetails($sessionData['participants'], $speakerInfo['speaker_id']);
 
         $transcriptionEntry = [
             'id' => uniqid('live_', true),
@@ -115,13 +195,14 @@ class EnhancedLiveTranscriptionService
             'speaker_color' => $speaker['color'] ?? '#6B7280',
             'speaker_confidence' => $speakerInfo['confidence'] ?? 0.0,
             'text_confidence' => $confidence,
-            'timestamp' => now(),
-            'chunk_number' => $session['chunk_counter'],
+            'timestamp' => now()->toISOString(),
+            'chunk_number' => $sessionData['chunk_counter'],
             'processing_status' => 'live',
             'whisper_processed' => false,
         ];
 
-        $session['transcriptions'][] = $transcriptionEntry;
+        $sessionData['transcriptions'][] = $transcriptionEntry;
+        $this->saveSession($sessionId, $sessionData);
 
         return [
             'success' => true,
@@ -139,14 +220,13 @@ class EnhancedLiveTranscriptionService
         string $liveTranscriptionId,
         $audioChunk
     ): array {
-        if (!isset($this->activeSessions[$sessionId])) {
+        $sessionData = $this->getSession($sessionId);
+        if (!$sessionData) {
             return ['success' => false, 'error' => 'Invalid session'];
         }
-
-        $session = &$this->activeSessions[$sessionId];
         
         $transcriptionIndex = null;
-        foreach ($session['transcriptions'] as $index => $transcription) {
+        foreach ($sessionData['transcriptions'] as $index => $transcription) {
             if ($transcription['id'] === $liveTranscriptionId) {
                 $transcriptionIndex = $index;
                 break;
@@ -157,7 +237,8 @@ class EnhancedLiveTranscriptionService
             return ['success' => false, 'error' => 'Live transcription not found'];
         }
 
-        $session['transcriptions'][$transcriptionIndex]['processing_status'] = 'processing';
+        $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'processing';
+        $this->saveSession($sessionId, $sessionData);
 
         try {
             $tempFile = tempnam(storage_path('app/temp'), 'whisper_chunk_');
@@ -175,10 +256,10 @@ class EnhancedLiveTranscriptionService
 
             if ($whisperResult['success']) {
                 $speakerInfo = $this->voiceService->identifySpeaker($audioChunk);
-                $speaker = $this->findSpeakerDetails($session['participants'], $speakerInfo['speaker_id']);
+                $speaker = $this->findSpeakerDetails($sessionData['participants'], $speakerInfo['speaker_id']);
 
-                $session['transcriptions'][$transcriptionIndex] = array_merge(
-                    $session['transcriptions'][$transcriptionIndex],
+                $sessionData['transcriptions'][$transcriptionIndex] = array_merge(
+                    $sessionData['transcriptions'][$transcriptionIndex],
                     [
                         'type' => 'verified',
                         'text' => $whisperResult['text'],
@@ -191,30 +272,33 @@ class EnhancedLiveTranscriptionService
                         'whisper_processed' => true,
                         'whisper_language' => $whisperResult['language'] ?? 'nl',
                         'whisper_duration' => $whisperResult['duration'] ?? 0,
-                        'verified_at' => now(),
+                        'verified_at' => now()->toISOString(),
                     ]
                 );
 
-                $this->saveVerifiedTranscription($session['meeting_id'], $session['transcriptions'][$transcriptionIndex]);
+                $this->saveVerifiedTranscription($sessionData['meeting_id'], $sessionData['transcriptions'][$transcriptionIndex]);
             } else {
-                $session['transcriptions'][$transcriptionIndex]['processing_status'] = 'error';
-                $session['transcriptions'][$transcriptionIndex]['whisper_error'] = $whisperResult['error'];
+                $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'error';
+                $sessionData['transcriptions'][$transcriptionIndex]['whisper_error'] = $whisperResult['error'];
             }
+
+            $this->saveSession($sessionId, $sessionData);
 
             return [
                 'success' => true,
-                'transcription' => $session['transcriptions'][$transcriptionIndex],
+                'transcription' => $sessionData['transcriptions'][$transcriptionIndex],
                 'whisper_result' => $whisperResult,
             ];
 
         } catch (\Exception $e) {
-            $session['transcriptions'][$transcriptionIndex]['processing_status'] = 'error';
-            $session['transcriptions'][$transcriptionIndex]['whisper_error'] = $e->getMessage();
+            $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'error';
+            $sessionData['transcriptions'][$transcriptionIndex]['whisper_error'] = $e->getMessage();
+            $this->saveSession($sessionId, $sessionData);
 
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
-                'transcription' => $session['transcriptions'][$transcriptionIndex],
+                'transcription' => $sessionData['transcriptions'][$transcriptionIndex],
             ];
         } finally {
             if (isset($tempFile) && file_exists($tempFile)) {
@@ -267,7 +351,10 @@ class EnhancedLiveTranscriptionService
      */
     private function getSessionStats(string $sessionId): array
     {
-        $session = $this->activeSessions[$sessionId];
+        $sessionData = $this->getSession($sessionId);
+        if (!$sessionData) {
+            return [];
+        }
         
         $statusCounts = [
             'live' => 0,
@@ -276,17 +363,17 @@ class EnhancedLiveTranscriptionService
             'error' => 0,
         ];
 
-        foreach ($session['transcriptions'] as $transcription) {
+        foreach ($sessionData['transcriptions'] as $transcription) {
             $status = $transcription['processing_status'];
             $statusCounts[$status]++;
         }
 
         return [
-            'total_transcriptions' => count($session['transcriptions']),
+            'total_transcriptions' => count($sessionData['transcriptions']),
             'status_breakdown' => $statusCounts,
-            'verification_rate' => $statusCounts['verified'] / max(1, count($session['transcriptions'])),
-            'voice_setup_complete' => $session['voice_setup_complete'],
-            'duration_minutes' => now()->diffInMinutes($session['started_at']),
+            'verification_rate' => $statusCounts['verified'] / max(1, count($sessionData['transcriptions'])),
+            'voice_setup_complete' => $sessionData['voice_setup_complete'],
+            'duration_minutes' => now()->diffInMinutes($sessionData['started_at']),
         ];
     }
 }

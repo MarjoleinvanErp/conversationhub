@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import meetingService from '../../services/api/meetingService';
-import transcriptionService from '../../services/api/transcriptionService';
-import EnhancedLiveTranscription from '../../components/recording/EnhancedLiveTranscription';
-import AudioUploadRecorder from '../../components/recording/AudioRecorder/AudioUploadRecorder';
+import meetingService from '../../services/api/meetingService.js';
+import transcriptionService from '../../services/api/transcriptionService.js';
+import EnhancedLiveTranscription from '../../components/recording/EnhancedLiveTranscription.jsx';
+import AudioUploadRecorder from '../../components/recording/AudioRecorder/AudioUploadRecorder.jsx';
+
 
 const MeetingRoom = () => {
   const { id } = useParams();

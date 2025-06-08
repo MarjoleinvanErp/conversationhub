@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import meetingService from '../../services/api/meetingService';
+import meetingService from '../../services/api/meetingService.js';
 
 const CreateMeeting = () => {
   const navigate = useNavigate();

@@ -3,14 +3,14 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import './App.css';
 
 // Import contexts
-import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
 
 // Import components
-import Layout from './components/common/Layout/Layout';
-import Dashboard from './pages/dashboard/Dashboard';
-import Login from './pages/auth/Login';
-import CreateMeeting from './pages/meeting/CreateMeeting';
-import MeetingRoom from './pages/meeting/MeetingRoom';  // ← NIEUWE IMPORT
+import Layout from './components/common/Layout/Layout.jsx';
+import Dashboard from './pages/dashboard/Dashboard.jsx';
+import Login from './pages/auth/Login.jsx';
+import CreateMeeting from './pages/meeting/CreateMeeting.jsx';
+import MeetingRoom from './pages/meeting/MeetingRoom.jsx';
 
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
@@ -48,7 +48,7 @@ function App() {
               <Route index element={<Navigate to="/dashboard" />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="meetings/create" element={<CreateMeeting />} />
-              <Route path="meetings/:id/room" element={<MeetingRoom />} />  {/* ← NIEUWE ROUTE */}
+              <Route path="meetings/:id/room" element={<MeetingRoom />} />
             </Route>
           </Routes>
         </div>
