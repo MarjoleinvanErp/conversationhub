@@ -153,7 +153,7 @@ class AzureWhisperService
         // Check file type
         $allowedMimeTypes = [
             'audio/wav', 'audio/wave', 'audio/x-wav',
-            'audio/mpeg', 'audio/mp3',
+            'audio/mpeg', 'audio/mp3', 
             'audio/webm',
             'audio/mp4', 'audio/m4a',
             'audio/ogg',

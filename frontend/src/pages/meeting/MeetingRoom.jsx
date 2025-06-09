@@ -5,6 +5,7 @@ import transcriptionService from '../../services/api/transcriptionService.js';
 import EnhancedLiveTranscription from '../../components/recording/EnhancedLiveTranscription.jsx';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
 import { getSpeakerColor, formatSpeakingTime, formatTimestamp } from './utils/meetingUtils.js';
+import BasicAudioUploader from '../../components/recording/AudioRecorder/BasicAudioUploader.jsx';
 
 const MeetingRoom = () => {
   const { id } = useParams();
@@ -242,15 +243,12 @@ const MeetingRoom = () => {
         {/* Main Content - Enhanced Transcription */}
         <div className="lg:col-span-3 space-y-4">
           {/* Live Transcription Component */}
-          <div className="modern-card">
-            <EnhancedLiveTranscription
-              meetingId={id}
-              participants={meeting?.participants || []}
-              onTranscriptionUpdate={handleTranscriptionUpdate}
-              onSessionStatsUpdate={handleSessionStatsUpdate}
-            />
-          </div>
-
+<div className="modern-card">
+  <BasicAudioUploader
+    meetingId={id}
+    onTranscriptionReceived={handleTranscriptionUpdate}
+  />
+</div>
           {/* Session Status Bar */}
           {sessionStats && (
             <div className="modern-card p-3">
