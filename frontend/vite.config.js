@@ -9,5 +9,9 @@ export default defineConfig({
     watch: {
       usePolling: true
     }
+  },
+  define: {
+    // Fallback voor oude process.env references (niet aanbevolen maar werkt als backup)
+    'process.env': {}
   }
 })

@@ -1,6 +1,7 @@
 import authService from './authService';
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// VITE gebruikt import.meta.env in plaats van process.env
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 class MeetingService {
   async getAllMeetings() {

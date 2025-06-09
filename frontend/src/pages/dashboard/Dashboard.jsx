@@ -25,221 +25,253 @@ const Dashboard = () => {
   };
 
   const getStatusBadge = (status) => {
-    const badges = {
-      scheduled: 'bg-blue-100 text-blue-800',
-      active: 'bg-green-100 text-green-800',
-      completed: 'bg-gray-100 text-gray-800',
-      cancelled: 'bg-red-100 text-red-800',
-    };
-    
-    const labels = {
-      scheduled: 'Gepland',
-      active: 'Actief',
-      completed: 'Voltooid',
-      cancelled: 'Geannuleerd',
+    const statusConfig = {
+      scheduled: { class: 'status-scheduled', label: 'Gepland', icon: '📅' },
+      active: { class: 'status-active', label: 'Actief', icon: '🔴' },
+      completed: { class: 'status-completed', label: 'Voltooid', icon: '✅' },
+      cancelled: { class: 'status-cancelled', label: 'Geannuleerd', icon: '❌' },
     };
 
+    const config = statusConfig[status] || statusConfig.scheduled;
+    
     return (
-      <span className={`px-2 py-1 rounded-full text-xs ${badges[status]}`}>
-        {labels[status]}
+      <span className={`status-badge ${config.class}`}>
+        <span>{config.icon}</span>
+        <span>{config.label}</span>
       </span>
     );
   };
 
   const getTypeLabel = (type) => {
-    const labels = {
-      general: 'Algemeen',
-      participation: 'Participatie',
-      care: 'Zorg',
-      education: 'Onderwijs',
+    const types = {
+      general: { label: 'Algemeen', icon: '💼' },
+      participation: { label: 'Participatie', icon: '🤝' },
+      care: { label: 'Zorg', icon: '❤️' },
+      education: { label: 'Onderwijs', icon: '🎓' },
     };
-    return labels[type] || type;
+    
+    const config = types[type] || types.general;
+    return (
+      <span className="flex items-center space-x-1 text-sm text-gray-600">
+        <span>{config.icon}</span>
+        <span>{config.label}</span>
+      </span>
+    );
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-2 text-conversation-muted">Laden...</p>
+          <div className="w-12 h-12 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-gray-600 font-medium">Laden...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="md:flex md:items-center md:justify-between">
-        <div className="flex-1 min-w-0">
-          <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:text-3xl sm:truncate">
-            Dashboard
+    <div className="space-y-8">
+      {/* Hero Section */}
+      <div className="text-center py-8">
+        <h1 className="text-4xl md:text-5xl font-extrabold gradient-text mb-4">
+          Welkom bij ConversationHub
+        </h1>
+        <p className="text-xl text-gray-600 mb-8">
+          Jouw intelligente gespreksondersteuning platform
+        </p>
+        <button 
+          onClick={() => navigate('/meetings/create')}
+          className="btn-primary text-lg px-8 py-4"
+        >
+          <span className="mr-2">🚀</span>
+          Nieuw Gesprek Starten
+        </button>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {[
+          { 
+            title: 'Totaal Gesprekken', 
+            value: meetings.length, 
+            icon: '💬', 
+            bgColor: 'bg-blue-50',
+            textColor: 'text-blue-600'
+          },
+          { 
+            title: 'Actieve Gesprekken', 
+            value: meetings.filter(m => m.status === 'active').length, 
+            icon: '🔴', 
+            bgColor: 'bg-green-50',
+            textColor: 'text-green-600'
+          },
+          { 
+            title: 'Privacy Filters', 
+            value: 'Actief', 
+            icon: '🛡️', 
+            bgColor: 'bg-gray-50',
+            textColor: 'text-gray-600'
+          },
+          { 
+            title: 'Voltooid', 
+            value: meetings.filter(m => m.status === 'completed').length, 
+            icon: '✅', 
+            bgColor: 'bg-green-50',
+            textColor: 'text-green-600'
+          },
+        ].map((stat, index) => (
+          <div key={index} className="modern-card p-6 hover-lift">
+            <div className={`${stat.bgColor} rounded-xl p-4`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-gray-600 mb-1">{stat.title}</p>
+                  <p className={`text-2xl font-bold ${stat.textColor}`}>
+                    {stat.value}
+                  </p>
+                </div>
+                <div className="text-3xl">{stat.icon}</div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Meetings Section */}
+      <div className="modern-card p-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-800 flex items-center space-x-3">
+            <span>📋</span>
+            <span>Recente Gesprekken</span>
           </h2>
-          <p className="mt-1 text-sm text-gray-500">
-            Welkom bij ConversationHub - Jouw intelligente gespreksondersteuning
-          </p>
-        </div>
-        <div className="mt-4 flex md:mt-0 md:ml-4">
-          <button 
-            onClick={() => navigate('/meetings/create')}
-            className="conversation-button"
-          >
-            Nieuw Gesprek
-          </button>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="conversation-card">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-primary-500 rounded-md flex items-center justify-center">
-                <span className="text-white text-sm font-medium">G</span>
-              </div>
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  Totaal Gesprekken
-                </dt>
-                <dd className="text-lg font-medium text-gray-900">
-                  {meetings.length}
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="conversation-card">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-green-500 rounded-md flex items-center justify-center">
-                <span className="text-white text-sm font-medium">A</span>
-              </div>
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  Actieve Gesprekken
-                </dt>
-                <dd className="text-lg font-medium text-gray-900">
-                  {meetings.filter(m => m.status === 'active').length}
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="conversation-card">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-yellow-500 rounded-md flex items-center justify-center">
-                <span className="text-white text-sm font-medium">P</span>
-              </div>
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  Privacy Filters
-                </dt>
-                <dd className="text-lg font-medium text-gray-900">
-                  Active
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-
-        <div className="conversation-card">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-purple-500 rounded-md flex items-center justify-center">
-                <span className="text-white text-sm font-medium">V</span>
-              </div>
-            </div>
-            <div className="ml-5 w-0 flex-1">
-              <dl>
-                <dt className="text-sm font-medium text-gray-500 truncate">
-                  Voltooid
-                </dt>
-                <dd className="text-lg font-medium text-gray-900">
-                  {meetings.filter(m => m.status === 'completed').length}
-                </dd>
-              </dl>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Meetings List */}
-      <div className="conversation-card">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium text-gray-900">
-            Recente Gesprekken
-          </h3>
           <button 
             onClick={() => navigate('/meetings')}
-            className="text-sm text-primary-600 hover:text-primary-700"
+            className="btn-neutral hover-scale"
           >
             Alle gesprekken →
           </button>
         </div>
 
         {meetings.length === 0 ? (
-          <div className="text-center py-8">
-            <p className="text-gray-500 mb-4">Nog geen gesprekken aangemaakt</p>
+          <div className="text-center py-12">
+            <div className="text-6xl mb-4">🌟</div>
+            <h3 className="text-xl font-semibold text-gray-700 mb-2">
+              Nog geen gesprekken aangemaakt
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Begin vandaag nog met je eerste intelligente gesprek!
+            </p>
             <button 
               onClick={() => navigate('/meetings/create')}
-              className="conversation-button"
+              className="btn-primary px-8 py-3"
             >
+              <span className="mr-2">➕</span>
               Eerste Gesprek Aanmaken
             </button>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {meetings.slice(0, 5).map((meeting) => (
-              <div key={meeting.id} className="flex items-center justify-between p-4 border rounded hover:bg-gray-50">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-3">
-                    <h4 className="font-medium text-gray-900">{meeting.title}</h4>
-                    {getStatusBadge(meeting.status)}
-                    <span className="text-xs text-gray-500">{getTypeLabel(meeting.type)}</span>
+              <div key={meeting.id} className="modern-card p-4 hover-lift border border-gray-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center space-x-4 mb-2">
+                      <h3 className="font-semibold text-gray-800 text-lg">{meeting.title}</h3>
+                      {getStatusBadge(meeting.status)}
+                      {getTypeLabel(meeting.type)}
+                    </div>
+                    <div className="flex items-center space-x-6 text-sm text-gray-600">
+                      <span className="flex items-center space-x-1">
+                        <span>👥</span>
+                        <span>{meeting.participants?.length || 0} deelnemers</span>
+                      </span>
+                      <span className="flex items-center space-x-1">
+                        <span>📝</span>
+                        <span>{meeting.agenda_items?.length || 0} agenda punten</span>
+                      </span>
+                      {meeting.scheduled_at && (
+                        <span className="flex items-center space-x-1">
+                          <span>🕐</span>
+                          <span>{new Date(meeting.scheduled_at).toLocaleString('nl-NL')}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="mt-1 text-sm text-gray-500">
-                    {meeting.participants?.length || 0} deelnemers • {meeting.agenda_items?.length || 0} agenda punten
-                    {meeting.scheduled_at && (
-                      <span> • {new Date(meeting.scheduled_at).toLocaleString('nl-NL')}</span>
+                  
+                  <div className="flex space-x-3">
+                    {meeting.status === 'scheduled' && (
+                      <button 
+                        onClick={() => navigate(`/meetings/${meeting.id}/room`)}
+                        className="btn-success px-4 py-2"
+                      >
+                        🚀 Start
+                      </button>
                     )}
+                    {meeting.status === 'active' && (
+                      <button 
+                        onClick={() => navigate(`/meetings/${meeting.id}/room`)}
+                        className="btn-primary px-4 py-2"
+                      >
+                        🎙️ Deelnemen
+                      </button>
+                    )}
+                    <button 
+                      onClick={() => navigate(`/meetings/${meeting.id}`)}
+                      className="btn-neutral px-4 py-2"
+                    >
+                      👁️ Bekijk
+                    </button>
                   </div>
                 </div>
-<div className="flex space-x-2">
-  {meeting.status === 'scheduled' && (
-    <button 
-      onClick={() => navigate(`/meetings/${meeting.id}/room`)}
-      className="text-sm text-green-600 hover:text-green-700"
-    >
-      Start
-    </button>
-  )}
-  {meeting.status === 'active' && (
-    <button 
-      onClick={() => navigate(`/meetings/${meeting.id}/room`)}
-      className="text-sm text-orange-600 hover:text-orange-700"
-    >
-      Deelnemen
-    </button>
-
-  )}
-  <button className="text-sm text-primary-600 hover:text-primary-700">
-    Bekijk
-  </button>
-</div>
-
-
-   </div>
+              </div>
             ))}
           </div>
         )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="modern-card p-6 text-center hover-lift">
+          <div className="text-4xl mb-4">🎤</div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Live Transcriptie</h3>
+          <p className="text-gray-600 text-sm mb-4">
+            Start direct een gesprek met real-time transcriptie
+          </p>
+          <button 
+            onClick={() => navigate('/meetings/create')}
+            className="btn-primary w-full"
+          >
+            Start Nu
+          </button>
+        </div>
+
+        <div className="modern-card p-6 text-center hover-lift">
+          <div className="text-4xl mb-4">📊</div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Analytics</h3>
+          <p className="text-gray-600 text-sm mb-4">
+            Bekijk statistieken van je gesprekken
+          </p>
+          <button 
+            onClick={() => navigate('/analytics')}
+            className="btn-neutral w-full"
+          >
+            Bekijk Stats
+          </button>
+        </div>
+
+        <div className="modern-card p-6 text-center hover-lift">
+          <div className="text-4xl mb-4">⚙️</div>
+          <h3 className="text-lg font-semibold text-gray-800 mb-2">Instellingen</h3>
+          <p className="text-gray-600 text-sm mb-4">
+            Configureer privacy en voorkeuren
+          </p>
+          <button 
+            onClick={() => navigate('/settings')}
+            className="btn-neutral w-full"
+          >
+            Configureren
+          </button>
+        </div>
       </div>
     </div>
   );

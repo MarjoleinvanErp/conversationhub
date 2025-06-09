@@ -22,7 +22,6 @@ const CreateMeeting = () => {
     { name: '', email: '', role: 'participant' }
   ]);
 
-  // Agenda als simpele string die we splitsen op enters
   const [agendaText, setAgendaText] = useState('');
 
   const handleInputChange = (e) => {
@@ -39,6 +38,15 @@ const CreateMeeting = () => {
     setFormData(prev => ({
       ...prev,
       scheduled_date: dateString
+    }));
+  };
+
+  const setNow = () => {
+    const now = new Date();
+    const timeString = now.toTimeString().slice(0, 5);
+    setFormData(prev => ({
+      ...prev,
+      scheduled_time: timeString
     }));
   };
 
@@ -63,10 +71,7 @@ const CreateMeeting = () => {
     setError('');
 
     try {
-      // Filter out empty participants
       const validParticipants = participants.filter(p => p.name.trim() !== '');
-
-      // Convert agenda text to agenda items
       const agendaItems = agendaText
         .split('\n')
         .map(line => line.trim())
@@ -78,7 +83,6 @@ const CreateMeeting = () => {
           order: index + 1
         }));
 
-      // Combine date and time for scheduled_at
       let scheduled_at = null;
       if (formData.scheduled_date && formData.scheduled_time) {
         scheduled_at = `${formData.scheduled_date}T${formData.scheduled_time}:00`;
@@ -89,7 +93,7 @@ const CreateMeeting = () => {
         description: formData.description,
         type: formData.type,
         scheduled_at: scheduled_at,
-        duration_minutes: 60, // Default duration
+        duration_minutes: 60,
         privacy_level: formData.privacy_level,
         auto_transcription: formData.auto_transcription,
         participants: validParticipants,
@@ -110,61 +114,78 @@ const CreateMeeting = () => {
     }
   };
 
+  const meetingTypes = [
+    { value: 'general', label: 'Algemeen', icon: '💼', desc: 'Standaard gesprek' },
+    { value: 'participation', label: 'Participatie', icon: '🤝', desc: 'Re-integratie en werkbegeleiding' },
+    { value: 'care', label: 'Zorg', icon: '❤️', desc: 'Zorgtraject en ondersteuning' },
+    { value: 'education', label: 'Onderwijs', icon: '🎓', desc: 'Studieloopbaan en begeleiding' },
+  ];
+
+  const privacyLevels = [
+    { value: 'minimal', label: 'Minimaal', icon: '🔒', desc: 'Alleen basistekst' },
+    { value: 'standard', label: 'Standaard', icon: '🛡️', desc: 'Gevoelige data gefilterd' },
+    { value: 'detailed', label: 'Gedetailleerd', icon: '📝', desc: 'Alles opgenomen' },
+  ];
+
   return (
-    <div className="max-w-4xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Nieuw Gesprek Aanmaken</h1>
+    <div className="space-y-8">
+      {/* Header */}
+      <div className="text-center py-6">
+        <h1 className="text-3xl font-bold gradient-text mb-2">Nieuw Gesprek Aanmaken</h1>
         <p className="text-gray-600">Stel een gesprek in met deelnemers en agenda</p>
       </div>
 
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded">
-          {error}
+        <div className="modern-card p-4 bg-red-50 border-red-200 text-red-600">
+          <div className="flex items-center space-x-2">
+            <span>❌</span>
+            <span>{error}</span>
+          </div>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Info */}
-        <div className="conversation-card">
-          <h2 className="text-lg font-medium mb-4">Gesprek Details</h2>
+        <div className="modern-card p-6">
+          <h2 className="text-xl font-semibold mb-6 flex items-center space-x-2">
+            <span>📋</span>
+            <span>Gesprek Details</span>
+          </h2>
           
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Titel *
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                📌 Titel van het Gesprek *
               </label>
               <input
                 type="text"
                 name="title"
                 value={formData.title}
                 onChange={handleInputChange}
-                className="conversation-input w-full"
-                placeholder="Naam van het gesprek"
+                className="modern-input"
+                placeholder="Bijvoorbeeld: Intake gesprek John Doe"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Type Gesprek
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                📝 Beschrijving
               </label>
-              <select
-                name="type"
-                value={formData.type}
+              <textarea
+                name="description"
+                value={formData.description}
                 onChange={handleInputChange}
-                className="conversation-input w-full"
-              >
-                <option value="general">Algemeen</option>
-                <option value="participation">Participatie</option>
-                <option value="care">Zorg</option>
-                <option value="education">Onderwijs</option>
-              </select>
+                className="modern-input"
+                rows="3"
+                placeholder="Korte beschrijving van het doel en context van het gesprek"
+              />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Geplande Datum
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  📅 Geplande Datum
                 </label>
                 <div className="flex space-x-2">
                   <input
@@ -172,12 +193,12 @@ const CreateMeeting = () => {
                     name="scheduled_date"
                     value={formData.scheduled_date}
                     onChange={handleInputChange}
-                    className="conversation-input flex-1"
+                    className="modern-input flex-1"
                   />
                   <button
                     type="button"
                     onClick={setToday}
-                    className="px-3 py-2 text-sm bg-gray-100 hover:bg-gray-200 rounded border"
+                    className="btn-neutral px-3 py-2 text-sm"
                   >
                     Vandaag
                   </button>
@@ -185,158 +206,240 @@ const CreateMeeting = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Geplande Tijd
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  🕐 Geplande Tijd
                 </label>
-                <input
-                  type="time"
-                  name="scheduled_time"
-                  value={formData.scheduled_time}
-                  onChange={handleInputChange}
-                  className="conversation-input w-full"
-                />
+                <div className="flex space-x-2">
+                  <input
+                    type="time"
+                    name="scheduled_time"
+                    value={formData.scheduled_time}
+                    onChange={handleInputChange}
+                    className="modern-input flex-1"
+                  />
+                  <button
+                    type="button"
+                    onClick={setNow}
+                    className="btn-neutral px-3 py-2 text-sm"
+                  >
+                    Nu
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Beschrijving Gesprek
-              </label>
-              <textarea
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                className="conversation-input w-full"
-                rows="3"
-                placeholder="Korte beschrijving van het gesprek"
-              />
             </div>
           </div>
         </div>
 
+        {/* Meeting Type Selection */}
+        <div className="modern-card p-6">
+          <h2 className="text-xl font-semibold mb-6 flex items-center space-x-2">
+            <span>🎯</span>
+            <span>Type Gesprek</span>
+          </h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {meetingTypes.map((type) => (
+              <label key={type.value} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="type"
+                  value={type.value}
+                  checked={formData.type === type.value}
+                  onChange={handleInputChange}
+                  className="sr-only"
+                />
+                <div className={`modern-card p-4 border-2 transition-all duration-300 ${
+                  formData.type === type.value 
+                    ? 'border-blue-500 bg-blue-50' 
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}>
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">{type.icon}</span>
+                    <div>
+                      <h3 className="font-semibold text-gray-800">{type.label}</h3>
+                      <p className="text-sm text-gray-600">{type.desc}</p>
+                    </div>
+                  </div>
+                </div>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {/* Participants */}
-        <div className="conversation-card">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-medium">Deelnemers</h2>
+        <div className="modern-card p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-semibold flex items-center space-x-2">
+              <span>👥</span>
+              <span>Deelnemers</span>
+            </h2>
             <button
               type="button"
               onClick={addParticipant}
-              className="conversation-button text-sm"
+              className="btn-secondary px-4 py-2"
             >
-              + Deelnemer Toevoegen
+              <span className="mr-1">➕</span>
+              Toevoegen
             </button>
           </div>
 
           <div className="space-y-3">
             {participants.map((participant, index) => (
-              <div key={index} className="grid grid-cols-1 md:grid-cols-4 gap-3 p-3 border rounded">
-                <input
-                  type="text"
-                  placeholder="Naam"
-                  value={participant.name}
-                  onChange={(e) => updateParticipant(index, 'name', e.target.value)}
-                  className="conversation-input"
-                />
-                <input
-                  type="email"
-                  placeholder="Email"
-                  value={participant.email}
-                  onChange={(e) => updateParticipant(index, 'email', e.target.value)}
-                  className="conversation-input"
-                />
-                <select
-                  value={participant.role}
-                  onChange={(e) => updateParticipant(index, 'role', e.target.value)}
-                  className="conversation-input"
-                >
-                  <option value="participant">Deelnemer</option>
-                  <option value="facilitator">Begeleider</option>
-                  <option value="observer">Observant</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => removeParticipant(index)}
-                  className="text-red-600 hover:text-red-800 text-sm"
-                >
-                  Verwijderen
-                </button>
+              <div key={index} className="modern-card p-4 border border-gray-200">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Naam *</label>
+                    <input
+                      type="text"
+                      placeholder="Volledige naam"
+                      value={participant.name}
+                      onChange={(e) => updateParticipant(index, 'name', e.target.value)}
+                      className="modern-input text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
+                    <input
+                      type="email"
+                      placeholder="email@voorbeeld.nl"
+                      value={participant.email}
+                      onChange={(e) => updateParticipant(index, 'email', e.target.value)}
+                      className="modern-input text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Rol</label>
+                    <select
+                      value={participant.role}
+                      onChange={(e) => updateParticipant(index, 'role', e.target.value)}
+                      className="modern-input text-sm"
+                    >
+                      <option value="participant">Deelnemer</option>
+                      <option value="facilitator">Begeleider</option>
+                      <option value="observer">Observant</option>
+                    </select>
+                  </div>
+                  <div className="flex items-end">
+                    <button
+                      type="button"
+                      onClick={() => removeParticipant(index)}
+                      className="btn-danger px-3 py-2 text-sm w-full"
+                      disabled={participants.length === 1}
+                    >
+                      🗑️ Verwijder
+                    </button>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Simplified Agenda */}
-        <div className="conversation-card">
-          <h2 className="text-lg font-medium mb-4">Agenda</h2>
+        {/* Agenda */}
+        <div className="modern-card p-6">
+          <h2 className="text-xl font-semibold mb-6 flex items-center space-x-2">
+            <span>📋</span>
+            <span>Agenda Punten</span>
+          </h2>
           
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">
-              Agenda Punten (elk punt op een nieuwe regel)
+              Agenda Items (elk punt op een nieuwe regel)
             </label>
             <textarea
               value={agendaText}
               onChange={(e) => setAgendaText(e.target.value)}
-              className="conversation-input w-full"
+              className="modern-input"
               rows="6"
               placeholder="Welkom en kennismaking&#10;Huidige situatie bespreken&#10;Doelen opstellen&#10;Vervolgstappen&#10;Afsluiting"
             />
-            <p className="text-sm text-gray-500 mt-1">
-              Typ elk agendapunt op een nieuwe regel. Druk op Enter voor het volgende punt.
+            <p className="text-sm text-gray-500 mt-2 flex items-center space-x-1">
+              <span>💡</span>
+              <span>Typ elk agendapunt op een nieuwe regel. Druk op Enter voor het volgende punt.</span>
             </p>
           </div>
         </div>
 
         {/* Privacy Settings */}
-        <div className="conversation-card">
-          <h2 className="text-lg font-medium mb-4">Privacy Instellingen</h2>
+        <div className="modern-card p-6">
+          <h2 className="text-xl font-semibold mb-6 flex items-center space-x-2">
+            <span>🔐</span>
+            <span>Privacy Instellingen</span>
+          </h2>
           
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Privacy Niveau
-              </label>
-              <select
-                name="privacy_level"
-                value={formData.privacy_level}
-                onChange={handleInputChange}
-                className="conversation-input w-full md:w-auto"
-              >
-                <option value="minimal">Minimaal - Alleen basistekst</option>
-                <option value="standard">Standaard - Gevoelige data gefilterd</option>
-                <option value="detailed">Gedetailleerd - Alles opgenomen</option>
-              </select>
+              <label className="block text-sm font-medium text-gray-700 mb-3">Privacy Niveau</label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {privacyLevels.map((level) => (
+                  <label key={level.value} className="cursor-pointer">
+                    <input
+                      type="radio"
+                      name="privacy_level"
+                      value={level.value}
+                      checked={formData.privacy_level === level.value}
+                      onChange={handleInputChange}
+                      className="sr-only"
+                    />
+                    <div className={`modern-card p-4 border-2 transition-all duration-300 ${
+                      formData.privacy_level === level.value 
+                        ? 'border-green-500 bg-green-50' 
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}>
+                      <div className="text-center">
+                        <span className="text-2xl mb-2 block">{level.icon}</span>
+                        <h3 className="font-semibold text-gray-800">{level.label}</h3>
+                        <p className="text-sm text-gray-600 mt-1">{level.desc}</p>
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
             </div>
 
-            <div className="flex items-center">
-              <input
-                type="checkbox"
-                name="auto_transcription"
-                checked={formData.auto_transcription}
-                onChange={handleInputChange}
-                className="mr-2"
-              />
-              <label className="text-sm text-gray-700">
-                Automatische transcriptie inschakelen
+            <div className="modern-card p-4 bg-blue-50 border-blue-200">
+              <label className="flex items-center space-x-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="auto_transcription"
+                  checked={formData.auto_transcription}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                />
+                <div>
+                  <span className="font-medium text-blue-800">🎤 Automatische transcriptie inschakelen</span>
+                  <p className="text-sm text-blue-600">Real-time spraak naar tekst conversie</p>
+                </div>
               </label>
             </div>
           </div>
         </div>
 
-        {/* Submit */}
-        <div className="flex justify-end space-x-3">
+        {/* Submit Buttons */}
+        <div className="flex justify-end space-x-4 py-6">
           <button
             type="button"
             onClick={() => navigate('/dashboard')}
-            className="px-4 py-2 text-gray-600 hover:text-gray-800"
+            className="btn-neutral px-6 py-3"
           >
-            Annuleren
+            ❌ Annuleren
           </button>
           <button
             type="submit"
             disabled={loading}
-            className="conversation-button disabled:opacity-50"
+            className="btn-primary px-8 py-3"
           >
-            {loading ? 'Aanmaken...' : 'Gesprek Aanmaken'}
+            {loading ? (
+              <span className="flex items-center space-x-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Aanmaken...</span>
+              </span>
+            ) : (
+              <span className="flex items-center space-x-2">
+                <span>🚀</span>
+                <span>Gesprek Aanmaken</span>
+              </span>
+            )}
           </button>
         </div>
       </form>
