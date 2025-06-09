@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService.js';
 import transcriptionService from '../../services/api/transcriptionService.js';
 import EnhancedLiveTranscription from '../../components/recording/EnhancedLiveTranscription.jsx';
-import BasicAudioUploader from '../../components/recording/AudioRecorder/BasicAudioUploader.jsx'; // ← DEZE TOEVOEGEN
+import BasicAudioUploader from '../../components/recording/AudioRecorder/BasicAudioUploader.jsx';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
 import { getSpeakerColor, formatSpeakingTime, formatTimestamp } from './utils/meetingUtils.js';
 
@@ -16,26 +16,20 @@ const MeetingRoom = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Transcription state
+  // Transcription state - ALLE TRANSCRIPTIES BLIJVEN BEHOUDEN
   const [transcriptions, setTranscriptions] = useState([]);
-  const [liveTranscriptions, setLiveTranscriptions] = useState([]);
 
   // Speaker state
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [availableSpeakers, setAvailableSpeakers] = useState([]);
   const [speakerStats, setSpeakerStats] = useState({});
 
-  // UI state - collapsible sections
-  const [collapsedSections, setCollapsedSections] = useState({
-    participants: false,
-    agenda: true, // Start collapsed if agenda is long
-    controls: false,
-    stats: true
+  // UI state - welke sectie is open
+  const [expandedSections, setExpandedSections] = useState({
+    basicAudio: true,
+    enhancedLive: false,
+    transcriptionHistory: true
   });
-
-  // Recording state
-  const [isRecording, setIsRecording] = useState(false);
-  const [sessionStats, setSessionStats] = useState(null);
 
   // Agenda tracking
   const [currentAgendaIndex, setCurrentAgendaIndex] = useState(0);
@@ -85,9 +79,11 @@ const MeetingRoom = () => {
 
   const loadMeeting = async () => {
     try {
+      console.log('Loading meeting with ID:', id); // Debug log
       const result = await meetingService.getMeeting(id);
       if (result.success) {
         setMeeting(result.data);
+        console.log('Meeting loaded:', result.data); // Debug log
         const startTimes = {};
         result.data.agenda_items?.forEach((item, index) => {
           startTimes[index] = null;
@@ -99,6 +95,7 @@ const MeetingRoom = () => {
       }
     } catch (error) {
       setError('Fout bij laden gesprek');
+      console.error('Meeting load error:', error);
     } finally {
       setLoading(false);
     }
@@ -117,7 +114,8 @@ const MeetingRoom = () => {
           speakerColor: t.speaker_color,
           confidence: parseFloat(t.confidence),
           isFinal: t.is_final,
-          processingStatus: 'verified'
+          processingStatus: 'verified',
+          source: 'database'
         }));
         setTranscriptions(dbTranscriptions);
       }
@@ -144,147 +142,20 @@ const MeetingRoom = () => {
     meeting
   });
 
-
-{/* Main Content - Enhanced Transcription */}
-<div className="lg:col-span-3 space-y-4">
-  {/* Enhanced Live Transcription Component */}
-  <div className="modern-card">
-    <EnhancedLiveTranscription
-      meetingId={id}
-      participants={meeting?.participants || []}
-      onTranscriptionUpdate={handleTranscriptionUpdate}
-      onSessionStatsUpdate={handleSessionStatsUpdate}
-    />
-  </div>
-
-  {/* Alternative: Basic Audio Upload (Always Available) */}
-  <div className="modern-card p-6">
-    <div className="flex justify-between items-center mb-4">
-      <h3 className="text-lg font-medium">🎤 Audio Upload & Transcriptie</h3>
-      <span className="text-sm text-gray-500">Stap-voor-stap opname</span>
-    </div>
-    
-    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-      <p className="text-sm text-blue-700">
-        💡 <strong>Tip:</strong> Gebruik Enhanced Live Transcriptie hierboven voor real-time spraak-naar-tekst, 
-        of upload hieronder audio bestanden die je apart hebt opgenomen.
-      </p>
-    </div>
-
-    <BasicAudioUploader
-      onTranscriptionReceived={handleTranscriptionUpdate}
-      meetingId={id}
-      disabled={false}
-    />
-  </div>
-
-  {/* Session Status Bar */}
-  {sessionStats && (
-    <div className="modern-card p-3">
-      <div className="flex items-center justify-between text-sm">
-        <div className="flex items-center space-x-4">
-          <span className="flex items-center space-x-1">
-            <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-            <span>Live: {sessionStats.status_breakdown?.live || 0}</span>
-          </span>
-          <span className="flex items-center space-x-1">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <span>Verified: {sessionStats.status_breakdown?.verified || 0}</span>
-          </span>
-          <span className="text-gray-500">
-            {Math.round((sessionStats.status_breakdown?.verified || 0) / 
-            Math.max(1, sessionStats.total_transcriptions || 1) * 100)}% verified
-          </span>
-        </div>
-        <div className="text-gray-500">
-          {sessionStats.duration_minutes || 0}m actief
-        </div>
-      </div>
-    </div>
-  )}
-
-  {/* Transcription History Display */}
-  <div className="modern-card p-6">
-    <div className="flex justify-between items-center mb-4">
-      <h3 className="text-lg font-medium">📝 Transcriptie Geschiedenis</h3>
-      <span className="text-sm text-gray-500">
-        {transcriptions.length} opgeslagen transcripties
-      </span>
-    </div>
-    
-    {transcriptions.length === 0 ? (
-      <div className="text-center py-8 text-gray-500">
-        <div className="text-4xl mb-2">🎤</div>
-        <p>Nog geen transcripties opgenomen</p>
-        <p className="text-sm mt-1">Start Enhanced Live Transcriptie of upload audio bestanden hierboven</p>
-      </div>
-    ) : (
-      <div className="space-y-3 max-h-64 overflow-y-auto">
-        {transcriptions
-          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-          .map((transcription) => (
-            <div key={transcription.id} className="bg-gray-50 rounded-lg p-3 border-l-4 border-blue-500">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <div
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: transcription.speakerColor }}
-                    ></div>
-                    <span className="font-medium text-sm text-gray-700">
-                      {transcription.speaker}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {new Date(transcription.timestamp).toLocaleTimeString('nl-NL')}
-                    </span>
-                  </div>
-                  <p className="text-gray-900 text-sm leading-relaxed">
-                    {transcription.text}
-                  </p>
-                </div>
-                <div className="ml-3 flex flex-col items-end text-xs text-gray-500">
-                  <span>
-                    {Math.round((transcription.confidence || 0) * 100)}% confident
-                  </span>
-                  {transcription.saved && (
-                    <span className="text-green-600 mt-1">✓ Opgeslagen</span>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
-      </div>
-    )}
-  </div>
-</div>
-
-  // Enhanced transcription handlers
+  // Handle transcription from any source
   const handleTranscriptionUpdate = (transcriptionData) => {
-    // Add to live transcriptions for immediate display
-    setLiveTranscriptions(prev => [...prev.slice(-10), transcriptionData]); // Keep last 10
+    console.log('📝 New transcription received:', transcriptionData);
+    
+    // Call the handler to save to database and update main list
     handlers.handleTranscriptionReceived(transcriptionData);
   };
 
-  const handleSessionStatsUpdate = (stats) => {
-    setSessionStats(stats);
-    handlers.handleSessionStatsUpdate(stats);
-  };
-
-  // Toggle section collapse
+  // Toggle expanded sections
   const toggleSection = (section) => {
-    setCollapsedSections(prev => ({
+    setExpandedSections(prev => ({
       ...prev,
       [section]: !prev[section]
     }));
-  };
-
-  // Quick speaker change
-  const quickSpeakerChange = (speaker) => {
-    setCurrentSpeaker(speaker);
-    setAvailableSpeakers(prev => prev.map(s => ({
-      ...s,
-      isActive: s.id === speaker.id
-    })));
   };
 
   // Meeting controls
@@ -323,7 +194,7 @@ const MeetingRoom = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-4">
-      {/* Compact Header */}
+      {/* Header */}
       <div className="modern-card p-4">
         <div className="flex items-center justify-between">
           <div className="flex-1">
@@ -332,243 +203,264 @@ const MeetingRoom = () => {
               <h1 className="text-xl font-bold text-gray-900">{meeting?.title}</h1>
             </div>
             <div className="flex items-center space-x-4 text-sm text-gray-600">
-              <span>👥 {meeting?.participants?.length || 0}</span>
-              <span>📋 {currentAgendaIndex + 1}/{meeting?.agenda_items?.length || 0}</span>
-              {currentSpeaker && (
-                <span className="flex items-center space-x-1">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: currentSpeaker.color }}></div>
-                  <span>{currentSpeaker.displayName}</span>
-                </span>
-              )}
+              <span>🆔 Meeting ID: {id}</span>
+              <span>👥 {meeting?.participants?.length || 0} deelnemers</span>
+              <span>📝 {transcriptions.length} transcripties</span>
             </div>
           </div>
           <div className="flex space-x-2">
             <button onClick={() => navigate('/dashboard')} className="btn-neutral text-sm px-3 py-1">
-              🏠
+              🏠 Dashboard
             </button>
             <button onClick={finishMeeting} className="btn-danger text-sm px-3 py-1">
-              ⏹️ Stop
+              ⏹️ Stop Meeting
             </button>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-        {/* Main Content - Enhanced Transcription */}
-        <div className="lg:col-span-3 space-y-4">
-          {/* Live Transcription Component */}
-<div className="modern-card">
-  <BasicAudioUploader
-    meetingId={id}
-    onTranscriptionReceived={handleTranscriptionUpdate}
-  />
-</div>
-          {/* Session Status Bar */}
-          {sessionStats && (
-            <div className="modern-card p-3">
-              <div className="flex items-center justify-between text-sm">
-                <div className="flex items-center space-x-4">
-                  <span className="flex items-center space-x-1">
-                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                    <span>Live: {sessionStats.status_breakdown?.live || 0}</span>
-                  </span>
-                  <span className="flex items-center space-x-1">
-                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    <span>Verified: {sessionStats.status_breakdown?.verified || 0}</span>
-                  </span>
-                  <span className="text-gray-500">
-                    {Math.round((sessionStats.status_breakdown?.verified || 0) / 
-                    Math.max(1, sessionStats.total_transcriptions || 1) * 100)}% verified
-                  </span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Main Content - Verschillende Transcriptie Opties */}
+        <div className="lg:col-span-2 space-y-4">
+          
+          {/* 1. Basis Audio Upload - Handmatige Opname */}
+          <div className="modern-card">
+            <div 
+              className="flex items-center justify-between p-4 cursor-pointer border-b"
+              onClick={() => toggleSection('basicAudio')}
+            >
+              <h3 className="text-lg font-medium flex items-center space-x-2">
+                <span>🎤</span>
+                <span>Handmatige Audio Opname</span>
+              </h3>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-500">Opnemen → Stop → Transcribeer</span>
+                <span className="text-gray-400">
+                  {expandedSections.basicAudio ? '▲' : '▼'}
+                </span>
+              </div>
+            </div>
+            
+            {expandedSections.basicAudio && (
+              <div className="p-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-blue-700">
+                    💡 <strong>Handmatige Mode:</strong> Neem audio op, stop wanneer je wilt, en klik dan op transcribeer om de tekst te krijgen.
+                  </p>
                 </div>
-                <div className="text-gray-500">
-                  {sessionStats.duration_minutes || 0}m actief
+
+                <BasicAudioUploader
+                  onTranscriptionReceived={handleTranscriptionUpdate}
+                  meetingId={parseInt(id)} // Zorg ervoor dat het een number is
+                  disabled={false}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* 2. Enhanced Live Transcription - Real-time */}
+          <div className="modern-card">
+            <div 
+              className="flex items-center justify-between p-4 cursor-pointer border-b"
+              onClick={() => toggleSection('enhancedLive')}
+            >
+              <h3 className="text-lg font-medium flex items-center space-x-2">
+                <span>🎯</span>
+                <span>Enhanced Live Transcriptie</span>
+              </h3>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-500">Real-time spraak naar tekst</span>
+                <span className="text-gray-400">
+                  {expandedSections.enhancedLive ? '▲' : '▼'}
+                </span>
+              </div>
+            </div>
+            
+            {expandedSections.enhancedLive && (
+              <div className="p-4">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-green-700">
+                    🎯 <strong>Live Mode:</strong> Continuous spraakherkenning met automatische transcriptie en speaker detection.
+                  </p>
                 </div>
+
+                <EnhancedLiveTranscription
+                  meetingId={parseInt(id)} // Fix: zorg ervoor dat meetingId een number is
+                  participants={meeting?.participants || []}
+                  onTranscriptionUpdate={handleTranscriptionUpdate}
+                  onSessionStatsUpdate={(stats) => console.log('Session stats:', stats)}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* 3. Transcriptie Geschiedenis */}
+          <div className="modern-card">
+            <div 
+              className="flex items-center justify-between p-4 cursor-pointer border-b"
+              onClick={() => toggleSection('transcriptionHistory')}
+            >
+              <h3 className="text-lg font-medium flex items-center space-x-2">
+                <span>📝</span>
+                <span>Transcriptie Geschiedenis</span>
+              </h3>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm text-gray-500">{transcriptions.length} opgeslagen</span>
+                {transcriptions.length > 0 && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTranscriptions([]);
+                    }}
+                    className="text-xs text-red-600 hover:text-red-700 px-2 py-1 border border-red-300 rounded"
+                  >
+                    🗑️ Wis
+                  </button>
+                )}
+                <span className="text-gray-400">
+                  {expandedSections.transcriptionHistory ? '▲' : '▼'}
+                </span>
+              </div>
+            </div>
+            
+            {expandedSections.transcriptionHistory && (
+              <div className="p-4">
+                {transcriptions.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="text-4xl mb-2">📝</div>
+                    <p>Nog geen transcripties</p>
+                    <p className="text-sm mt-1">Gebruik een van de opname methoden hierboven</p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {transcriptions
+                      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                      .map((transcription, index) => (
+                        <div key={transcription.id || `transcription-${index}`} 
+                             className="bg-gray-50 rounded-lg p-3 border-l-4 border-blue-500">
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <div
+                                  className="w-3 h-3 rounded-full"
+                                  style={{ backgroundColor: transcription.speakerColor || '#6B7280' }}
+                                ></div>
+                                <span className="font-medium text-sm text-gray-700">
+                                  {transcription.speaker || 'Audio Upload'}
+                                </span>
+                                <span className="text-xs text-gray-500">
+                                  {new Date(transcription.timestamp).toLocaleTimeString('nl-NL')}
+                                </span>
+                                <span className={`text-xs px-2 py-1 rounded ${
+                                  transcription.source === 'database' ? 'bg-green-100 text-green-700' :
+                                  transcription.source === 'enhanced_live' ? 'bg-blue-100 text-blue-700' :
+                                  'bg-gray-100 text-gray-700'
+                                }`}>
+                                  {transcription.source === 'database' ? '💾 DB' :
+                                   transcription.source === 'enhanced_live' ? '🎯 Live' : '🎤 Upload'}
+                                </span>
+                              </div>
+                              <p className="text-gray-900 text-sm leading-relaxed">
+                                {transcription.text}
+                              </p>
+                            </div>
+                            <div className="ml-3 flex flex-col items-end text-xs text-gray-500">
+                              <span>
+                                {Math.round((transcription.confidence || 0) * 100)}%
+                              </span>
+                              {transcription.saved && (
+                                <span className="text-green-600 mt-1">✓ Saved</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sidebar - Meeting Info */}
+        <div className="lg:col-span-1 space-y-4">
+          {/* Meeting Details */}
+          <div className="modern-card p-4">
+            <h3 className="font-medium text-gray-800 mb-3 flex items-center space-x-2">
+              <span>📋</span>
+              <span>Meeting Details</span>
+            </h3>
+            
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Titel:</span>
+                <span className="font-medium">{meeting?.title}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Type:</span>
+                <span className="font-medium capitalize">{meeting?.type}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Status:</span>
+                <span className="font-medium capitalize">{meeting?.status}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">Deelnemers:</span>
+                <span className="font-medium">{meeting?.participants?.length || 0}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Participants */}
+          {meeting?.participants?.length > 0 && (
+            <div className="modern-card p-4">
+              <h3 className="font-medium text-gray-800 mb-3 flex items-center space-x-2">
+                <span>👥</span>
+                <span>Deelnemers</span>
+              </h3>
+              
+              <div className="space-y-2">
+                {meeting.participants.map((participant, index) => (
+                  <div key={index} className="flex items-center space-x-2 text-sm">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: getSpeakerColor(index + 1) }}
+                    ></div>
+                    <span className="font-medium">{participant.name}</span>
+                    <span className="text-gray-500 capitalize">({participant.role})</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
-        </div>
 
-        {/* Sidebar - Compact Controls */}
-        <div className="lg:col-span-1 space-y-4">
-          {/* Quick Speaker Selector */}
-          <div className="modern-card">
-            <div 
-              className="flex items-center justify-between p-3 cursor-pointer"
-              onClick={() => toggleSection('participants')}
-            >
-              <h3 className="font-medium text-gray-800 flex items-center space-x-2">
-                <span>👤</span>
-                <span>Sprekers</span>
-              </h3>
-              <span className="text-gray-400">
-                {collapsedSections.participants ? '▼' : '▲'}
-              </span>
-            </div>
+          {/* Quick Actions */}
+          <div className="modern-card p-4">
+            <h3 className="font-medium text-gray-800 mb-3 flex items-center space-x-2">
+              <span>⚡</span>
+              <span>Quick Actions</span>
+            </h3>
             
-            {!collapsedSections.participants && (
-              <div className="px-3 pb-3 space-y-2">
-                {availableSpeakers.slice(0, 4).map((speaker) => (
-                  <button
-                    key={speaker.id}
-                    onClick={() => quickSpeakerChange(speaker)}
-                    className={`w-full text-left p-2 rounded-lg text-sm transition-all ${
-                      currentSpeaker?.id === speaker.id
-                        ? 'bg-blue-50 border-2 border-blue-200'
-                        : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2">
-                      <div
-                        className="w-3 h-3 rounded-full"
-                        style={{ backgroundColor: speaker.color }}
-                      ></div>
-                      <span className="font-medium truncate">{speaker.displayName}</span>
-                      {currentSpeaker?.id === speaker.id && (
-                        <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse ml-auto"></div>
-                      )}
-                    </div>
-                  </button>
-                ))}
-                
-                {availableSpeakers.length > 4 && (
-                  <div className="text-xs text-gray-500 text-center pt-1">
-                    +{availableSpeakers.length - 4} meer...
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Compact Agenda */}
-          <div className="modern-card">
-            <div 
-              className="flex items-center justify-between p-3 cursor-pointer"
-              onClick={() => toggleSection('agenda')}
-            >
-              <h3 className="font-medium text-gray-800 flex items-center space-x-2">
-                <span>📋</span>
-                <span>Agenda</span>
-              </h3>
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-gray-500">
-                  {currentAgendaIndex + 1}/{meeting?.agenda_items?.length || 0}
-                </span>
-                <span className="text-gray-400">
-                  {collapsedSections.agenda ? '▼' : '▲'}
-                </span>
-              </div>
+            <div className="space-y-2">
+              <button
+                onClick={() => toggleSection('basicAudio')}
+                className="btn-secondary w-full text-sm py-2"
+              >
+                🎤 Open Audio Opname
+              </button>
+              <button
+                onClick={() => toggleSection('enhancedLive')}
+                className="btn-primary w-full text-sm py-2"
+              >
+                🎯 Open Live Transcriptie
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="btn-neutral w-full text-sm py-2"
+              >
+                🔄 Herlaad Pagina
+              </button>
             </div>
-            
-            {!collapsedSections.agenda && meeting?.agenda_items && (
-              <div className="px-3 pb-3">
-                {/* Current Item */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-blue-600">HUIDIGE</span>
-                    <span className="text-xs text-blue-500">
-                      {agendaStartTimes[currentAgendaIndex] && 
-                        formatTimestamp(agendaStartTimes[currentAgendaIndex])}
-                    </span>
-                  </div>
-                  <h4 className="text-sm font-medium text-gray-800">
-                    {meeting.agenda_items[currentAgendaIndex]?.title}
-                  </h4>
-                </div>
-
-                {/* Navigation */}
-                <div className="flex space-x-2 mb-3">
-                  <button
-                    onClick={handlers.handlePreviousAgendaItem}
-                    disabled={currentAgendaIndex <= 0}
-                    className="btn-neutral text-xs px-2 py-1 flex-1 disabled:opacity-50"
-                  >
-                    ← Vorige
-                  </button>
-                  <button
-                    onClick={handlers.handleNextAgendaItem}
-                    disabled={currentAgendaIndex >= (meeting.agenda_items.length - 1)}
-                    className="btn-primary text-xs px-2 py-1 flex-1 disabled:opacity-50"
-                  >
-                    Volgende →
-                  </button>
-                </div>
-
-                {/* Progress */}
-                <div className="bg-gray-200 rounded-full h-1 mb-2">
-                  <div 
-                    className="bg-blue-500 h-1 rounded-full transition-all duration-300"
-                    style={{ 
-                      width: `${((currentAgendaIndex + 1) / meeting.agenda_items.length) * 100}%` 
-                    }}
-                  ></div>
-                </div>
-
-                {/* All Items (compact) */}
-                <div className="space-y-1 max-h-32 overflow-y-auto">
-                  {meeting.agenda_items.map((item, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handlers.handleGoToAgendaItem(index)}
-                      className={`w-full text-left p-1 rounded text-xs transition-all ${
-                        index === currentAgendaIndex
-                          ? 'bg-blue-100 text-blue-800'
-                          : index < currentAgendaIndex
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      <span className="font-medium">{index + 1}.</span> {item.title}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Speaker Stats */}
-          <div className="modern-card">
-            <div 
-              className="flex items-center justify-between p-3 cursor-pointer"
-              onClick={() => toggleSection('stats')}
-            >
-              <h3 className="font-medium text-gray-800 flex items-center space-x-2">
-                <span>📊</span>
-                <span>Stats</span>
-              </h3>
-              <span className="text-gray-400">
-                {collapsedSections.stats ? '▼' : '▲'}
-              </span>
-            </div>
-            
-            {!collapsedSections.stats && (
-              <div className="px-3 pb-3 space-y-2">
-                {availableSpeakers
-                  .filter(speaker => speakerStats[speaker.id]?.segments > 0)
-                  .sort((a, b) => (speakerStats[b.id]?.totalTime || 0) - (speakerStats[a.id]?.totalTime || 0))
-                  .slice(0, 3)
-                  .map((speaker) => (
-                    <div key={speaker.id} className="flex items-center justify-between text-xs">
-                      <div className="flex items-center space-x-2">
-                        <div
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: speaker.color }}
-                        ></div>
-                        <span className="truncate">{speaker.displayName}</span>
-                      </div>
-                      <span className="text-gray-500">
-                        {formatSpeakingTime(speakerStats[speaker.id]?.totalTime || 0)}
-                      </span>
-                    </div>
-                  ))}
-                
-                {Object.values(speakerStats).every(stat => stat.segments === 0) && (
-                  <div className="text-xs text-gray-500 text-center py-2">
-                    Nog geen statistieken
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       </div>
