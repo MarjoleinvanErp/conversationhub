@@ -7,15 +7,13 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | API Routes
 |--------------------------------------------------------------------------
-|
-| Here is where you can register API routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "api" middleware group. Make something great!
-|
 */
 
 // Health check endpoint
 Route::get('/health', [\App\Http\Controllers\Api\HealthController::class, 'check']);
+
+// Speech test endpoint (publiek voor debugging)
+Route::get('/speech/test', [\App\Http\Controllers\Api\SpeechController::class, 'test']);
 
 // Public routes
 Route::prefix('auth')->group(function () {
@@ -41,34 +39,33 @@ Route::middleware('auth:sanctum')->group(function () {
     // Participant routes
     Route::apiResource('meetings.participants', \App\Http\Controllers\Api\ParticipantController::class);
 
-// Audio processing routes
+    // Audio processing routes
     Route::middleware('throttle:audio')->group(function () {
         Route::post('/audio/upload', [\App\Http\Controllers\Api\AudioController::class, 'upload']);
         Route::get('/audio/list', [\App\Http\Controllers\Api\AudioController::class, 'list']);
         Route::delete('/audio/{filename}', [\App\Http\Controllers\Api\AudioController::class, 'delete']);
     });
 
-// Speech processing routes
+    // Speech processing routes
     Route::middleware('throttle:speech')->group(function () {
         Route::post('/speech/transcribe', [\App\Http\Controllers\Api\SpeechController::class, 'transcribe']);
-        Route::get('/speech/test', [\App\Http\Controllers\Api\SpeechController::class, 'test']); // Deze regel toevoegen
+        // test endpoint is nu publiek hierboven
     });
 
-// Enhanced Live Transcription routes
-Route::middleware('throttle:speech')->group(function () {
-    Route::post('/live-transcription/enhanced/start', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'startEnhancedSession']);
-    Route::post('/live-transcription/setup-voice', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'setupVoiceProfile']);
-    Route::post('/live-transcription/process-live', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'processLive']);
-    Route::post('/live-transcription/verify-whisper', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'verifyWithWhisper']);
-});
+    // Enhanced Live Transcription routes
+    Route::middleware('throttle:speech')->group(function () {
+        Route::post('/live-transcription/enhanced/start', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'startEnhancedSession']);
+        Route::post('/live-transcription/setup-voice', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'setupVoiceProfile']);
+        Route::post('/live-transcription/process-live', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'processLive']);
+        Route::post('/live-transcription/verify-whisper', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'verifyWithWhisper']);
+    });
 
-// Transcription routes
+    // Transcription routes
     Route::get('/meetings/{meeting}/transcriptions', [\App\Http\Controllers\Api\TranscriptionController::class, 'index']);
     Route::post('/transcriptions', [\App\Http\Controllers\Api\TranscriptionController::class, 'store']);
     Route::get('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'show']);
     Route::put('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'update']);
     Route::delete('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'destroy']);
-
 
     // Export routes
     Route::post('/meetings/{meeting}/export', [\App\Http\Controllers\Api\ExportController::class, 'export']);
