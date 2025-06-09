@@ -24,8 +24,9 @@ const EnhancedLiveTranscription = ({
   const [recordingError, setRecordingError] = useState('');
   const [speechSupported, setSpeechSupported] = useState(false);
 
-  // Transcription state
-  const [transcriptions, setTranscriptions] = useState([]);
+  // Transcription state - SPLIT INTO TWO LISTS
+  const [liveTranscriptions, setLiveTranscriptions] = useState([]); // Web Speech results
+  const [whisperTranscriptions, setWhisperTranscriptions] = useState([]); // Whisper verified results
   const [interimTranscript, setInterimTranscript] = useState('');
   const [recentLiveTranscriptions, setRecentLiveTranscriptions] = useState([]);
 
@@ -33,8 +34,10 @@ const EnhancedLiveTranscription = ({
   const [autoScroll, setAutoScroll] = useState(true);
 
   // Refs
-  const transcriptEndRef = useRef(null);
-  const transcriptContainerRef = useRef(null);
+  const liveTranscriptEndRef = useRef(null);
+  const whisperTranscriptEndRef = useRef(null);
+  const liveContainerRef = useRef(null);
+  const whisperContainerRef = useRef(null);
 
   // Check speech recognition support
   useEffect(() => {
@@ -43,17 +46,24 @@ const EnhancedLiveTranscription = ({
     console.log('Speech recognition supported:', !!SpeechRecognition);
   }, []);
 
-  // Auto-scroll effect - FIXED
+  // Auto-scroll for both panels
   useEffect(() => {
-    if (autoScroll && transcriptEndRef.current && transcriptions.length > 0) {
-      // Only scroll if we actually have new content
+    if (autoScroll && liveTranscriptions.length > 0) {
       setTimeout(() => {
-        transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        liveTranscriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
       }, 100);
     }
-  }, [transcriptions.length, autoScroll]); // Only trigger on new transcriptions, not interim
+  }, [liveTranscriptions.length, autoScroll]);
 
-  // Component cleanup - IMPROVED
+  useEffect(() => {
+    if (autoScroll && whisperTranscriptions.length > 0) {
+      setTimeout(() => {
+        whisperTranscriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }, 100);
+    }
+  }, [whisperTranscriptions.length, autoScroll]);
+
+  // Component cleanup
   useEffect(() => {
     return () => {
       console.log('🧹 Cleaning up EnhancedLiveTranscription component');
@@ -70,9 +80,7 @@ const EnhancedLiveTranscription = ({
     try {
       setRecordingError('');
       console.log('Starting enhanced session for meeting:', meetingId);
-      console.log('Original participants:', participants);
       
-      // FIXED: Ensure all participants have string IDs
       const processedParticipants = participants.map((p, index) => {
         const participantId = p.id ? `participant_${p.id}` : `participant_${p.name.toLowerCase().replace(/\s+/g, '_')}_${index}`;
         
@@ -111,7 +119,6 @@ const EnhancedLiveTranscription = ({
         console.error('Enhanced session error:', result);
         setRecordingError(errorMessage);
         
-        // Show validation errors if they exist
         if (result.errors) {
           console.error('Validation errors:', result.errors);
           const errorDetails = Object.entries(result.errors)
@@ -126,7 +133,7 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Voice setup process - MANUAL CONTROL VERSION
+  // Voice setup functions (same as before)
   const startVoiceSetup = async () => {
     const speaker = participants[currentSetupSpeaker];
     if (!speaker) {
@@ -154,9 +161,8 @@ const EnhancedLiveTranscription = ({
       setIsRecordingVoice(false);
 
       if (result.success) {
-        // DON'T auto-advance - wait for user to click next
         console.log('✅ Voice setup completed for:', speaker.name);
-        setVoiceSetupError(''); // Clear any previous errors
+        setVoiceSetupError('');
       } else {
         setVoiceSetupError(result.error || 'Voice setup failed');
       }
@@ -167,19 +173,16 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Manual next speaker
   const nextSpeaker = () => {
     const nextIndex = currentSetupSpeaker + 1;
     if (nextIndex < participants.length) {
       setCurrentSetupSpeaker(nextIndex);
       setVoiceSetupError('');
     } else {
-      // All done
       completeVoiceSetup();
     }
   };
 
-  // Manual previous speaker
   const previousSpeaker = () => {
     if (currentSetupSpeaker > 0) {
       setCurrentSetupSpeaker(currentSetupSpeaker - 1);
@@ -187,21 +190,19 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Complete voice setup and move to transcription
   const completeVoiceSetup = () => {
     console.log('🎉 Voice setup completed, switching to transcription mode');
     setVoiceSetupPhase(false);
     setVoiceSetupComplete(true);
-    setCurrentSetupSpeaker(0); // Reset for next time
+    setCurrentSetupSpeaker(0);
   };
 
-  // Skip voice setup (for testing)
   const skipVoiceSetup = () => {
     console.log('⏭️ Skipping voice setup');
     completeVoiceSetup();
   };
 
-// Start live transcription
+  // Start live transcription
   const startLiveTranscription = async () => {
     try {
       console.log('Starting live transcription...');
@@ -212,7 +213,6 @@ const EnhancedLiveTranscription = ({
         return;
       }
 
-      // Setup speech recognition
       const speechSetup = enhancedLiveTranscriptionService.setupSpeechRecognition(
         handleSpeechResult,
         handleSpeechError
@@ -223,10 +223,8 @@ const EnhancedLiveTranscription = ({
         return;
       }
 
-      // Setup audio chunk processing
       enhancedLiveTranscriptionService.setChunkCallback(handleAudioChunk);
 
-      // Start recording
       const recordingResult = await enhancedLiveTranscriptionService.startRecording();
       console.log('Recording start result:', recordingResult);
       
@@ -242,72 +240,72 @@ const EnhancedLiveTranscription = ({
     }
   };
 
+  // Handle speech recognition results - ADD TO LIVE PANEL
+  const handleSpeechResult = async (result) => {
+    const { transcript, confidence, isFinal, timestamp } = result;
+    console.log('🎤 WebSpeech result:', { 
+      transcript, 
+      confidence, 
+      isFinal, 
+      source: 'browser_webspeech',
+      timestamp: new Date().toLocaleTimeString()
+    });
 
-// Handle speech recognition results
-const handleSpeechResult = async (result) => {
-  const { transcript, confidence, isFinal, timestamp } = result;
-  console.log('🎤 WebSpeech result:', { 
-    transcript, 
-    confidence, 
-    isFinal, 
-    source: 'browser_webspeech',
-    timestamp: new Date().toLocaleTimeString()
-  });
-
-  if (!isFinal) {
-    setInterimTranscript(transcript);
-    return;
-  }
-
-  // Clear interim transcript
-  setInterimTranscript('');
-
-  if (!transcript.trim()) {
-    console.log('Empty transcript, skipping');
-    return;
-  }
-
-  // Process final transcript
-  try {
-    console.log('📤 Sending to API for processing:', transcript);
-    const apiResult = await enhancedLiveTranscriptionService.processLiveTranscription(
-      transcript.trim(),
-      confidence
-    );
-
-    console.log('📥 API Response:', apiResult);
-
-    if (apiResult.success) {
-      const transcription = apiResult.transcription;
-      console.log('✅ Transcription added:', {
-        id: transcription.id,
-        processing_status: transcription.processing_status,
-        source: transcription.type || 'live'
-      });
-      
-      // Add to transcriptions
-      setTranscriptions(prev => [...prev, transcription]);
-      
-      // Keep track of recent live transcriptions for Whisper processing
-      setRecentLiveTranscriptions(prev => [...prev.slice(-4), transcription]);
-      
-      // Update session stats
-      if (apiResult.session_stats) {
-        setSessionStats(apiResult.session_stats);
-        onSessionStatsUpdate(apiResult.session_stats);
-      }
-
-      // Callback to parent
-      onTranscriptionUpdate(apiResult.transcription);
-    } else {
-      console.error('Live transcription processing failed:', apiResult.error);
+    if (!isFinal) {
+      setInterimTranscript(transcript);
+      return;
     }
-  } catch (error) {
-    console.error('Failed to process live transcription:', error);
-  }
-};
 
+    setInterimTranscript('');
 
+    if (!transcript.trim()) {
+      console.log('Empty transcript, skipping');
+      return;
+    }
+
+    // Process final transcript
+    try {
+      console.log('📤 Sending to API for processing:', transcript);
+      const apiResult = await enhancedLiveTranscriptionService.processLiveTranscription(
+        transcript.trim(),
+        confidence
+      );
+
+      console.log('📥 API Response:', apiResult);
+
+      if (apiResult.success) {
+        const transcription = apiResult.transcription;
+        console.log('✅ Transcription added to LIVE panel:', {
+          id: transcription.id,
+          processing_status: transcription.processing_status,
+          source: transcription.type || 'live'
+        });
+        
+        // Add to LIVE transcriptions (left panel)
+        setLiveTranscriptions(prev => [...prev, {
+          ...transcription,
+          panel: 'live',
+          original_confidence: confidence
+        }]);
+        
+        // Keep track for Whisper processing
+        setRecentLiveTranscriptions(prev => [...prev.slice(-4), transcription]);
+        
+        // Update session stats
+        if (apiResult.session_stats) {
+          setSessionStats(apiResult.session_stats);
+          onSessionStatsUpdate(apiResult.session_stats);
+        }
+
+        // Call parent callback
+        onTranscriptionUpdate(apiResult.transcription);
+      } else {
+        console.error('Live transcription processing failed:', apiResult.error);
+      }
+    } catch (error) {
+      console.error('Failed to process live transcription:', error);
+    }
+  };
 
   // Handle speech recognition errors
   const handleSpeechError = (error) => {
@@ -316,7 +314,6 @@ const handleSpeechResult = async (result) => {
     if (error === 'not-allowed') {
       setRecordingError('Microfoon toegang geweigerd. Sta microfoon toegang toe.');
     } else if (error === 'no-speech') {
-      // This is normal, don't show error
       console.log('No speech detected, continuing...');
     } else if (error === 'network') {
       console.log('Network error in speech recognition, this is normal');
@@ -325,76 +322,80 @@ const handleSpeechResult = async (result) => {
     }
   };
 
+  // Handle audio chunk for Whisper processing - ADD TO WHISPER PANEL
+  const handleAudioChunk = async (audioBlob) => {
+    console.log('🎵 Audio chunk received for Whisper verification:', {
+      size: audioBlob.size,
+      type: audioBlob.type,
+      timestamp: new Date().toLocaleTimeString(),
+      recent_live_count: recentLiveTranscriptions.length
+    });
+    
+    const recentLive = recentLiveTranscriptions
+      .filter(t => t.processing_status === 'live')
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
 
-// Handle audio chunk for Whisper processing
-const handleAudioChunk = async (audioBlob) => {
-  console.log('🎵 Audio chunk received for Whisper verification:', {
-    size: audioBlob.size,
-    type: audioBlob.type,
-    timestamp: new Date().toLocaleTimeString()
-  });
-  
-  // Find the most recent live transcription to verify
-  const recentLive = recentLiveTranscriptions
-    .filter(t => t.processing_status === 'live')
-    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+    if (!recentLive) {
+      console.log('❌ No recent live transcription to verify');
+      return;
+    }
 
-  if (!recentLive) {
-    console.log('❌ No recent live transcription to verify');
-    return;
-  }
+    console.log('🔍 Found live transcription to verify:', {
+      id: recentLive.id,
+      text: recentLive.text?.substring(0, 50) + '...',
+      processing_status: recentLive.processing_status
+    });
 
-  console.log('🔍 Found live transcription to verify:', {
-    id: recentLive.id,
-    text: recentLive.text,
-    processing_status: recentLive.processing_status
-  });
+    try {
+      console.log('📤 Sending to Whisper for verification...');
+      const result = await enhancedLiveTranscriptionService.processWhisperVerification(
+        recentLive.id,
+        audioBlob
+      );
 
-  try {
-    console.log('📤 Sending to Whisper for verification...');
-    const result = await enhancedLiveTranscriptionService.processWhisperVerification(
-      recentLive.id,
-      audioBlob
-    );
-
-    console.log('🤖 Whisper verification result:', result);
-
-    if (result.success) {
-      console.log('✅ Whisper verification completed:', {
+      console.log('🤖 Whisper verification result:', {
+        success: result.success,
         original_text: recentLive.text,
-        whisper_text: result.transcription.text,
-        improved: recentLive.text !== result.transcription.text
+        whisper_text: result.success ? result.transcription?.text : 'N/A',
+        improved: result.success ? (recentLive.text !== result.transcription?.text) : false
       });
 
-      // Update transcription with Whisper result
-      setTranscriptions(prev => prev.map(t => 
-        t.id === recentLive.id ? result.transcription : t
-      ));
+      if (result.success) {
+        console.log('✅ Whisper verification completed - adding to WHISPER panel');
 
-      // Remove from recent live list
-      setRecentLiveTranscriptions(prev => 
-        prev.filter(t => t.id !== recentLive.id)
-      );
+        // Add to WHISPER transcriptions (right panel)
+        setWhisperTranscriptions(prev => [...prev, {
+          ...result.transcription,
+          panel: 'whisper',
+          original_live_text: recentLive.text,
+          improved: recentLive.text !== result.transcription.text
+        }]);
+
+        // Remove from recent live list
+        setRecentLiveTranscriptions(prev => 
+          prev.filter(t => t.id !== recentLive.id)
+        );
+
+        // Call parent callback with Whisper result
+        onTranscriptionUpdate({
+          ...result.transcription,
+          source: 'whisper_verified',
+          original_live_text: recentLive.text
+        });
+      }
+    } catch (error) {
+      console.error('❌ Whisper verification failed:', error);
     }
-  } catch (error) {
-    console.error('❌ Whisper verification failed:', error);
-  }
-};
+  };
 
-  // Stop transcription - IMPROVED
+  // Stop transcription
   const stopTranscription = () => {
     console.log('🛑 Stopping transcription...');
     
     try {
-      // Stop all recording activities
       enhancedLiveTranscriptionService.stopRecording();
-      
-      // Clear interim transcript
       setInterimTranscript('');
-      
-      // Update state
       setIsRecording(false);
-      
       console.log('✅ Transcription stopped successfully');
     } catch (error) {
       console.error('Error stopping recording:', error);
@@ -402,58 +403,7 @@ const handleAudioChunk = async (audioBlob) => {
     }
   };
 
-  // Handle scroll to control auto-scroll
-  const handleScroll = () => {
-    if (transcriptContainerRef.current) {
-      const container = transcriptContainerRef.current;
-      const isAtBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 50;
-      setAutoScroll(isAtBottom);
-    }
-  };
-
-  // Manual scroll to bottom
-  const scrollToBottom = () => {
-    setAutoScroll(true);
-    transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  // Get status indicator for transcription
-  const getStatusIndicator = (transcription) => {
-    switch (transcription.processing_status) {
-      case 'live':
-        return (
-          <div className="flex items-center">
-            <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-2"></div>
-            <span className="text-xs text-blue-600">Live</span>
-          </div>
-        );
-      case 'processing':
-        return (
-          <div className="flex items-center">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full animate-spin mr-2"></div>
-            <span className="text-xs text-yellow-600">Verwerken...</span>
-          </div>
-        );
-      case 'verified':
-        return (
-          <div className="flex items-center">
-            <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-            <span className="text-xs text-green-600">Geverifieerd</span>
-          </div>
-        );
-      case 'error':
-        return (
-          <div className="flex items-center">
-            <div className="w-2 h-2 bg-red-500 rounded-full mr-2"></div>
-            <span className="text-xs text-red-600">Fout</span>
-          </div>
-        );
-      default:
-        return null;
-    }
-  };
-
-// Voice setup UI - MANUAL CONTROL VERSION
+  // Voice setup UI (same as before)
   if (voiceSetupPhase && !voiceSetupComplete) {
     const currentSpeakerData = participants[currentSetupSpeaker];
     const isLastSpeaker = currentSetupSpeaker >= participants.length - 1;
@@ -512,7 +462,6 @@ const handleAudioChunk = async (audioBlob) => {
                 </div>
               )}
 
-              {/* Navigation buttons - only show when not recording */}
               {!isRecordingVoice && (
                 <div className="flex justify-center space-x-4 mb-4">
                   <button
@@ -563,7 +512,6 @@ const handleAudioChunk = async (audioBlob) => {
             </div>
           )}
           
-          {/* Progress indicators */}
           <div className="flex justify-center space-x-2 mt-4">
             {participants.map((participant, index) => (
               <div
@@ -582,13 +530,13 @@ const handleAudioChunk = async (audioBlob) => {
     );
   }
 
-  // Main transcription UI
-return (
+  // MAIN UI: Side-by-side comparison
+  return (
     <div className="bg-white rounded-lg border">
-      {/* Compact Header */}
+      {/* Header */}
       <div className="flex justify-between items-center p-4 border-b">
         <div className="flex items-center space-x-3">
-          <h3 className="font-medium">🎤 Enhanced Live Transcriptie</h3>
+          <h3 className="font-medium">🎤 Enhanced Live Transcriptie - Side by Side</h3>
           <div className="flex items-center space-x-2 text-sm">
             <div className={`w-2 h-2 rounded-full ${
               isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
@@ -602,18 +550,8 @@ return (
         <div className="flex items-center space-x-2">
           {sessionStats && (
             <div className="text-xs text-gray-500">
-              L: {sessionStats.status_breakdown?.live || 0} | 
-              V: {sessionStats.status_breakdown?.verified || 0}
+              Live: {liveTranscriptions.length} | Whisper: {whisperTranscriptions.length}
             </div>
-          )}
-          
-          {!autoScroll && transcriptions.length > 0 && (
-            <button
-              onClick={scrollToBottom}
-              className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1 border border-blue-300 rounded"
-            >
-              ↓
-            </button>
           )}
         </div>
       </div>
@@ -632,7 +570,7 @@ return (
         </div>
       )}
 
-      {/* Compact Controls */}
+      {/* Controls */}
       <div className="p-3 bg-gray-50 border-b">
         {!sessionActive ? (
           <button
@@ -666,112 +604,145 @@ return (
         )}
       </div>
 
-      {/* Transcription Display - Compact */}
-      <div 
-        ref={transcriptContainerRef}
-        onScroll={handleScroll}
-        className="p-4 h-80 overflow-y-auto bg-white"
-        style={{ scrollBehavior: 'auto' }}
-      >
-        {transcriptions.length === 0 && !interimTranscript ? (
-          <div className="text-center py-8 text-gray-500">
-            <div className="text-3xl mb-2">🎤</div>
-            <p className="text-sm">
-              {!sessionActive 
-                ? 'Start Enhanced Transcriptie om te beginnen'
-                : !voiceSetupComplete
-                ? 'Voice setup aan de gang...'
-                : !isRecording
-                ? 'Klik Start om te beginnen met transcriberen'
-                : 'Spreek in de microfoon...'
-              }
-            </p>
+      {/* SIDE-BY-SIDE TRANSCRIPTION PANELS */}
+      <div className="grid grid-cols-2 gap-4 p-4">
+        
+        {/* LEFT PANEL: Live Web Speech Results */}
+        <div className="border rounded-lg">
+          <div className="bg-blue-50 px-3 py-2 border-b">
+            <h4 className="font-medium text-blue-800 text-sm flex items-center space-x-2">
+              <span>🎤</span>
+              <span>Web Speech API (Live)</span>
+              <span className="text-xs bg-blue-200 px-2 py-1 rounded">{liveTranscriptions.length}</span>
+            </h4>
           </div>
-        ) : (
-          <div className="space-y-3">
-            {transcriptions.map((transcription) => (
-              <div key={transcription.id} className="flex items-start space-x-2">
-                <div 
-                  className="w-3 h-3 rounded-full mt-1 flex-shrink-0"
-                  style={{ backgroundColor: transcription.speaker_color }}
-                  title={transcription.speaker_name}
-                ></div>
-                
-                <div className="flex-1 min-w-0">
-<div className="flex items-center space-x-2 mb-1">
-  <span className="font-medium text-sm text-gray-700 truncate">
-    {transcription.speaker_name}
-  </span>
-  <div className="flex items-center space-x-1">
-    {/* Show processing status indicators */}
-    {transcription.processing_status === 'live' && (
-      <div className="flex items-center">
-        <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-1"></div>
-        <span className="text-xs text-blue-600 font-medium">LIVE</span>
-      </div>
-    )}
-    {transcription.processing_status === 'verified' && (
-      <div className="flex items-center">
-        <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
-        <span className="text-xs text-green-600 font-medium">WHISPER</span>
-      </div>
-    )}
-    {transcription.processing_status === 'processing' && (
-      <div className="flex items-center">
-        <div className="w-2 h-2 bg-yellow-400 rounded-full animate-spin mr-1"></div>
-        <span className="text-xs text-yellow-600 font-medium">PROCESSING</span>
-      </div>
-    )}
-    {/* Debug info */}
-    <span className="text-xs text-gray-400">
-      [{transcription.processing_status || 'unknown'}]
-    </span>
-  </div>
-</div>
-
-                  
-                  <div className={`text-gray-900 leading-relaxed text-sm ${
-                    transcription.processing_status === 'verified' ? 'font-medium' : ''
-                  }`}>
-                    {transcription.text}
-                  </div>
-                  
-                  <div className="text-xs text-gray-400 mt-1">
-                    {new Date(transcription.timestamp).toLocaleTimeString('nl-NL', {
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })} • {Math.round((transcription.text_confidence || 0) * 100)}%
-                  </div>
-                </div>
+          
+          <div 
+            ref={liveContainerRef}
+            className="h-64 overflow-y-auto p-3"
+          >
+            {liveTranscriptions.length === 0 && !interimTranscript ? (
+              <div className="text-center py-8 text-gray-500">
+                <div className="text-2xl mb-2">🎤</div>
+                <p className="text-sm">Live Web Speech results verschijnen hier</p>
               </div>
-            ))}
-            
-            {/* Interim results - compact */}
-            {interimTranscript && (
-              <div className="flex items-start space-x-2 opacity-60">
-                <div className="w-3 h-3 rounded-full mt-1 flex-shrink-0 bg-gray-400"></div>
-                <div className="flex-1">
-                  <div className="text-gray-600 italic text-sm">
-                    {interimTranscript}
+            ) : (
+              <div className="space-y-2">
+                {liveTranscriptions.map((transcription) => (
+                  <div key={transcription.id} className="bg-blue-50 rounded p-2 border-l-4 border-blue-400">
+                    <div className="flex items-center space-x-2 mb-1">
+                      <div 
+                        className="w-2 h-2 rounded-full"
+                        style={{ backgroundColor: transcription.speaker_color }}
+                      ></div>
+                      <span className="font-medium text-xs text-blue-700">
+                        {transcription.speaker_name}
+                      </span>
+                      <span className="text-xs text-blue-600">
+                        {Math.round((transcription.original_confidence || 0) * 100)}%
+                      </span>
+                    </div>
+                    <div className="text-sm text-blue-900">{transcription.text}</div>
+                    <div className="text-xs text-blue-600 mt-1">
+                      {new Date(transcription.timestamp).toLocaleTimeString('nl-NL', {
+                        hour: '2-digit', minute: '2-digit', second: '2-digit'
+                      })}
+                    </div>
                   </div>
-                  <div className="text-xs text-gray-400">
-                    typen...
+                ))}
+                
+                {/* Interim results */}
+                {interimTranscript && (
+                  <div className="bg-blue-100 rounded p-2 border-l-4 border-blue-300 opacity-60">
+                    <div className="text-blue-600 italic text-sm">
+                      {interimTranscript}
+                    </div>
+                    <div className="text-xs text-blue-500">
+                      typing...
+                    </div>
                   </div>
-                </div>
+                )}
+                
+                <div ref={liveTranscriptEndRef} />
               </div>
             )}
-            
-            <div ref={transcriptEndRef} />
           </div>
-        )}
+        </div>
+
+        {/* RIGHT PANEL: Whisper Verified Results */}
+        <div className="border rounded-lg">
+          <div className="bg-green-50 px-3 py-2 border-b">
+            <h4 className="font-medium text-green-800 text-sm flex items-center space-x-2">
+              <span>🤖</span>
+              <span>Azure Whisper (Verified)</span>
+              <span className="text-xs bg-green-200 px-2 py-1 rounded">{whisperTranscriptions.length}</span>
+            </h4>
+          </div>
+          
+          <div 
+            ref={whisperContainerRef}
+            className="h-64 overflow-y-auto p-3"
+          >
+            {whisperTranscriptions.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <div className="text-2xl mb-2">🤖</div>
+                <p className="text-sm">Whisper verified results verschijnen hier</p>
+                <p className="text-xs mt-1">Na ~30 seconden audio chunks</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {whisperTranscriptions.map((transcription) => (
+                  <div key={transcription.id} className="bg-green-50 rounded p-2 border-l-4 border-green-400">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center space-x-2">
+                        <div 
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: transcription.speaker_color }}
+                        ></div>
+                        <span className="font-medium text-xs text-green-700">
+                          {transcription.speaker_name}
+                        </span>
+                        {transcription.improved && (
+                          <span className="text-xs bg-orange-200 text-orange-700 px-1 rounded">
+                            IMPROVED
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-xs text-green-600">
+                        {Math.round((transcription.text_confidence || 0) * 100)}%
+                      </span>
+                    </div>
+                    
+                    <div className="text-sm text-green-900 font-medium">{transcription.text}</div>
+                    
+                    {/* Show original if improved */}
+                    {transcription.improved && transcription.original_live_text && (
+                      <div className="text-xs text-gray-600 mt-1 p-1 bg-gray-100 rounded">
+                        <span className="font-medium">Was:</span> {transcription.original_live_text}
+                      </div>
+                    )}
+                    
+                    <div className="text-xs text-green-600 mt-1">
+                      {new Date(transcription.verified_at || transcription.timestamp).toLocaleTimeString('nl-NL', {
+                        hour: '2-digit', minute: '2-digit', second: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                ))}
+                
+                <div ref={whisperTranscriptEndRef} />
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Debug Info - Compact */}
+      {/* Debug Info */}
       {isRecording && (
         <div className="p-2 bg-gray-100 border-t text-xs text-gray-500 flex justify-between">
-          <span>🎤 Actief</span>
-          <span>📝 {transcriptions.length}</span>
-          <span>{sessionId ? `ID: ${sessionId.substring(0, 8)}...` : 'Geen sessie'}</span>
+          <span>🎤 Recording Active</span>
+          <span>Live: {liveTranscriptions.length} | Whisper: {whisperTranscriptions.length}</span>
+          <span>{sessionId ? `Session: ${sessionId.substring(0, 8)}...` : 'No Session'}</span>
         </div>
       )}
     </div>

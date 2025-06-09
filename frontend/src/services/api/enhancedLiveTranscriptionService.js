@@ -10,6 +10,7 @@ class EnhancedLiveTranscriptionService {
     this.audioStream = null;
     this.speechRecognition = null;
     this.chunkInterval = null;
+    this.audioChunks = []; // Store chunks temporarily
   }
 
   /**
@@ -52,17 +53,16 @@ class EnhancedLiveTranscriptionService {
     }
 
     try {
-
-    console.log('Setting up voice profile for:', speakerId);
-    console.log('Session ID:', this.currentSession.session_id);
-    console.log('Audio blob size:', audioBlob.size);
+      console.log('Setting up voice profile for:', speakerId);
+      console.log('Session ID:', this.currentSession.session_id);
+      console.log('Audio blob size:', audioBlob.size);
 
       const formData = new FormData();
       formData.append('session_id', this.currentSession.session_id);
       formData.append('speaker_id', speakerId);
       formData.append('voice_sample', audioBlob, `voice_${speakerId}.webm`);
 
-   console.log('FormData created, making API call...');
+      console.log('FormData created, making API call...');
 
       const response = await fetch(`${API_BASE_URL}/api/live-transcription/setup-voice`, {
         method: 'POST',
@@ -72,15 +72,13 @@ class EnhancedLiveTranscriptionService {
         body: formData,
       });
 
+      console.log('API response status:', response.status);
 
-    console.log('API response status:', response.status);
-
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('API error response:', errorText);
-      throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('API error response:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
 
       const result = await response.json();
       console.log('Voice profile setup result:', result);
@@ -131,6 +129,13 @@ class EnhancedLiveTranscriptionService {
     }
 
     try {
+      console.log('🔄 Starting Whisper verification for:', {
+        session_id: this.currentSession.session_id,
+        live_transcription_id: liveTranscriptionId,
+        audio_chunk_size: audioChunk.size,
+        audio_chunk_type: audioChunk.type
+      });
+
       const formData = new FormData();
       formData.append('session_id', this.currentSession.session_id);
       formData.append('live_transcription_id', liveTranscriptionId);
@@ -144,10 +149,19 @@ class EnhancedLiveTranscriptionService {
         body: formData,
       });
 
+      console.log('🔄 Whisper API response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ Whisper API error:', errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      }
+
       const result = await response.json();
+      console.log('✅ Whisper verification result:', result);
       return result;
     } catch (error) {
-      console.error('Failed to process Whisper verification:', error);
+      console.error('❌ Failed to process Whisper verification:', error);
       return { success: false, error: error.message };
     }
   }
@@ -188,7 +202,6 @@ class EnhancedLiveTranscriptionService {
     };
 
     this.speechRecognition.onend = () => {
-      // Auto-restart if still recording
       if (this.isRecording) {
         setTimeout(() => {
           try {
@@ -204,10 +217,12 @@ class EnhancedLiveTranscriptionService {
   }
 
   /**
-   * Start recording and transcription
+   * Start recording and transcription - IMPROVED CHUNKING
    */
   async startRecording() {
     try {
+      console.log('🎤 Starting recording with improved chunking...');
+      
       // Get microphone access
       this.audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -217,20 +232,24 @@ class EnhancedLiveTranscriptionService {
         }
       });
 
-      // Setup MediaRecorder for audio chunks
+      // Setup MediaRecorder for audio chunks - FIXED CHUNKING
       this.mediaRecorder = new MediaRecorder(this.audioStream, {
         mimeType: 'audio/webm;codecs=opus'
       });
 
       this.isRecording = true;
+      this.audioChunks = []; // Clear chunks
+
+      console.log('🎤 MediaRecorder created with:', this.mediaRecorder.mimeType);
 
       // Start speech recognition
       if (this.speechRecognition) {
         this.speechRecognition.start();
+        console.log('🎤 Speech recognition started');
       }
 
-      // Setup chunking for Whisper processing (every 30 seconds)
-      this.setupAudioChunking();
+      // Setup improved chunking for Whisper processing
+      this.setupImprovedAudioChunking();
 
       return { success: true };
     } catch (error) {
@@ -240,50 +259,98 @@ class EnhancedLiveTranscriptionService {
   }
 
   /**
-   * Setup audio chunking for Whisper processing
+   * Setup improved audio chunking for Whisper processing
    */
-  setupAudioChunking() {
-    const chunks = [];
+  setupImprovedAudioChunking() {
+    console.log('🔧 Setting up improved audio chunking...');
+    
+    // Clear any existing chunks
+    this.audioChunks = [];
 
+    // Handle data collection - COLLECT EVERYTHING
     this.mediaRecorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        chunks.push(event.data);
+      if (event.data && event.data.size > 0) {
+        console.log('📦 Audio chunk collected:', {
+          size: event.data.size,
+          type: event.data.type,
+          total_chunks: this.audioChunks.length + 1,
+          timestamp: new Date().toLocaleTimeString()
+        });
+        
+        this.audioChunks.push(event.data);
       }
     };
 
-    this.mediaRecorder.onstop = async () => {
-      if (chunks.length > 0) {
-        const audioBlob = new Blob(chunks, { type: 'audio/webm' });
+    // Handle stop event - PROCESS ACCUMULATED CHUNKS
+    this.mediaRecorder.onstop = () => {
+      console.log('⏹️ MediaRecorder stopped, processing chunks:', {
+        total_chunks: this.audioChunks.length,
+        total_size: this.audioChunks.reduce((sum, chunk) => sum + chunk.size, 0)
+      });
+      
+      if (this.audioChunks.length > 0) {
+        // Create combined blob from all chunks
+        const combinedBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
         
-        // Process with Whisper if we have a recent live transcription
-        this.onAudioChunkReady(audioBlob);
+        console.log('🎵 Created combined audio blob:', {
+          size: combinedBlob.size,
+          type: combinedBlob.type,
+          chunks_combined: this.audioChunks.length
+        });
         
-        chunks.length = 0; // Clear chunks
+        // Send to callback for processing
+        this.onAudioChunkReady(combinedBlob);
+        
+        // Clear chunks for next cycle
+        this.audioChunks = [];
       }
     };
 
-    // Record in 30-second chunks
+    // Start recording immediately with small intervals for data collection
+    this.mediaRecorder.start(1000); // Collect data every 1 second
+
+    // Setup chunking interval - CREATE WHISPER CHUNKS EVERY 30 SECONDS
     this.chunkInterval = setInterval(() => {
-      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording' && this.isRecording) {
+        console.log('⏰ 30-second interval reached, creating Whisper chunk...');
+        console.log('📊 Current chunks collected:', this.audioChunks.length);
+        
+        // Stop to trigger processing, then restart
         this.mediaRecorder.stop();
+        
+        // Restart after a short delay
         setTimeout(() => {
-          if (this.isRecording) {
-            this.mediaRecorder.start();
+          if (this.isRecording && this.audioStream) {
+            try {
+              this.mediaRecorder.start(1000);
+              console.log('🔄 MediaRecorder restarted for next chunk cycle');
+            } catch (error) {
+              console.error('❌ Failed to restart MediaRecorder:', error);
+            }
           }
         }, 100);
       }
-    }, 30000); // 30 seconds
+    }, 30000); // Every 30 seconds
 
-    this.mediaRecorder.start();
+    console.log('✅ Improved audio chunking setup complete');
   }
 
   /**
    * Handle audio chunk ready for Whisper processing
    */
   onAudioChunkReady(audioBlob) {
-    // This will be called by the component to process with Whisper
+    console.log('🎵 Audio chunk ready for processing:', {
+      size: audioBlob.size,
+      type: audioBlob.type,
+      size_mb: (audioBlob.size / 1024 / 1024).toFixed(2) + 'MB',
+      timestamp: new Date().toLocaleTimeString()
+    });
+    
+    // Call the callback if set
     if (this.onChunkCallback) {
       this.onChunkCallback(audioBlob);
+    } else {
+      console.warn('⚠️ No chunk callback set - audio chunk not processed');
     }
   }
 
@@ -291,6 +358,7 @@ class EnhancedLiveTranscriptionService {
    * Set callback for audio chunk processing
    */
   setChunkCallback(callback) {
+    console.log('🔗 Setting chunk callback');
     this.onChunkCallback = callback;
   }
 
@@ -298,23 +366,43 @@ class EnhancedLiveTranscriptionService {
    * Stop recording and transcription
    */
   stopRecording() {
+    console.log('🛑 Stopping recording...');
     this.isRecording = false;
 
     if (this.speechRecognition) {
-      this.speechRecognition.stop();
+      try {
+        this.speechRecognition.stop();
+        console.log('🛑 Speech recognition stopped');
+      } catch (error) {
+        console.warn('Warning stopping speech recognition:', error);
+      }
     }
 
     if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-      this.mediaRecorder.stop();
+      try {
+        this.mediaRecorder.stop();
+        console.log('🛑 MediaRecorder stopped');
+      } catch (error) {
+        console.warn('Warning stopping MediaRecorder:', error);
+      }
     }
 
     if (this.audioStream) {
-      this.audioStream.getTracks().forEach(track => track.stop());
+      this.audioStream.getTracks().forEach(track => {
+        track.stop();
+        console.log('🛑 Audio track stopped');
+      });
     }
 
     if (this.chunkInterval) {
       clearInterval(this.chunkInterval);
+      this.chunkInterval = null;
+      console.log('🛑 Chunk interval cleared');
     }
+
+    // Clear chunks
+    this.audioChunks = [];
+    console.log('🧹 Audio chunks cleared');
   }
 
   /**
