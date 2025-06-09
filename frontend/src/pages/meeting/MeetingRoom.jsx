@@ -1,11 +1,10 @@
-// MAYO DEEL 1 - HOOFD MEETINGROOM COMPONENT
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService.js';
 import transcriptionService from '../../services/api/transcriptionService.js';
-import { MeetingRoomTabs } from './components/MeetingRoomTabs.jsx';
+import EnhancedLiveTranscription from '../../components/recording/EnhancedLiveTranscription.jsx';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
-import { getSpeakerColor, formatSpeakingTime } from './utils/meetingUtils.js';
+import { getSpeakerColor, formatSpeakingTime, formatTimestamp } from './utils/meetingUtils.js';
 
 const MeetingRoom = () => {
   const { id } = useParams();
@@ -18,21 +17,30 @@ const MeetingRoom = () => {
 
   // Transcription state
   const [transcriptions, setTranscriptions] = useState([]);
+  const [liveTranscriptions, setLiveTranscriptions] = useState([]);
 
-  // Speaker detection state
+  // Speaker state
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
   const [availableSpeakers, setAvailableSpeakers] = useState([]);
   const [speakerStats, setSpeakerStats] = useState({});
 
-  // UI state
-  const [showAudioUploader, setShowAudioUploader] = useState(false);
-  const [activeTab, setActiveTab] = useState('transcription');
+  // UI state - collapsible sections
+  const [collapsedSections, setCollapsedSections] = useState({
+    participants: false,
+    agenda: true, // Start collapsed if agenda is long
+    controls: false,
+    stats: true
+  });
+
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [sessionStats, setSessionStats] = useState(null);
 
   // Agenda tracking
   const [currentAgendaIndex, setCurrentAgendaIndex] = useState(0);
   const [agendaStartTimes, setAgendaStartTimes] = useState({});
 
-  // Initialize speakers from meeting participants
+  // Initialize speakers
   useEffect(() => {
     if (meeting?.participants?.length > 0) {
       const speakers = meeting.participants.map((participant, index) => ({
@@ -41,8 +49,6 @@ const MeetingRoom = () => {
         displayName: participant.name,
         role: participant.role,
         color: getSpeakerColor(index + 1),
-        totalSpeakingTime: 0,
-        segmentCount: 0,
         isActive: false,
         isParticipant: true
       }));
@@ -50,11 +56,9 @@ const MeetingRoom = () => {
       speakers.push({
         id: 'unknown_speaker',
         name: 'Onbekende Spreker',
-        displayName: 'Onbekende Spreker', 
+        displayName: 'Onbekende Spreker',
         role: 'unknown',
         color: '#6B7280',
-        totalSpeakingTime: 0,
-        segmentCount: 0,
         isActive: false,
         isParticipant: false
       });
@@ -73,7 +77,7 @@ const MeetingRoom = () => {
     }
   }, [meeting]);
 
-  // Load meeting data
+  // Load meeting
   useEffect(() => {
     loadMeeting();
   }, [id]);
@@ -121,17 +125,7 @@ const MeetingRoom = () => {
     }
   };
 
-  // Meeting control functions
-  const finishMeeting = async () => {
-    try {
-      await meetingService.stopMeeting(id);
-      navigate('/dashboard');
-    } catch (error) {
-      setError('Fout bij afsluiten gesprek');
-    }
-  };
-
-  // Get handlers from custom hook
+  // Get handlers
   const handlers = useMeetingHandlers({
     id,
     transcriptions,
@@ -149,13 +143,51 @@ const MeetingRoom = () => {
     meeting
   });
 
-  // Loading and error states
+  // Enhanced transcription handlers
+  const handleTranscriptionUpdate = (transcriptionData) => {
+    // Add to live transcriptions for immediate display
+    setLiveTranscriptions(prev => [...prev.slice(-10), transcriptionData]); // Keep last 10
+    handlers.handleTranscriptionReceived(transcriptionData);
+  };
+
+  const handleSessionStatsUpdate = (stats) => {
+    setSessionStats(stats);
+    handlers.handleSessionStatsUpdate(stats);
+  };
+
+  // Toggle section collapse
+  const toggleSection = (section) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
+  // Quick speaker change
+  const quickSpeakerChange = (speaker) => {
+    setCurrentSpeaker(speaker);
+    setAvailableSpeakers(prev => prev.map(s => ({
+      ...s,
+      isActive: s.id === speaker.id
+    })));
+  };
+
+  // Meeting controls
+  const finishMeeting = async () => {
+    try {
+      await meetingService.stopMeeting(id);
+      navigate('/dashboard');
+    } catch (error) {
+      setError('Fout bij afsluiten gesprek');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-medium">Gesprek laden...</p>
+          <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
+          <p className="mt-2 text-gray-600">Laden...</p>
         </div>
       </div>
     );
@@ -163,170 +195,271 @@ const MeetingRoom = () => {
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <div className="text-6xl mb-4">❌</div>
-        <h2 className="text-xl font-semibold text-gray-800 mb-2">Er is een fout opgetreden</h2>
-        <p className="text-red-600 mb-6">{error}</p>
-        <button onClick={() => navigate('/dashboard')} className="btn-primary">
-          Terug naar Dashboard
+      <div className="text-center py-8">
+        <div className="text-4xl mb-2">❌</div>
+        <h2 className="text-lg font-semibold text-gray-800 mb-2">Fout</h2>
+        <p className="text-red-600 mb-4">{error}</p>
+        <button onClick={() => navigate('/dashboard')} className="btn-primary text-sm px-4 py-2">
+          Terug
         </button>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* MAYO DEEL 1 - MEETING HEADER */}
-      <div className="modern-card p-6">
-        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between space-y-4 lg:space-y-0">
-          {/* Meeting Info */}
+    <div className="max-w-7xl mx-auto space-y-4">
+      {/* Compact Header */}
+      <div className="modern-card p-4">
+        <div className="flex items-center justify-between">
           <div className="flex-1">
-            <div className="flex items-center space-x-3 mb-2">
-              <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-sm font-medium text-green-600">LIVE MEETING</span>
+            <div className="flex items-center space-x-2 mb-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <h1 className="text-xl font-bold text-gray-900">{meeting?.title}</h1>
             </div>
-            
-            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 mb-2">
-              {meeting?.title}
-            </h1>
-            
-            <p className="text-gray-600 mb-3">{meeting?.description}</p>
-            
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <div className="flex items-center space-x-1">
-                <span>👥</span>
-                <span className="text-gray-600">{meeting?.participants?.length || 0} deelnemers</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span>📋</span>
-                <span className="text-gray-600">{meeting?.agenda_items?.length || 0} agenda punten</span>
-              </div>
-              <div className="flex items-center space-x-1">
-                <span>🎤</span>
-                <span className="text-blue-600 font-medium">Enhanced Live Transcriptie</span>
-              </div>
+            <div className="flex items-center space-x-4 text-sm text-gray-600">
+              <span>👥 {meeting?.participants?.length || 0}</span>
+              <span>📋 {currentAgendaIndex + 1}/{meeting?.agenda_items?.length || 0}</span>
               {currentSpeaker && (
-                <div className="flex items-center space-x-1">
-                  <div 
-                    className="w-3 h-3 rounded-full"
-                    style={{ backgroundColor: currentSpeaker.color }}
-                  ></div>
-                  <span className="text-purple-600 font-medium">
-                    Actieve spreker: {currentSpeaker.displayName}
-                  </span>
-                </div>
+                <span className="flex items-center space-x-1">
+                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: currentSpeaker.color }}></div>
+                  <span>{currentSpeaker.displayName}</span>
+                </span>
               )}
             </div>
           </div>
+          <div className="flex space-x-2">
+            <button onClick={() => navigate('/dashboard')} className="btn-neutral text-sm px-3 py-1">
+              🏠
+            </button>
+            <button onClick={finishMeeting} className="btn-danger text-sm px-3 py-1">
+              ⏹️ Stop
+            </button>
+          </div>
+        </div>
+      </div>
 
-          {/* Action Buttons */}
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center space-y-2 lg:space-y-0 lg:space-x-3">
-            <div className="flex items-center space-x-2 text-sm">
-              <div className="flex items-center space-x-1">
-                <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
-                <span className="text-blue-600">Live</span>
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        {/* Main Content - Enhanced Transcription */}
+        <div className="lg:col-span-3 space-y-4">
+          {/* Live Transcription Component */}
+          <div className="modern-card">
+            <EnhancedLiveTranscription
+              meetingId={id}
+              participants={meeting?.participants || []}
+              onTranscriptionUpdate={handleTranscriptionUpdate}
+              onSessionStatsUpdate={handleSessionStatsUpdate}
+            />
+          </div>
+
+          {/* Session Status Bar */}
+          {sessionStats && (
+            <div className="modern-card p-3">
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center space-x-4">
+                  <span className="flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+                    <span>Live: {sessionStats.status_breakdown?.live || 0}</span>
+                  </span>
+                  <span className="flex items-center space-x-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span>Verified: {sessionStats.status_breakdown?.verified || 0}</span>
+                  </span>
+                  <span className="text-gray-500">
+                    {Math.round((sessionStats.status_breakdown?.verified || 0) / 
+                    Math.max(1, sessionStats.total_transcriptions || 1) * 100)}% verified
+                  </span>
+                </div>
+                <div className="text-gray-500">
+                  {sessionStats.duration_minutes || 0}m actief
+                </div>
               </div>
-              <div className="flex items-center space-x-1">
-                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                <span className="text-green-600">Geverifieerd</span>
+            </div>
+          )}
+        </div>
+
+        {/* Sidebar - Compact Controls */}
+        <div className="lg:col-span-1 space-y-4">
+          {/* Quick Speaker Selector */}
+          <div className="modern-card">
+            <div 
+              className="flex items-center justify-between p-3 cursor-pointer"
+              onClick={() => toggleSection('participants')}
+            >
+              <h3 className="font-medium text-gray-800 flex items-center space-x-2">
+                <span>👤</span>
+                <span>Sprekers</span>
+              </h3>
+              <span className="text-gray-400">
+                {collapsedSections.participants ? '▼' : '▲'}
+              </span>
+            </div>
+            
+            {!collapsedSections.participants && (
+              <div className="px-3 pb-3 space-y-2">
+                {availableSpeakers.slice(0, 4).map((speaker) => (
+                  <button
+                    key={speaker.id}
+                    onClick={() => quickSpeakerChange(speaker)}
+                    className={`w-full text-left p-2 rounded-lg text-sm transition-all ${
+                      currentSpeaker?.id === speaker.id
+                        ? 'bg-blue-50 border-2 border-blue-200'
+                        : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <div
+                        className="w-3 h-3 rounded-full"
+                        style={{ backgroundColor: speaker.color }}
+                      ></div>
+                      <span className="font-medium truncate">{speaker.displayName}</span>
+                      {currentSpeaker?.id === speaker.id && (
+                        <div className="w-1 h-1 bg-green-500 rounded-full animate-pulse ml-auto"></div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+                
+                {availableSpeakers.length > 4 && (
+                  <div className="text-xs text-gray-500 text-center pt-1">
+                    +{availableSpeakers.length - 4} meer...
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Compact Agenda */}
+          <div className="modern-card">
+            <div 
+              className="flex items-center justify-between p-3 cursor-pointer"
+              onClick={() => toggleSection('agenda')}
+            >
+              <h3 className="font-medium text-gray-800 flex items-center space-x-2">
+                <span>📋</span>
+                <span>Agenda</span>
+              </h3>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs text-gray-500">
+                  {currentAgendaIndex + 1}/{meeting?.agenda_items?.length || 0}
+                </span>
+                <span className="text-gray-400">
+                  {collapsedSections.agenda ? '▼' : '▲'}
+                </span>
               </div>
             </div>
             
-            <div className="flex space-x-2">
-              <button 
-                onClick={() => navigate('/dashboard')} 
-                className="btn-neutral px-4 py-2"
-              >
-                🏠 Dashboard
-              </button>
-              <button 
-                onClick={finishMeeting}
-                className="btn-danger px-4 py-2"
-              >
-                ⏹️ Beëindigen
-              </button>
-            </div>
-          </div>
-        </div>
+            {!collapsedSections.agenda && meeting?.agenda_items && (
+              <div className="px-3 pb-3">
+                {/* Current Item */}
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 mb-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-medium text-blue-600">HUIDIGE</span>
+                    <span className="text-xs text-blue-500">
+                      {agendaStartTimes[currentAgendaIndex] && 
+                        formatTimestamp(agendaStartTimes[currentAgendaIndex])}
+                    </span>
+                  </div>
+                  <h4 className="text-sm font-medium text-gray-800">
+                    {meeting.agenda_items[currentAgendaIndex]?.title}
+                  </h4>
+                </div>
 
-        {/* Tab Navigation */}
-        <div className="border-t pt-4 mt-6">
-          <div className="flex space-x-1">
-            {[
-              { id: 'transcription', label: 'Live Transcriptie', icon: '🎤' },
-              { id: 'participants', label: 'Deelnemers', icon: '👥' },
-              { id: 'agenda', label: 'Agenda', icon: '📋' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-lg font-medium transition-all duration-300 flex items-center space-x-2 ${
-                  activeTab === tab.id
-                    ? 'btn-primary text-white'
-                    : 'btn-neutral text-gray-700'
-                }`}
-              >
-                <span>{tab.icon}</span>
-                <span className="hidden md:inline">{tab.label}</span>
-              </button>
-            ))}
+                {/* Navigation */}
+                <div className="flex space-x-2 mb-3">
+                  <button
+                    onClick={handlers.handlePreviousAgendaItem}
+                    disabled={currentAgendaIndex <= 0}
+                    className="btn-neutral text-xs px-2 py-1 flex-1 disabled:opacity-50"
+                  >
+                    ← Vorige
+                  </button>
+                  <button
+                    onClick={handlers.handleNextAgendaItem}
+                    disabled={currentAgendaIndex >= (meeting.agenda_items.length - 1)}
+                    className="btn-primary text-xs px-2 py-1 flex-1 disabled:opacity-50"
+                  >
+                    Volgende →
+                  </button>
+                </div>
+
+                {/* Progress */}
+                <div className="bg-gray-200 rounded-full h-1 mb-2">
+                  <div 
+                    className="bg-blue-500 h-1 rounded-full transition-all duration-300"
+                    style={{ 
+                      width: `${((currentAgendaIndex + 1) / meeting.agenda_items.length) * 100}%` 
+                    }}
+                  ></div>
+                </div>
+
+                {/* All Items (compact) */}
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {meeting.agenda_items.map((item, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handlers.handleGoToAgendaItem(index)}
+                      className={`w-full text-left p-1 rounded text-xs transition-all ${
+                        index === currentAgendaIndex
+                          ? 'bg-blue-100 text-blue-800'
+                          : index < currentAgendaIndex
+                          ? 'bg-green-100 text-green-800'
+                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className="font-medium">{index + 1}.</span> {item.title}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Speaker Stats */}
+          <div className="modern-card">
+            <div 
+              className="flex items-center justify-between p-3 cursor-pointer"
+              onClick={() => toggleSection('stats')}
+            >
+              <h3 className="font-medium text-gray-800 flex items-center space-x-2">
+                <span>📊</span>
+                <span>Stats</span>
+              </h3>
+              <span className="text-gray-400">
+                {collapsedSections.stats ? '▼' : '▲'}
+              </span>
+            </div>
+            
+            {!collapsedSections.stats && (
+              <div className="px-3 pb-3 space-y-2">
+                {availableSpeakers
+                  .filter(speaker => speakerStats[speaker.id]?.segments > 0)
+                  .sort((a, b) => (speakerStats[b.id]?.totalTime || 0) - (speakerStats[a.id]?.totalTime || 0))
+                  .slice(0, 3)
+                  .map((speaker) => (
+                    <div key={speaker.id} className="flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-2">
+                        <div
+                          className="w-2 h-2 rounded-full"
+                          style={{ backgroundColor: speaker.color }}
+                        ></div>
+                        <span className="truncate">{speaker.displayName}</span>
+                      </div>
+                      <span className="text-gray-500">
+                        {formatSpeakingTime(speakerStats[speaker.id]?.totalTime || 0)}
+                      </span>
+                    </div>
+                  ))}
+                
+                {Object.values(speakerStats).every(stat => stat.segments === 0) && (
+                  <div className="text-xs text-gray-500 text-center py-2">
+                    Nog geen statistieken
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
-
-      {/* Session Overview Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="modern-card p-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-              <span className="text-blue-600 text-lg">🎤</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-800">Enhanced Live</h3>
-              <p className="text-sm text-blue-600">Voice recognition actief</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="modern-card p-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-              <span className="text-green-600 text-lg">✅</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-800">Azure Whisper</h3>
-              <p className="text-sm text-green-600">30s verificatie chunks</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="modern-card p-4">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-              <span className="text-purple-600 text-lg">🔍</span>
-            </div>
-            <div>
-              <h3 className="font-semibold text-gray-800">Speaker Detection</h3>
-              <p className="text-sm text-purple-600">Voice fingerprinting</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* MAYO DEEL 1 EINDE - TAB CONTENT WORDT GELADEN UIT ANDER BESTAND */}
-      <MeetingRoomTabs
-        activeTab={activeTab}
-        meetingId={id}
-        meeting={meeting}
-        currentSpeaker={currentSpeaker}
-        availableSpeakers={availableSpeakers}
-        speakerStats={speakerStats}
-        showAudioUploader={showAudioUploader}
-        setShowAudioUploader={setShowAudioUploader}
-        currentAgendaIndex={currentAgendaIndex}
-        agendaStartTimes={agendaStartTimes}
-        handlers={handlers}
-      />
     </div>
   );
 };

@@ -531,57 +531,61 @@ const EnhancedLiveTranscription = ({
   }
 
   // Main transcription UI
-  return (
-    <div className="bg-white rounded-lg border p-6">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-medium">Enhanced Live Transcriptie</h3>
-        
-        <div className="flex items-center space-x-4">
-          {sessionStats && (
-            <div className="text-sm text-gray-600">
-              Live: {sessionStats.status_breakdown?.live || 0} | 
-              Geverifieerd: {sessionStats.status_breakdown?.verified || 0}
-            </div>
-          )}
-          
-          <div className="flex items-center space-x-2">
-            <div className={`w-3 h-3 rounded-full ${
+return (
+    <div className="bg-white rounded-lg border">
+      {/* Compact Header */}
+      <div className="flex justify-between items-center p-4 border-b">
+        <div className="flex items-center space-x-3">
+          <h3 className="font-medium">🎤 Live Transcriptie</h3>
+          <div className="flex items-center space-x-2 text-sm">
+            <div className={`w-2 h-2 rounded-full ${
               isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
             }`}></div>
-            <span className="text-sm text-gray-600">
-              {isRecording ? 'Live transcriptie actief' : 'Gestopt'}
+            <span className="text-gray-600">
+              {isRecording ? 'Live' : 'Gestopt'}
             </span>
           </div>
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          {sessionStats && (
+            <div className="text-xs text-gray-500">
+              L: {sessionStats.status_breakdown?.live || 0} | 
+              V: {sessionStats.status_breakdown?.verified || 0}
+            </div>
+          )}
           
           {!autoScroll && transcriptions.length > 0 && (
             <button
               onClick={scrollToBottom}
               className="text-xs text-blue-600 hover:text-blue-700 px-2 py-1 border border-blue-300 rounded"
             >
-              ↓ Naar beneden
+              ↓
             </button>
           )}
         </div>
       </div>
 
       {recordingError && (
-        <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded mb-4">
-          {recordingError}
-          <button 
-            onClick={() => setRecordingError('')} 
-            className="ml-2 text-xs underline"
-          >
-            Verbergen
-          </button>
+        <div className="bg-red-50 border-l-4 border-red-400 text-red-700 p-3 text-sm">
+          <div className="flex justify-between items-center">
+            <span>{recordingError}</span>
+            <button 
+              onClick={() => setRecordingError('')} 
+              className="text-red-500 hover:text-red-700"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Controls */}
-      <div className="mb-4">
+      {/* Compact Controls */}
+      <div className="p-3 bg-gray-50 border-b">
         {!sessionActive ? (
           <button
             onClick={startEnhancedSession}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium"
+            className="btn-primary w-full text-sm py-2"
             disabled={!speechSupported}
           >
             🚀 Start Enhanced Transcriptie
@@ -589,7 +593,7 @@ const EnhancedLiveTranscription = ({
         ) : !isRecording && voiceSetupComplete ? (
           <button
             onClick={startLiveTranscription}
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium"
+            className="btn-success w-full text-sm py-2"
             disabled={!speechSupported}
           >
             🎤 Start Live Transcriptie
@@ -597,105 +601,103 @@ const EnhancedLiveTranscription = ({
         ) : isRecording ? (
           <button
             onClick={stopTranscription}
-            className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-medium"
+            className="btn-danger w-full text-sm py-2"
           >
             ⏹️ Stop Transcriptie
           </button>
-        ) : (
-          <div className="text-gray-500">
-            Voice setup voltooid. Klik "Start Live Transcriptie" om te beginnen.
-          </div>
-        )}
+        ) : null}
         
         {!speechSupported && (
-          <p className="text-sm text-red-600 mt-2">
-            Speech recognition wordt niet ondersteund in deze browser. Gebruik Chrome of Edge.
+          <p className="text-xs text-red-600 mt-2 text-center">
+            Speech recognition niet ondersteund. Gebruik Chrome of Edge.
           </p>
         )}
       </div>
 
-      {/* Transcription Display */}
+      {/* Transcription Display - Compact */}
       <div 
         ref={transcriptContainerRef}
         onScroll={handleScroll}
-        className="bg-gray-50 rounded-lg p-4 h-96 overflow-y-auto"
+        className="p-4 h-80 overflow-y-auto bg-white"
         style={{ scrollBehavior: 'auto' }}
       >
-        {/* Auto-scroll toggle */}
-        {transcriptions.length > 0 && (
-          <div className="flex justify-between items-center mb-2 pb-2 border-b border-gray-200">
-            <span className="text-xs text-gray-500">
-              {transcriptions.length} transcripties
-            </span>
-            <label className="flex items-center text-xs text-gray-600">
-              <input
-                type="checkbox"
-                checked={autoScroll}
-                onChange={(e) => setAutoScroll(e.target.checked)}
-                className="mr-1"
-              />
-              Auto-scroll
-            </label>
-          </div>
-        )}
-
         {transcriptions.length === 0 && !interimTranscript ? (
-          <p className="text-gray-500 text-center py-8">
-            {!sessionActive 
-              ? 'Klik "Start Enhanced Transcriptie" om te beginnen...'
-              : !voiceSetupComplete
-              ? 'Voice setup aan de gang...'
-              : !isRecording
-              ? 'Klik "Start Live Transcriptie" om te beginnen met spreken...'
-              : 'Spreek in de microfoon om live transcriptie te zien...'
-            }
-          </p>
+          <div className="text-center py-8 text-gray-500">
+            <div className="text-3xl mb-2">🎤</div>
+            <p className="text-sm">
+              {!sessionActive 
+                ? 'Start Enhanced Transcriptie om te beginnen'
+                : !voiceSetupComplete
+                ? 'Voice setup aan de gang...'
+                : !isRecording
+                ? 'Klik Start om te beginnen met transcriberen'
+                : 'Spreek in de microfoon...'
+              }
+            </p>
+          </div>
         ) : (
           <div className="space-y-3">
             {transcriptions.map((transcription) => (
-              <div key={transcription.id} className="flex items-start space-x-3">
+              <div key={transcription.id} className="flex items-start space-x-2">
                 <div 
-                  className="w-4 h-4 rounded-full mt-1 flex-shrink-0"
+                  className="w-3 h-3 rounded-full mt-1 flex-shrink-0"
                   style={{ backgroundColor: transcription.speaker_color }}
                   title={transcription.speaker_name}
                 ></div>
                 
-                <div className="flex-1">
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2 mb-1">
-                    <span className="font-medium text-sm text-gray-700">
+                    <span className="font-medium text-sm text-gray-700 truncate">
                       {transcription.speaker_name}
                     </span>
-                    {getStatusIndicator(transcription)}
+                    <div className="flex items-center space-x-1">
+                      {transcription.processing_status === 'live' && (
+                        <div className="flex items-center">
+                          <div className="w-1 h-1 bg-blue-400 rounded-full animate-pulse mr-1"></div>
+                          <span className="text-xs text-blue-600">Live</span>
+                        </div>
+                      )}
+                      {transcription.processing_status === 'verified' && (
+                        <div className="flex items-center">
+                          <div className="w-1 h-1 bg-green-500 rounded-full mr-1"></div>
+                          <span className="text-xs text-green-600">✓</span>
+                        </div>
+                      )}
+                      {transcription.processing_status === 'processing' && (
+                        <div className="flex items-center">
+                          <div className="w-1 h-1 bg-yellow-400 rounded-full animate-spin mr-1"></div>
+                          <span className="text-xs text-yellow-600">...</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
                   
-                  <div className={`text-gray-900 leading-relaxed ${
+                  <div className={`text-gray-900 leading-relaxed text-sm ${
                     transcription.processing_status === 'verified' ? 'font-medium' : ''
                   }`}>
                     {transcription.text}
                   </div>
                   
                   <div className="text-xs text-gray-400 mt-1">
-                    {new Date(transcription.timestamp).toLocaleTimeString('nl-NL')} •{' '}
-                    {Math.round((transcription.text_confidence || 0) * 100)}% •{' '}
-                    {transcription.speaker_confidence && 
-                      `Speaker: ${Math.round(transcription.speaker_confidence * 100)}%`
-                    }
+                    {new Date(transcription.timestamp).toLocaleTimeString('nl-NL', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })} • {Math.round((transcription.text_confidence || 0) * 100)}%
                   </div>
                 </div>
               </div>
             ))}
             
-            {/* Interim results */}
+            {/* Interim results - compact */}
             {interimTranscript && (
-              <div className="flex items-start space-x-3 opacity-60">
-                <div className="w-4 h-4 rounded-full mt-1 flex-shrink-0 bg-gray-400"></div>
-                
+              <div className="flex items-start space-x-2 opacity-60">
+                <div className="w-3 h-3 rounded-full mt-1 flex-shrink-0 bg-gray-400"></div>
                 <div className="flex-1">
-                  <div className="text-gray-600 italic leading-relaxed">
+                  <div className="text-gray-600 italic text-sm">
                     {interimTranscript}
                   </div>
-                  <div className="text-xs text-gray-400 mt-1">
-                    aan het typen...
+                  <div className="text-xs text-gray-400">
+                    typen...
                   </div>
                 </div>
               </div>
@@ -706,13 +708,12 @@ const EnhancedLiveTranscription = ({
         )}
       </div>
 
-      {/* Debug Info */}
+      {/* Debug Info - Compact */}
       {isRecording && (
-        <div className="mt-4 text-xs text-gray-500 bg-gray-100 p-2 rounded">
-          🎤 Microfoon actief | 
-          📝 Transcripties: {transcriptions.length} | 
-          🔄 Interim: {interimTranscript ? 'Ja' : 'Nee'} |
-          ⏱️ Session: {sessionId ? sessionId.substring(0, 10) + '...' : 'Geen'}
+        <div className="p-2 bg-gray-100 border-t text-xs text-gray-500 flex justify-between">
+          <span>🎤 Actief</span>
+          <span>📝 {transcriptions.length}</span>
+          <span>{sessionId ? `ID: ${sessionId.substring(0, 8)}...` : 'Geen sessie'}</span>
         </div>
       )}
     </div>
