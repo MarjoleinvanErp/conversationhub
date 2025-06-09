@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService.js';
 import transcriptionService from '../../services/api/transcriptionService.js';
 import EnhancedLiveTranscription from '../../components/recording/EnhancedLiveTranscription.jsx';
+import BasicAudioUploader from '../../components/recording/AudioRecorder/BasicAudioUploader.jsx'; // ← DEZE TOEVOEGEN
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
 import { getSpeakerColor, formatSpeakingTime, formatTimestamp } from './utils/meetingUtils.js';
-import BasicAudioUploader from '../../components/recording/AudioRecorder/BasicAudioUploader.jsx';
 
 const MeetingRoom = () => {
   const { id } = useParams();
@@ -143,6 +143,120 @@ const MeetingRoom = () => {
     setAgendaStartTimes,
     meeting
   });
+
+
+{/* Main Content - Enhanced Transcription */}
+<div className="lg:col-span-3 space-y-4">
+  {/* Enhanced Live Transcription Component */}
+  <div className="modern-card">
+    <EnhancedLiveTranscription
+      meetingId={id}
+      participants={meeting?.participants || []}
+      onTranscriptionUpdate={handleTranscriptionUpdate}
+      onSessionStatsUpdate={handleSessionStatsUpdate}
+    />
+  </div>
+
+  {/* Alternative: Basic Audio Upload (Always Available) */}
+  <div className="modern-card p-6">
+    <div className="flex justify-between items-center mb-4">
+      <h3 className="text-lg font-medium">🎤 Audio Upload & Transcriptie</h3>
+      <span className="text-sm text-gray-500">Stap-voor-stap opname</span>
+    </div>
+    
+    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+      <p className="text-sm text-blue-700">
+        💡 <strong>Tip:</strong> Gebruik Enhanced Live Transcriptie hierboven voor real-time spraak-naar-tekst, 
+        of upload hieronder audio bestanden die je apart hebt opgenomen.
+      </p>
+    </div>
+
+    <BasicAudioUploader
+      onTranscriptionReceived={handleTranscriptionUpdate}
+      meetingId={id}
+      disabled={false}
+    />
+  </div>
+
+  {/* Session Status Bar */}
+  {sessionStats && (
+    <div className="modern-card p-3">
+      <div className="flex items-center justify-between text-sm">
+        <div className="flex items-center space-x-4">
+          <span className="flex items-center space-x-1">
+            <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+            <span>Live: {sessionStats.status_breakdown?.live || 0}</span>
+          </span>
+          <span className="flex items-center space-x-1">
+            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            <span>Verified: {sessionStats.status_breakdown?.verified || 0}</span>
+          </span>
+          <span className="text-gray-500">
+            {Math.round((sessionStats.status_breakdown?.verified || 0) / 
+            Math.max(1, sessionStats.total_transcriptions || 1) * 100)}% verified
+          </span>
+        </div>
+        <div className="text-gray-500">
+          {sessionStats.duration_minutes || 0}m actief
+        </div>
+      </div>
+    </div>
+  )}
+
+  {/* Transcription History Display */}
+  <div className="modern-card p-6">
+    <div className="flex justify-between items-center mb-4">
+      <h3 className="text-lg font-medium">📝 Transcriptie Geschiedenis</h3>
+      <span className="text-sm text-gray-500">
+        {transcriptions.length} opgeslagen transcripties
+      </span>
+    </div>
+    
+    {transcriptions.length === 0 ? (
+      <div className="text-center py-8 text-gray-500">
+        <div className="text-4xl mb-2">🎤</div>
+        <p>Nog geen transcripties opgenomen</p>
+        <p className="text-sm mt-1">Start Enhanced Live Transcriptie of upload audio bestanden hierboven</p>
+      </div>
+    ) : (
+      <div className="space-y-3 max-h-64 overflow-y-auto">
+        {transcriptions
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          .map((transcription) => (
+            <div key={transcription.id} className="bg-gray-50 rounded-lg p-3 border-l-4 border-blue-500">
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center space-x-2 mb-1">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{ backgroundColor: transcription.speakerColor }}
+                    ></div>
+                    <span className="font-medium text-sm text-gray-700">
+                      {transcription.speaker}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {new Date(transcription.timestamp).toLocaleTimeString('nl-NL')}
+                    </span>
+                  </div>
+                  <p className="text-gray-900 text-sm leading-relaxed">
+                    {transcription.text}
+                  </p>
+                </div>
+                <div className="ml-3 flex flex-col items-end text-xs text-gray-500">
+                  <span>
+                    {Math.round((transcription.confidence || 0) * 100)}% confident
+                  </span>
+                  {transcription.saved && (
+                    <span className="text-green-600 mt-1">✓ Opgeslagen</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+      </div>
+    )}
+  </div>
+</div>
 
   // Enhanced transcription handlers
   const handleTranscriptionUpdate = (transcriptionData) => {

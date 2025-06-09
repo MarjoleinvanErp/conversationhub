@@ -30,7 +30,7 @@ class AudioController extends Controller
         try {
             // Validate upload
             $validator = Validator::make($request->all(), [
-                'audio' => 'required|file|mimes:wav,mp3,webm,m4a,ogg,flac|max:25600',
+                'audio' => 'required|file|max:25600',
                 'meeting_id' => 'nullable|integer|exists:meetings,id',
                 'use_chunking' => 'nullable|boolean', // New option
             ]);

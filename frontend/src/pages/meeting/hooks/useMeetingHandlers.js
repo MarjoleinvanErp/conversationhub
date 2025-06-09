@@ -59,38 +59,43 @@ export const useMeetingHandlers = ({
     saveTranscriptionToDatabase(newTranscription);
   }, [currentSpeaker, setTranscriptions, setSpeakerStats]);
 
-  // Save transcription to database
-  const saveTranscriptionToDatabase = useCallback(async (transcription) => {
-    try {
-      const dbData = {
-        meeting_id: parseInt(id),
-        speaker_name: transcription.speaker,
-        speaker_id: transcription.speakerId,
-        speaker_color: transcription.speakerColor,
-        text: transcription.text,
-        confidence: transcription.confidence,
-        source: transcription.source,
-        is_final: transcription.isFinal,
-        spoken_at: transcription.timestamp.toISOString(),
-      };
+// Save transcription to database
+const saveTranscriptionToDatabase = useCallback(async (transcription) => {
+  try {
+    console.log('💾 Saving transcription to database:', transcription);
 
-      const result = await transcriptionService.saveTranscription(dbData);
-      
-      if (result.success) {
-        // Update local transcription with database ID
-        setTranscriptions(prev => prev.map(t => 
-          t.id === transcription.id 
-            ? { ...t, dbId: result.data.id, saved: true }
-            : t
-        ));
-        console.log('✅ Transcription saved to database:', result.data.id);
-      } else {
-        console.error('Failed to save transcription:', result.message);
-      }
-    } catch (error) {
-      console.error('Error saving transcription:', error);
+    const dbData = {
+      meeting_id: parseInt(id),
+      speaker_name: transcription.speaker || 'Audio Upload',
+      speaker_id: transcription.speakerId || 'audio_upload',
+      speaker_color: transcription.speakerColor || '#6B7280',
+      text: transcription.text,
+      confidence: transcription.confidence || 0.8,
+      source: 'upload',
+      is_final: true,
+      spoken_at: new Date().toISOString(),
+    };
+
+    console.log('💾 Database payload:', dbData);
+
+    const result = await transcriptionService.saveTranscription(dbData);
+    
+    if (result.success) {
+      // Update local transcription with database ID
+      setTranscriptions(prev => prev.map(t => 
+        t.id === transcription.id 
+          ? { ...t, dbId: result.data.id, saved: true }
+          : t
+      ));
+      console.log('✅ Transcription saved to database:', result.data.id);
+    } else {
+      console.error('❌ Failed to save transcription:', result.message);
+      console.error('❌ Validation errors:', result.errors);
     }
-  }, [id, setTranscriptions]);
+  } catch (error) {
+    console.error('❌ Error saving transcription:', error);
+  }
+}, [id, setTranscriptions]);
 
   // Handle speaker change
   const handleSpeakerChange = useCallback((newSpeaker) => {

@@ -137,7 +137,7 @@ class AzureWhisperService
     }
 
     /**
-     * Validate audio file before processing
+     * Validate audio file before processing - FIXED VERSION
      */
     private function validateAudioFile(UploadedFile $file): array
     {
@@ -150,22 +150,46 @@ class AzureWhisperService
             ];
         }
 
-        // Check file type
-        $allowedMimeTypes = [
+        // Get the mime type and handle codec specifications
+        $mimeType = $file->getMimeType();
+        $baseMimeType = explode(';', $mimeType)[0]; // Remove codec info
+        
+        Log::info('Audio file validation', [
+            'original_mime' => $mimeType,
+            'base_mime' => $baseMimeType,
+            'file_extension' => $file->getClientOriginalExtension(),
+            'file_size' => $file->getSize(),
+        ]);
+
+        // Check file type - now supports codec specifications
+        $allowedBaseMimeTypes = [
             'audio/wav', 'audio/wave', 'audio/x-wav',
-            'audio/mpeg', 'audio/mp3', 
-            'audio/webm',
+            'audio/mpeg', 'audio/mp3',
+            'audio/webm', // This will now match audio/webm;codecs=opus
             'audio/mp4', 'audio/m4a',
-            'audio/ogg',
+            'audio/ogg', 'audio/vorbis',
             'audio/flac',
+            'audio/x-flac',
         ];
 
-        if (!in_array($file->getMimeType(), $allowedMimeTypes)) {
+        // Also check by file extension as fallback
+        $extension = strtolower($file->getClientOriginalExtension());
+        $allowedExtensions = ['wav', 'mp3', 'webm', 'm4a', 'ogg', 'flac', 'opus'];
+
+        $mimeTypeValid = in_array($baseMimeType, $allowedBaseMimeTypes);
+        $extensionValid = in_array($extension, $allowedExtensions);
+
+        if (!$mimeTypeValid && !$extensionValid) {
             return [
                 'valid' => false,
-                'error' => 'Niet ondersteund bestandsformaat. Gebruik WAV, MP3, WebM, M4A, OGG of FLAC.'
+                'error' => 'Niet ondersteund bestandsformaat. Gebruik WAV, MP3, WebM, M4A, OGG of FLAC. (Gedetecteerd: ' . $mimeType . ', extensie: ' . $extension . ')'
             ];
         }
+
+        Log::info('Audio file validation passed', [
+            'mime_valid' => $mimeTypeValid,
+            'extension_valid' => $extensionValid,
+        ]);
 
         return ['valid' => true];
     }

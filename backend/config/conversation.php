@@ -7,7 +7,7 @@ return [
         'key' => env('AZURE_WHISPER_KEY'),
         'model' => env('AZURE_WHISPER_MODEL', 'Whisper'),
         'region' => env('AZURE_WHISPER_REGION', 'westeurope'),
-        'language' => env('AZURE_WHISPER_LANGUAGE', 'nl-NL'),
+        'language' => env('AZURE_WHISPER_LANGUAGE', 'nl'),
         'timeout' => env('AZURE_WHISPER_TIMEOUT', 30),
         'api_version' => '2024-06-01', // Fixed version voor Azure OpenAI
         'response_format' => 'verbose_json',
