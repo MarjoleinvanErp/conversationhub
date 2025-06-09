@@ -70,14 +70,24 @@ const EnhancedLiveTranscription = ({
     try {
       setRecordingError('');
       console.log('Starting enhanced session for meeting:', meetingId);
+      console.log('Original participants:', participants);
+      
+      // FIXED: Ensure all participants have string IDs
+      const processedParticipants = participants.map((p, index) => {
+        const participantId = p.id ? `participant_${p.id}` : `participant_${p.name.toLowerCase().replace(/\s+/g, '_')}_${index}`;
+        
+        return {
+          id: participantId,
+          name: p.name,
+          color: p.color || '#6B7280'
+        };
+      });
+      
+      console.log('Processed participants for API:', processedParticipants);
       
       const result = await enhancedLiveTranscriptionService.startEnhancedSession(
         meetingId,
-        participants.map(p => ({
-          id: p.id || `participant_${p.name}`,
-          name: p.name,
-          color: p.color || '#6B7280'
-        }))
+        processedParticipants
       );
 
       console.log('Enhanced session result:', result);
@@ -97,10 +107,21 @@ const EnhancedLiveTranscription = ({
           setVoiceSetupComplete(true);
         }
       } else {
-        setRecordingError(result.error || 'Failed to start session');
+        const errorMessage = result.error || 'Failed to start session';
+        console.error('Enhanced session error:', result);
+        setRecordingError(errorMessage);
+        
+        // Show validation errors if they exist
+        if (result.errors) {
+          console.error('Validation errors:', result.errors);
+          const errorDetails = Object.entries(result.errors)
+            .map(([field, messages]) => `${field}: ${messages.join(', ')}`)
+            .join('; ');
+          setRecordingError(`Validation error: ${errorDetails}`);
+        }
       }
     } catch (error) {
-      console.error('Enhanced session error:', error);
+      console.error('Enhanced session exception:', error);
       setRecordingError('Failed to start enhanced session: ' + error.message);
     }
   };
@@ -122,8 +143,10 @@ const EnhancedLiveTranscription = ({
       const audioBlob = await enhancedLiveTranscriptionService.recordVoiceSample(5000);
       console.log('Voice sample recorded, size:', audioBlob.size);
       
+      const speakerId = speaker.id ? `participant_${speaker.id}` : `participant_${speaker.name.toLowerCase().replace(/\s+/g, '_')}_${currentSetupSpeaker}`;
+      
       const result = await enhancedLiveTranscriptionService.setupVoiceProfile(
-        speaker.id || `participant_${speaker.name}`,
+        speakerId,
         audioBlob
       );
 
@@ -219,58 +242,72 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Handle speech recognition results
-  const handleSpeechResult = async (result) => {
-    const { transcript, confidence, isFinal, timestamp } = result;
-    console.log('Speech result:', { transcript, confidence, isFinal });
 
-    if (!isFinal) {
-      setInterimTranscript(transcript);
-      return;
-    }
+// Handle speech recognition results
+const handleSpeechResult = async (result) => {
+  const { transcript, confidence, isFinal, timestamp } = result;
+  console.log('🎤 WebSpeech result:', { 
+    transcript, 
+    confidence, 
+    isFinal, 
+    source: 'browser_webspeech',
+    timestamp: new Date().toLocaleTimeString()
+  });
 
-    // Clear interim transcript
-    setInterimTranscript('');
+  if (!isFinal) {
+    setInterimTranscript(transcript);
+    return;
+  }
 
-    if (!transcript.trim()) {
-      console.log('Empty transcript, skipping');
-      return;
-    }
+  // Clear interim transcript
+  setInterimTranscript('');
 
-    // Process final transcript
-    try {
-      console.log('Processing live transcription:', transcript);
-      const apiResult = await enhancedLiveTranscriptionService.processLiveTranscription(
-        transcript.trim(),
-        confidence
-      );
+  if (!transcript.trim()) {
+    console.log('Empty transcript, skipping');
+    return;
+  }
 
-      console.log('Live transcription API result:', apiResult);
+  // Process final transcript
+  try {
+    console.log('📤 Sending to API for processing:', transcript);
+    const apiResult = await enhancedLiveTranscriptionService.processLiveTranscription(
+      transcript.trim(),
+      confidence
+    );
 
-      if (apiResult.success) {
-        const transcription = apiResult.transcription;
-        
-        // Add to transcriptions
-        setTranscriptions(prev => [...prev, transcription]);
-        
-        // Keep track of recent live transcriptions for Whisper processing
-        setRecentLiveTranscriptions(prev => [...prev.slice(-4), transcription]);
-        
-        // Update session stats
-        if (apiResult.session_stats) {
-          setSessionStats(apiResult.session_stats);
-          onSessionStatsUpdate(apiResult.session_stats);
-        }
+    console.log('📥 API Response:', apiResult);
 
-        // Callback to parent
-        onTranscriptionUpdate(apiResult.transcription);
-      } else {
-        console.error('Live transcription processing failed:', apiResult.error);
+    if (apiResult.success) {
+      const transcription = apiResult.transcription;
+      console.log('✅ Transcription added:', {
+        id: transcription.id,
+        processing_status: transcription.processing_status,
+        source: transcription.type || 'live'
+      });
+      
+      // Add to transcriptions
+      setTranscriptions(prev => [...prev, transcription]);
+      
+      // Keep track of recent live transcriptions for Whisper processing
+      setRecentLiveTranscriptions(prev => [...prev.slice(-4), transcription]);
+      
+      // Update session stats
+      if (apiResult.session_stats) {
+        setSessionStats(apiResult.session_stats);
+        onSessionStatsUpdate(apiResult.session_stats);
       }
-    } catch (error) {
-      console.error('Failed to process live transcription:', error);
+
+      // Callback to parent
+      onTranscriptionUpdate(apiResult.transcription);
+    } else {
+      console.error('Live transcription processing failed:', apiResult.error);
     }
-  };
+  } catch (error) {
+    console.error('Failed to process live transcription:', error);
+  }
+};
+
+
 
   // Handle speech recognition errors
   const handleSpeechError = (error) => {
@@ -288,46 +325,61 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Handle audio chunk for Whisper processing
-  const handleAudioChunk = async (audioBlob) => {
-    console.log('Processing audio chunk for Whisper verification, size:', audioBlob.size);
-    
-    // Find the most recent live transcription to verify
-    const recentLive = recentLiveTranscriptions
-      .filter(t => t.processing_status === 'live')
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
 
-    if (!recentLive) {
-      console.log('No recent live transcription to verify');
-      return;
-    }
+// Handle audio chunk for Whisper processing
+const handleAudioChunk = async (audioBlob) => {
+  console.log('🎵 Audio chunk received for Whisper verification:', {
+    size: audioBlob.size,
+    type: audioBlob.type,
+    timestamp: new Date().toLocaleTimeString()
+  });
+  
+  // Find the most recent live transcription to verify
+  const recentLive = recentLiveTranscriptions
+    .filter(t => t.processing_status === 'live')
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
 
-    try {
-      console.log('Sending audio chunk to Whisper for verification of:', recentLive.id);
-      const result = await enhancedLiveTranscriptionService.processWhisperVerification(
-        recentLive.id,
-        audioBlob
+  if (!recentLive) {
+    console.log('❌ No recent live transcription to verify');
+    return;
+  }
+
+  console.log('🔍 Found live transcription to verify:', {
+    id: recentLive.id,
+    text: recentLive.text,
+    processing_status: recentLive.processing_status
+  });
+
+  try {
+    console.log('📤 Sending to Whisper for verification...');
+    const result = await enhancedLiveTranscriptionService.processWhisperVerification(
+      recentLive.id,
+      audioBlob
+    );
+
+    console.log('🤖 Whisper verification result:', result);
+
+    if (result.success) {
+      console.log('✅ Whisper verification completed:', {
+        original_text: recentLive.text,
+        whisper_text: result.transcription.text,
+        improved: recentLive.text !== result.transcription.text
+      });
+
+      // Update transcription with Whisper result
+      setTranscriptions(prev => prev.map(t => 
+        t.id === recentLive.id ? result.transcription : t
+      ));
+
+      // Remove from recent live list
+      setRecentLiveTranscriptions(prev => 
+        prev.filter(t => t.id !== recentLive.id)
       );
-
-      console.log('Whisper verification result:', result);
-
-      if (result.success) {
-        // Update transcription with Whisper result
-        setTranscriptions(prev => prev.map(t => 
-          t.id === recentLive.id ? result.transcription : t
-        ));
-
-        // Remove from recent live list
-        setRecentLiveTranscriptions(prev => 
-          prev.filter(t => t.id !== recentLive.id)
-        );
-
-        console.log('✅ Whisper verification completed for:', recentLive.id);
-      }
-    } catch (error) {
-      console.error('Failed to process Whisper verification:', error);
     }
-  };
+  } catch (error) {
+    console.error('❌ Whisper verification failed:', error);
+  }
+};
 
   // Stop transcription - IMPROVED
   const stopTranscription = () => {
@@ -536,7 +588,7 @@ return (
       {/* Compact Header */}
       <div className="flex justify-between items-center p-4 border-b">
         <div className="flex items-center space-x-3">
-          <h3 className="font-medium">🎤 Live Transcriptie</h3>
+          <h3 className="font-medium">🎤 Enhanced Live Transcriptie</h3>
           <div className="flex items-center space-x-2 text-sm">
             <div className={`w-2 h-2 rounded-full ${
               isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
@@ -646,31 +698,37 @@ return (
                 ></div>
                 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2 mb-1">
-                    <span className="font-medium text-sm text-gray-700 truncate">
-                      {transcription.speaker_name}
-                    </span>
-                    <div className="flex items-center space-x-1">
-                      {transcription.processing_status === 'live' && (
-                        <div className="flex items-center">
-                          <div className="w-1 h-1 bg-blue-400 rounded-full animate-pulse mr-1"></div>
-                          <span className="text-xs text-blue-600">Live</span>
-                        </div>
-                      )}
-                      {transcription.processing_status === 'verified' && (
-                        <div className="flex items-center">
-                          <div className="w-1 h-1 bg-green-500 rounded-full mr-1"></div>
-                          <span className="text-xs text-green-600">✓</span>
-                        </div>
-                      )}
-                      {transcription.processing_status === 'processing' && (
-                        <div className="flex items-center">
-                          <div className="w-1 h-1 bg-yellow-400 rounded-full animate-spin mr-1"></div>
-                          <span className="text-xs text-yellow-600">...</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+<div className="flex items-center space-x-2 mb-1">
+  <span className="font-medium text-sm text-gray-700 truncate">
+    {transcription.speaker_name}
+  </span>
+  <div className="flex items-center space-x-1">
+    {/* Show processing status indicators */}
+    {transcription.processing_status === 'live' && (
+      <div className="flex items-center">
+        <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse mr-1"></div>
+        <span className="text-xs text-blue-600 font-medium">LIVE</span>
+      </div>
+    )}
+    {transcription.processing_status === 'verified' && (
+      <div className="flex items-center">
+        <div className="w-2 h-2 bg-green-500 rounded-full mr-1"></div>
+        <span className="text-xs text-green-600 font-medium">WHISPER</span>
+      </div>
+    )}
+    {transcription.processing_status === 'processing' && (
+      <div className="flex items-center">
+        <div className="w-2 h-2 bg-yellow-400 rounded-full animate-spin mr-1"></div>
+        <span className="text-xs text-yellow-600 font-medium">PROCESSING</span>
+      </div>
+    )}
+    {/* Debug info */}
+    <span className="text-xs text-gray-400">
+      [{transcription.processing_status || 'unknown'}]
+    </span>
+  </div>
+</div>
+
                   
                   <div className={`text-gray-900 leading-relaxed text-sm ${
                     transcription.processing_status === 'verified' ? 'font-medium' : ''
