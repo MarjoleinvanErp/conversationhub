@@ -682,3 +682,77 @@ button:focus {
     opacity: .5;
   }
 }
+
+/* Meeting Room Specific Styles */
+.meeting-room-layout {
+  height: calc(100vh - 80px); /* Account for header */
+}
+
+.transcription-panel {
+  min-height: 300px;
+}
+
+.sidebar-panel {
+  min-width: 300px;
+  max-width: 400px;
+}
+
+.agenda-item-current {
+  box-shadow: 0 0 0 2px #3b82f6;
+}
+
+.agenda-item-completed {
+  box-shadow: 0 0 0 2px #10b981;
+}
+
+/* Responsive adjustments for smaller screens */
+@media (max-width: 1024px) {
+  .meeting-room-layout {
+    flex-direction: column;
+  }
+  
+  .transcription-panel {
+    width: 100% !important;
+    height: 60vh;
+  }
+  
+  .sidebar-panel {
+    width: 100% !important;
+    height: 40vh;
+    max-width: none;
+    border-left: none;
+    border-top: 1px solid #e5e7eb;
+  }
+}
+
+/* Improved scrollbar for agenda items */
+.agenda-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.agenda-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 2px;
+}
+
+.agenda-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 2px;
+}
+
+.agenda-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Enhanced Live Transcription Panel Improvements */
+.enhanced-transcription-container {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.enhanced-transcription-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}

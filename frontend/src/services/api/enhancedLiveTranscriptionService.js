@@ -10,7 +10,8 @@ class EnhancedLiveTranscriptionService {
     this.audioStream = null;
     this.speechRecognition = null;
     this.chunkInterval = null;
-    this.audioChunks = []; // Store chunks temporarily
+    this.audioChunks = [];
+    this.chunkCounter = 0;
   }
 
   /**
@@ -34,12 +35,12 @@ class EnhancedLiveTranscriptionService {
       
       if (result.success) {
         this.currentSession = result;
-        console.log('Enhanced session started:', result);
+        console.log('✅ Enhanced session started:', result);
       }
 
       return result;
     } catch (error) {
-      console.error('Failed to start enhanced session:', error);
+      console.error('❌ Failed to start enhanced session:', error);
       return { success: false, error: error.message };
     }
   }
@@ -53,16 +54,12 @@ class EnhancedLiveTranscriptionService {
     }
 
     try {
-      console.log('Setting up voice profile for:', speakerId);
-      console.log('Session ID:', this.currentSession.session_id);
-      console.log('Audio blob size:', audioBlob.size);
+      console.log('🎤 Setting up voice profile for:', speakerId);
 
       const formData = new FormData();
       formData.append('session_id', this.currentSession.session_id);
       formData.append('speaker_id', speakerId);
       formData.append('voice_sample', audioBlob, `voice_${speakerId}.webm`);
-
-      console.log('FormData created, making API call...');
 
       const response = await fetch(`${API_BASE_URL}/api/live-transcription/setup-voice`, {
         method: 'POST',
@@ -72,20 +69,17 @@ class EnhancedLiveTranscriptionService {
         body: formData,
       });
 
-      console.log('API response status:', response.status);
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('API error response:', errorText);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const result = await response.json();
-      console.log('Voice profile setup result:', result);
+      console.log('✅ Voice profile setup result:', result);
       
       return result;
     } catch (error) {
-      console.error('Failed to setup voice profile:', error);
+      console.error('❌ Failed to setup voice profile:', error);
       return { success: false, error: error.message };
     }
   }
@@ -115,13 +109,13 @@ class EnhancedLiveTranscriptionService {
       const result = await response.json();
       return result;
     } catch (error) {
-      console.error('Failed to process live transcription:', error);
+      console.error('❌ Failed to process live transcription:', error);
       return { success: false, error: error.message };
     }
   }
 
   /**
-   * Process Whisper verification
+   * Process Whisper verification - FIXED
    */
   async processWhisperVerification(liveTranscriptionId, audioChunk) {
     if (!this.currentSession) {
@@ -129,17 +123,24 @@ class EnhancedLiveTranscriptionService {
     }
 
     try {
-      console.log('🔄 Starting Whisper verification for:', {
+      console.log('🤖 Starting Whisper verification:', {
         session_id: this.currentSession.session_id,
         live_transcription_id: liveTranscriptionId,
-        audio_chunk_size: audioChunk.size,
-        audio_chunk_type: audioChunk.type
+        chunk_size: audioChunk.size,
+        chunk_type: audioChunk.type
       });
 
       const formData = new FormData();
       formData.append('session_id', this.currentSession.session_id);
       formData.append('live_transcription_id', liveTranscriptionId);
-      formData.append('audio_chunk', audioChunk, 'chunk.webm');
+      
+      // Ensure proper audio file format
+      const audioFile = new File([audioChunk], `chunk_${Date.now()}.webm`, {
+        type: 'audio/webm',
+        lastModified: Date.now()
+      });
+      
+      formData.append('audio_chunk', audioFile);
 
       const response = await fetch(`${API_BASE_URL}/api/live-transcription/verify-whisper`, {
         method: 'POST',
@@ -149,19 +150,24 @@ class EnhancedLiveTranscriptionService {
         body: formData,
       });
 
-      console.log('🔄 Whisper API response status:', response.status);
+      console.log('🤖 Whisper API response status:', response.status);
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('❌ Whisper API error:', errorText);
+        console.error('❌ Whisper API error response:', errorText);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const result = await response.json();
-      console.log('✅ Whisper verification result:', result);
+      console.log('✅ Whisper verification completed:', {
+        success: result.success,
+        original_id: liveTranscriptionId,
+        whisper_text: result.transcription?.text?.substring(0, 50) + '...'
+      });
+      
       return result;
     } catch (error) {
-      console.error('❌ Failed to process Whisper verification:', error);
+      console.error('❌ Whisper verification failed:', error);
       return { success: false, error: error.message };
     }
   }
@@ -198,7 +204,10 @@ class EnhancedLiveTranscriptionService {
     };
 
     this.speechRecognition.onerror = (event) => {
-      onError(event.error);
+      console.warn('Speech recognition error:', event.error);
+      if (event.error !== 'no-speech' && event.error !== 'network') {
+        onError(event.error);
+      }
     };
 
     this.speechRecognition.onend = () => {
@@ -217,11 +226,11 @@ class EnhancedLiveTranscriptionService {
   }
 
   /**
-   * Start recording and transcription - IMPROVED CHUNKING
+   * Start recording with FIXED audio chunking
    */
   async startRecording() {
     try {
-      console.log('🎤 Starting recording with improved chunking...');
+      console.log('🎤 Starting recording with fixed chunking...');
       
       // Get microphone access
       this.audioStream = await navigator.mediaDevices.getUserMedia({
@@ -232,15 +241,9 @@ class EnhancedLiveTranscriptionService {
         }
       });
 
-      // Setup MediaRecorder for audio chunks - FIXED CHUNKING
-      this.mediaRecorder = new MediaRecorder(this.audioStream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-
       this.isRecording = true;
-      this.audioChunks = []; // Clear chunks
-
-      console.log('🎤 MediaRecorder created with:', this.mediaRecorder.mimeType);
+      this.audioChunks = [];
+      this.chunkCounter = 0;
 
       // Start speech recognition
       if (this.speechRecognition) {
@@ -248,117 +251,89 @@ class EnhancedLiveTranscriptionService {
         console.log('🎤 Speech recognition started');
       }
 
-      // Setup improved chunking for Whisper processing
-      this.setupImprovedAudioChunking();
+      // Setup FIXED audio chunking
+      this.setupFixedAudioChunking();
 
       return { success: true };
     } catch (error) {
-      console.error('Failed to start recording:', error);
+      console.error('❌ Failed to start recording:', error);
       return { success: false, error: error.message };
     }
   }
 
   /**
-   * Setup improved audio chunking for Whisper processing
+   * Setup FIXED audio chunking for Whisper
    */
-  setupImprovedAudioChunking() {
-    console.log('🔧 Setting up improved audio chunking...');
+  setupFixedAudioChunking() {
+    console.log('🔧 Setting up FIXED audio chunking...');
     
-    // Clear any existing chunks
-    this.audioChunks = [];
-
-    // Handle data collection - COLLECT EVERYTHING
-    this.mediaRecorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) {
-        console.log('📦 Audio chunk collected:', {
-          size: event.data.size,
-          type: event.data.type,
-          total_chunks: this.audioChunks.length + 1,
-          timestamp: new Date().toLocaleTimeString()
-        });
-        
-        this.audioChunks.push(event.data);
+    // Create new MediaRecorder for each chunk cycle
+    const startNewChunkCycle = () => {
+      if (!this.isRecording || !this.audioStream) {
+        return;
       }
-    };
 
-    // Handle stop event - PROCESS ACCUMULATED CHUNKS
-    this.mediaRecorder.onstop = () => {
-      console.log('⏹️ MediaRecorder stopped, processing chunks:', {
-        total_chunks: this.audioChunks.length,
-        total_size: this.audioChunks.reduce((sum, chunk) => sum + chunk.size, 0)
+      console.log('🆕 Starting new chunk cycle:', ++this.chunkCounter);
+
+      this.mediaRecorder = new MediaRecorder(this.audioStream, {
+        mimeType: 'audio/webm;codecs=opus'
       });
-      
-      if (this.audioChunks.length > 0) {
-        // Create combined blob from all chunks
-        const combinedBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-        
-        console.log('🎵 Created combined audio blob:', {
-          size: combinedBlob.size,
-          type: combinedBlob.type,
-          chunks_combined: this.audioChunks.length
-        });
-        
-        // Send to callback for processing
-        this.onAudioChunkReady(combinedBlob);
-        
-        // Clear chunks for next cycle
-        this.audioChunks = [];
-      }
+
+      this.audioChunks = [];
+
+      // Collect data
+      this.mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          console.log('📦 Chunk data collected:', event.data.size, 'bytes');
+          this.audioChunks.push(event.data);
+        }
+      };
+
+      // Process when stopped
+      this.mediaRecorder.onstop = () => {
+        if (this.audioChunks.length > 0) {
+          const combinedBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+          
+          console.log('🎵 Created 30-second audio chunk:', {
+            size: combinedBlob.size,
+            type: combinedBlob.type,
+            chunk_number: this.chunkCounter,
+            timestamp: new Date().toLocaleTimeString()
+          });
+
+          // Send to callback for Whisper processing
+          if (this.onChunkCallback) {
+            this.onChunkCallback(combinedBlob);
+          }
+        }
+
+        // Start next cycle if still recording
+        if (this.isRecording) {
+          setTimeout(startNewChunkCycle, 500);
+        }
+      };
+
+      // Start recording for this chunk
+      this.mediaRecorder.start();
+
+      // Stop after 30 seconds to create chunk
+      setTimeout(() => {
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+          console.log('⏰ 30 seconds reached, stopping chunk', this.chunkCounter);
+          this.mediaRecorder.stop();
+        }
+      }, 30000); // 30 seconds
     };
 
-    // Start recording immediately with small intervals for data collection
-    this.mediaRecorder.start(1000); // Collect data every 1 second
-
-    // Setup chunking interval - CREATE WHISPER CHUNKS EVERY 30 SECONDS
-    this.chunkInterval = setInterval(() => {
-      if (this.mediaRecorder && this.mediaRecorder.state === 'recording' && this.isRecording) {
-        console.log('⏰ 30-second interval reached, creating Whisper chunk...');
-        console.log('📊 Current chunks collected:', this.audioChunks.length);
-        
-        // Stop to trigger processing, then restart
-        this.mediaRecorder.stop();
-        
-        // Restart after a short delay
-        setTimeout(() => {
-          if (this.isRecording && this.audioStream) {
-            try {
-              this.mediaRecorder.start(1000);
-              console.log('🔄 MediaRecorder restarted for next chunk cycle');
-            } catch (error) {
-              console.error('❌ Failed to restart MediaRecorder:', error);
-            }
-          }
-        }, 100);
-      }
-    }, 30000); // Every 30 seconds
-
-    console.log('✅ Improved audio chunking setup complete');
-  }
-
-  /**
-   * Handle audio chunk ready for Whisper processing
-   */
-  onAudioChunkReady(audioBlob) {
-    console.log('🎵 Audio chunk ready for processing:', {
-      size: audioBlob.size,
-      type: audioBlob.type,
-      size_mb: (audioBlob.size / 1024 / 1024).toFixed(2) + 'MB',
-      timestamp: new Date().toLocaleTimeString()
-    });
-    
-    // Call the callback if set
-    if (this.onChunkCallback) {
-      this.onChunkCallback(audioBlob);
-    } else {
-      console.warn('⚠️ No chunk callback set - audio chunk not processed');
-    }
+    // Start first cycle
+    startNewChunkCycle();
   }
 
   /**
    * Set callback for audio chunk processing
    */
   setChunkCallback(callback) {
-    console.log('🔗 Setting chunk callback');
+    console.log('🔗 Setting chunk callback for Whisper processing');
     this.onChunkCallback = callback;
   }
 
@@ -372,7 +347,6 @@ class EnhancedLiveTranscriptionService {
     if (this.speechRecognition) {
       try {
         this.speechRecognition.stop();
-        console.log('🛑 Speech recognition stopped');
       } catch (error) {
         console.warn('Warning stopping speech recognition:', error);
       }
@@ -381,28 +355,18 @@ class EnhancedLiveTranscriptionService {
     if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
       try {
         this.mediaRecorder.stop();
-        console.log('🛑 MediaRecorder stopped');
       } catch (error) {
         console.warn('Warning stopping MediaRecorder:', error);
       }
     }
 
     if (this.audioStream) {
-      this.audioStream.getTracks().forEach(track => {
-        track.stop();
-        console.log('🛑 Audio track stopped');
-      });
+      this.audioStream.getTracks().forEach(track => track.stop());
     }
 
-    if (this.chunkInterval) {
-      clearInterval(this.chunkInterval);
-      this.chunkInterval = null;
-      console.log('🛑 Chunk interval cleared');
-    }
-
-    // Clear chunks
     this.audioChunks = [];
-    console.log('🧹 Audio chunks cleared');
+    this.chunkCounter = 0;
+    console.log('✅ Recording stopped and cleaned up');
   }
 
   /**
@@ -430,7 +394,6 @@ class EnhancedLiveTranscriptionService {
 
         recorder.start();
 
-        // Auto-stop after duration
         setTimeout(() => {
           if (recorder.state === 'recording') {
             recorder.stop();
