@@ -427,75 +427,112 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Voice setup UI
+  // VERBETERDE Voice setup UI - Compacter en beter passend in het scherm
   if (voiceSetupPhase && !voiceSetupComplete) {
     const currentSpeakerData = participants[currentSetupSpeaker];
     const isLastSpeaker = currentSetupSpeaker >= participants.length - 1;
     
     return (
-      <div className="bg-white rounded-lg border p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium">
-            Stem Setup - Stap {currentSetupSpeaker + 1} van {participants.length}
-          </h3>
-          
-          <button
-            onClick={skipVoiceSetup}
-            className="text-sm text-blue-600 hover:text-blue-700 underline"
-          >
-            Skip hele setup
-          </button>
+      <div className="bg-white rounded-lg border" style={{ maxHeight: '600px', overflow: 'hidden' }}>
+        {/* Compacte Header */}
+        <div style={{ 
+          padding: '12px 16px', 
+          borderBottom: '1px solid #e5e7eb',
+          backgroundColor: '#f0f9ff'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: '500', margin: 0, color: '#0c4a6e' }}>
+              🎤 Stem Setup - Stap {currentSetupSpeaker + 1} van {participants.length}
+            </h3>
+            
+            <button
+              onClick={skipVoiceSetup}
+              className="btn-neutral"
+              style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+            >
+              ⏭️ Skip Setup
+            </button>
+          </div>
         </div>
         
-        <div className="text-center">
+        {/* Compacte Content */}
+        <div style={{ padding: '20px' }}>
           {currentSpeakerData ? (
-            <div className="mb-6">
-              <div className="flex items-center justify-center mb-4">
+            <div>
+              {/* Speaker Info - Compacter */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
                 <div 
-                  className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold"
-                  style={{ backgroundColor: currentSpeakerData.color || '#6B7280' }}
+                  style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'white',
+                    fontSize: '1.25rem',
+                    fontWeight: 'bold',
+                    backgroundColor: currentSpeakerData.color || '#6B7280'
+                  }}
                 >
                   {currentSpeakerData.name.charAt(0).toUpperCase()}
                 </div>
+                
+                <div style={{ flex: 1 }}>
+                  <h4 style={{ fontSize: '1.125rem', fontWeight: '500', margin: 0, marginBottom: '4px' }}>
+                    {currentSpeakerData.name}
+                  </h4>
+                  <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
+                    Spreek je naam en een korte zin voor stemherkenning
+                  </p>
+                </div>
               </div>
               
-              <h4 className="text-xl font-medium mb-2">{currentSpeakerData.name}</h4>
-              <p className="text-gray-600 mb-4">
-                Zeg je naam en een korte zin zodat het systeem je stem kan leren herkennen.
-              </p>
-              
-              {isRecordingVoice ? (
-                <div className="mb-6">
-                  <div className="flex items-center justify-center mb-2">
-                    <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse mr-2"></div>
-                    <span className="text-red-600 font-medium">Opname bezig... (5 seconden)</span>
+              {/* Recording Status en Controls - Compacter */}
+              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+                {isRecordingVoice ? (
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      padding: '12px 20px',
+                      backgroundColor: '#fef2f2',
+                      borderRadius: '8px',
+                      border: '1px solid #fecaca'
+                    }}>
+                      <div style={{ width: '12px', height: '12px', backgroundColor: '#ef4444', borderRadius: '50%', animation: 'pulse 1s infinite' }}></div>
+                      <span style={{ color: '#dc2626', fontWeight: '500', fontSize: '0.875rem' }}>
+                        Opname bezig... (5 seconden)
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '8px' }}>
+                      Spreek nu duidelijk in de microfoon
+                    </div>
                   </div>
-                  <div className="text-sm text-gray-500">
-                    Spreek nu duidelijk in de microfoon
-                  </div>
-                </div>
-              ) : (
-                <div className="mb-6">
+                ) : (
                   <button
                     onClick={startVoiceSetup}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium"
+                    className="btn-primary"
+                    style={{ marginBottom: '16px' }}
                     disabled={isRecordingVoice}
                   >
                     🎤 Start Stem Opname
                   </button>
-                </div>
-              )}
+                )}
+              </div>
 
+              {/* Navigatie Controls - Verbeterd met mooiere knoppen */}
               {!isRecordingVoice && (
-                <div className="flex justify-center space-x-4 mb-4">
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
                   <button
                     onClick={previousSpeaker}
                     disabled={currentSetupSpeaker === 0}
-                    className={`px-4 py-2 rounded-lg ${
-                      currentSetupSpeaker === 0 
-                        ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-                        : 'bg-gray-300 hover:bg-gray-400 text-gray-700'
-                    }`}
+                    className={currentSetupSpeaker === 0 ? "btn-neutral" : "btn-secondary"}
+                    style={{ 
+                      opacity: currentSetupSpeaker === 0 ? 0.5 : 1,
+                      cursor: currentSetupSpeaker === 0 ? 'not-allowed' : 'pointer'
+                    }}
                   >
                     ← Vorige
                   </button>
@@ -503,14 +540,14 @@ const EnhancedLiveTranscription = ({
                   {isLastSpeaker ? (
                     <button
                       onClick={completeVoiceSetup}
-                      className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg"
+                      className="btn-success"
                     >
                       ✅ Setup Voltooien
                     </button>
                   ) : (
                     <button
                       onClick={nextSpeaker}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                      className="btn-primary"
                     >
                       Volgende →
                     </button>
@@ -519,31 +556,58 @@ const EnhancedLiveTranscription = ({
               )}
             </div>
           ) : (
-            <div className="mb-6 text-red-600">
-              Fout: Geen deelnemer gevonden
+            <div style={{ textAlign: 'center', padding: '20px' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '12px' }}>❌</div>
+              <p style={{ color: '#dc2626', fontSize: '0.875rem' }}>
+                Fout: Geen deelnemer gevonden
+              </p>
             </div>
           )}
           
+          {/* Error Display */}
           {voiceSetupError && (
-            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded mb-4">
-              {voiceSetupError}
-              <button 
-                onClick={() => setVoiceSetupError('')} 
-                className="ml-2 text-xs underline"
-              >
-                ✕
-              </button>
+            <div style={{
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca',
+              color: '#dc2626',
+              padding: '12px',
+              borderRadius: '8px',
+              fontSize: '0.875rem',
+              marginBottom: '16px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{voiceSetupError}</span>
+                <button 
+                  onClick={() => setVoiceSetupError('')} 
+                  style={{ 
+                    background: 'none', 
+                    border: 'none', 
+                    color: '#dc2626', 
+                    cursor: 'pointer',
+                    fontSize: '0.875rem'
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
           
-          <div className="flex justify-center space-x-2 mt-4">
+          {/* Progress Indicators - Compacter */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
             {participants.map((participant, index) => (
               <div
                 key={index}
-                className={`w-3 h-3 rounded-full cursor-pointer ${
-                  index < currentSetupSpeaker ? 'bg-green-500' :
-                  index === currentSetupSpeaker ? 'bg-blue-500' : 'bg-gray-300'
-                }`}
+                style={{
+                  width: '10px',
+                  height: '10px',
+                  borderRadius: '50%',
+                  backgroundColor: 
+                    index < currentSetupSpeaker ? '#10b981' :
+                    index === currentSetupSpeaker ? '#3b82f6' : '#d1d5db',
+                  cursor: !isRecordingVoice ? 'pointer' : 'default',
+                  transition: 'all 0.2s'
+                }}
                 onClick={() => !isRecordingVoice && setCurrentSetupSpeaker(index)}
                 title={participant.name}
               />
@@ -554,219 +618,95 @@ const EnhancedLiveTranscription = ({
     );
   }
 
-// Main UI: Timeline-based transcription interface
+  // Main UI: Timeline-based transcription interface (rest blijft hetzelfde)
   return (
     <div className="bg-white rounded-lg border">
-      {/* Voice setup UI blijft hetzelfde */}
-      {voiceSetupPhase && !voiceSetupComplete ? (
-        <div className="bg-white rounded-lg border p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-medium">
-              Stem Setup - Stap {currentSetupSpeaker + 1} van {participants.length}
-            </h3>
-            
-            <button
-              onClick={skipVoiceSetup}
-              className="text-sm text-blue-600 hover:text-blue-700 underline"
+      {/* Header met status */}
+      <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+        <div className="flex items-center space-x-3">
+          <h3 className="font-medium">🎯 Enhanced Live Transcriptie</h3>
+          <div className="flex items-center space-x-2 text-sm">
+            <div className={`w-2 h-2 rounded-full ${
+              isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
+            }`}></div>
+            <span className="text-gray-600">
+              {isRecording ? 'Live Recording' : 'Gestopt'}
+            </span>
+          </div>
+        </div>
+        
+        <div className="flex items-center space-x-2 text-xs text-gray-500">
+          {isProcessingWhisper && (
+            <span className="text-blue-600 animate-pulse">🤖 Processing...</span>
+          )}
+          <span>Session: {sessionId ? sessionId.substring(0, 8) + '...' : 'None'}</span>
+        </div>
+      </div>
+
+      {recordingError && (
+        <div className="bg-red-50 border-l-4 border-red-400 text-red-700 p-3 text-sm">
+          <div className="flex justify-between items-center">
+            <span>{recordingError}</span>
+            <button 
+              onClick={() => setRecordingError('')} 
+              className="text-red-500 hover:text-red-700"
             >
-              Skip hele setup
+              ✕
             </button>
           </div>
-          
-          <div className="text-center">
-            {participants[currentSetupSpeaker] ? (
-              <div className="mb-6">
-                <div className="flex items-center justify-center mb-4">
-                  <div 
-                    className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold"
-                    style={{ backgroundColor: participants[currentSetupSpeaker].color || '#6B7280' }}
-                  >
-                    {participants[currentSetupSpeaker].name.charAt(0).toUpperCase()}
-                  </div>
-                </div>
-                
-                <h4 className="text-xl font-medium mb-2">{participants[currentSetupSpeaker].name}</h4>
-                <p className="text-gray-600 mb-4">
-                  Zeg je naam en een korte zin zodat het systeem je stem kan leren herkennen.
-                </p>
-                
-                {isRecordingVoice ? (
-                  <div className="mb-6">
-                    <div className="flex items-center justify-center mb-2">
-                      <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse mr-2"></div>
-                      <span className="text-red-600 font-medium">Opname bezig... (5 seconden)</span>
-                    </div>
-                    <div className="text-sm text-gray-500">
-                      Spreek nu duidelijk in de microfoon
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mb-6">
-                    <button
-                      onClick={startVoiceSetup}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium"
-                      disabled={isRecordingVoice}
-                    >
-                      🎤 Start Stem Opname
-                    </button>
-                  </div>
-                )}
-
-                {!isRecordingVoice && (
-                  <div className="flex justify-center space-x-4 mb-4">
-                    <button
-                      onClick={previousSpeaker}
-                      disabled={currentSetupSpeaker === 0}
-                      className={`px-4 py-2 rounded-lg ${
-                        currentSetupSpeaker === 0 
-                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
-                          : 'bg-gray-300 hover:bg-gray-400 text-gray-700'
-                      }`}
-                    >
-                      ← Vorige
-                    </button>
-                    
-                    {currentSetupSpeaker >= participants.length - 1 ? (
-                      <button
-                        onClick={completeVoiceSetup}
-                        className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg"
-                      >
-                        ✅ Setup Voltooien
-                      </button>
-                    ) : (
-                      <button
-                        onClick={nextSpeaker}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
-                      >
-                        Volgende →
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="mb-6 text-red-600">
-                Fout: Geen deelnemer gevonden
-              </div>
-            )}
-            
-            {voiceSetupError && (
-              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded mb-4">
-                {voiceSetupError}
-                <button 
-                  onClick={() => setVoiceSetupError('')} 
-                  className="ml-2 text-xs underline"
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-            
-            <div className="flex justify-center space-x-2 mt-4">
-              {participants.map((participant, index) => (
-                <div
-                  key={index}
-                  className={`w-3 h-3 rounded-full cursor-pointer ${
-                    index < currentSetupSpeaker ? 'bg-green-500' :
-                    index === currentSetupSpeaker ? 'bg-blue-500' : 'bg-gray-300'
-                  }`}
-                  onClick={() => !isRecordingVoice && setCurrentSetupSpeaker(index)}
-                  title={participant.name}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : (
-        // NIEUWE Timeline Transcription Interface
-        <div>
-          {/* Header met status */}
-          <div className="flex justify-between items-center p-4 border-b bg-gray-50">
-            <div className="flex items-center space-x-3">
-              <h3 className="font-medium">🎯 Enhanced Live Transcriptie</h3>
-              <div className="flex items-center space-x-2 text-sm">
-                <div className={`w-2 h-2 rounded-full ${
-                  isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
-                }`}></div>
-                <span className="text-gray-600">
-                  {isRecording ? 'Live Recording' : 'Gestopt'}
-                </span>
-              </div>
-            </div>
-            
-            <div className="flex items-center space-x-2 text-xs text-gray-500">
-              {isProcessingWhisper && (
-                <span className="text-blue-600 animate-pulse">🤖 Processing...</span>
-              )}
-              <span>Session: {sessionId ? sessionId.substring(0, 8) + '...' : 'None'}</span>
-            </div>
-          </div>
-
-          {recordingError && (
-            <div className="bg-red-50 border-l-4 border-red-400 text-red-700 p-3 text-sm">
-              <div className="flex justify-between items-center">
-                <span>{recordingError}</span>
-                <button 
-                  onClick={() => setRecordingError('')} 
-                  className="text-red-500 hover:text-red-700"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Controls */}
-          <div className="p-3 bg-gray-50 border-b">
-            {!sessionActive ? (
-              <button
-                onClick={startEnhancedSession}
-                className="btn-primary w-full text-sm py-2"
-                disabled={!speechSupported}
-              >
-                🚀 Start Enhanced Session
-              </button>
-            ) : !isRecording && voiceSetupComplete ? (
-              <button
-                onClick={startLiveTranscription}
-                className="btn-success w-full text-sm py-2"
-                disabled={!speechSupported}
-              >
-                🎤 Start Timeline Transcriptie
-              </button>
-            ) : isRecording ? (
-              <button
-                onClick={stopTranscription}
-                className="btn-danger w-full text-sm py-2"
-              >
-                ⏹️ Stop Transcriptie
-              </button>
-            ) : null}
-            
-            {!speechSupported && (
-              <p className="text-xs text-red-600 mt-2 text-center">
-                Speech recognition niet ondersteund. Gebruik Chrome of Edge.
-              </p>
-            )}
-
-            {whisperProgress && (
-              <div className="mt-2 text-xs text-blue-600 text-center">
-                🤖 {whisperProgress}
-              </div>
-            )}
-          </div>
-
-          {/* Timeline Transcription Component */}
-          <TimelineTranscription
-            liveTranscriptions={liveTranscriptions}
-            whisperTranscriptions={whisperTranscriptions}
-            isRecording={isRecording}
-            meetingStartTime={sessionActive ? new Date() : null}
-            onTranscriptionUpdate={onTranscriptionUpdate}
-          />
         </div>
       )}
+
+      {/* Controls */}
+      <div className="p-3 bg-gray-50 border-b">
+        {!sessionActive ? (
+          <button
+            onClick={startEnhancedSession}
+            className="btn-primary w-full text-sm py-2"
+            disabled={!speechSupported}
+          >
+            🚀 Start Enhanced Session
+          </button>
+        ) : !isRecording && voiceSetupComplete ? (
+          <button
+            onClick={startLiveTranscription}
+            className="btn-success w-full text-sm py-2"
+            disabled={!speechSupported}
+          >
+            🎤 Start Timeline Transcriptie
+          </button>
+        ) : isRecording ? (
+          <button
+            onClick={stopTranscription}
+            className="btn-danger w-full text-sm py-2"
+          >
+            ⏹️ Stop Transcriptie
+          </button>
+        ) : null}
+        
+        {!speechSupported && (
+          <p className="text-xs text-red-600 mt-2 text-center">
+            Speech recognition niet ondersteund. Gebruik Chrome of Edge.
+          </p>
+        )}
+
+        {whisperProgress && (
+          <div className="mt-2 text-xs text-blue-600 text-center">
+            🤖 {whisperProgress}
+          </div>
+        )}
+      </div>
+
+      {/* Timeline Transcription Component */}
+      <TimelineTranscription
+        liveTranscriptions={liveTranscriptions}
+        whisperTranscriptions={whisperTranscriptions}
+        isRecording={isRecording}
+        meetingStartTime={sessionActive ? new Date() : null}
+        onTranscriptionUpdate={onTranscriptionUpdate}
+      />
     </div>
   );
 };
+
 export default EnhancedLiveTranscription;

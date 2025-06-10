@@ -28,6 +28,11 @@ const MeetingRoom = () => {
   // Agenda tracking
   const [currentAgendaIndex, setCurrentAgendaIndex] = useState(0);
   const [agendaStartTimes, setAgendaStartTimes] = useState({});
+  const [newAgendaItem, setNewAgendaItem] = useState('');
+  const [showAddAgenda, setShowAddAgenda] = useState(false);
+
+  // Transcript management
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Load meeting
   useEffect(() => {
@@ -92,6 +97,64 @@ const MeetingRoom = () => {
   // Handle transcription updates
   const handleTranscriptionUpdate = (transcriptionData) => {
     handlers.handleTranscriptionReceived(transcriptionData);
+  };
+
+  // Add new agenda item
+  const handleAddAgendaItem = () => {
+    if (!newAgendaItem.trim()) return;
+    
+    const updatedMeeting = {
+      ...meeting,
+      agenda_items: [
+        ...(meeting.agenda_items || []),
+        {
+          title: newAgendaItem.trim(),
+          description: '',
+          estimated_duration: 10,
+          order: (meeting.agenda_items?.length || 0) + 1
+        }
+      ]
+    };
+    
+    setMeeting(updatedMeeting);
+    setNewAgendaItem('');
+    setShowAddAgenda(false);
+  };
+
+  // Copy all transcriptions to clipboard
+  const copyAllTranscriptions = async () => {
+    if (transcriptions.length === 0) {
+      alert('Geen transcripties om te kopiëren');
+      return;
+    }
+
+    const sortedTranscriptions = transcriptions
+      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    const fullText = sortedTranscriptions
+      .map(t => `[${new Date(t.timestamp).toLocaleTimeString('nl-NL')}] ${t.speaker}: ${t.text}`)
+      .join('\n\n');
+
+    try {
+      await navigator.clipboard.writeText(fullText);
+      alert('Alle transcripties gekopieerd naar klembord!');
+    } catch (error) {
+      // Fallback for older browsers
+      const textArea = document.createElement('textarea');
+      textArea.value = fullText;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textArea);
+      alert('Alle transcripties gekopieerd naar klembord!');
+    }
+  };
+
+  // Clear transcription history
+  const clearTranscriptionHistory = () => {
+    setTranscriptions([]);
+    setShowDeleteConfirm(false);
+    alert('Gespreksverslag is gewist');
   };
 
   const finishMeeting = async () => {
@@ -166,7 +229,7 @@ const MeetingRoom = () => {
               </div>
             </div>
 
-            {/* Transcriptie Mode Selector */}
+            {/* Transcriptie Mode Selector - Verplaatst van rechts naar midden */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <label style={{ fontSize: '0.875rem', fontWeight: '500', color: '#374151' }}>
                 🎤 Transcriptie:
@@ -192,12 +255,6 @@ const MeetingRoom = () => {
           </div>
 
           <div style={{ display: 'flex', gap: '12px' }}>
-            <button 
-              onClick={() => navigate('/dashboard')} 
-              className="btn-neutral"
-            >
-              🏠 Dashboard
-            </button>
             <button 
               onClick={finishMeeting} 
               className="btn-danger"
@@ -307,16 +364,40 @@ const MeetingRoom = () => {
             )}
           </div>
 
-          {/* Gespreksverslag */}
+          {/* Gespreksverslag - Verbeterd met kopieer en wis functionaliteit */}
           <div className="meeting-room-transcript-log">
-            <h3 style={{ 
-              fontWeight: '500', 
-              color: '#1f2937', 
-              marginBottom: '12px',
-              fontSize: '1rem'
-            }}>
-              💬 Gespreksverslag ({transcriptions.length})
-            </h3>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ 
+                fontWeight: '500', 
+                color: '#1f2937', 
+                margin: 0,
+                fontSize: '1rem'
+              }}>
+                💬 Gespreksverslag ({transcriptions.length})
+              </h3>
+              
+              {transcriptions.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={copyAllTranscriptions}
+                    className="btn-secondary"
+                    style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                    title="Kopieer alle transcripties naar klembord"
+                  >
+                    📋 Kopieer Alles
+                  </button>
+                  <button
+                    onClick={() => setShowDeleteConfirm(true)}
+                    className="btn-danger"
+                    style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                    title="Wis alle transcripties"
+                  >
+                    🗑️ Wis
+                  </button>
+                </div>
+              )}
+            </div>
+
             {transcriptions.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '16px' }}>
                 <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>Nog geen gesprekstekst</p>
@@ -384,30 +465,143 @@ const MeetingRoom = () => {
                 )}
               </div>
             )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteConfirm && (
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 1000
+              }}>
+                <div style={{
+                  backgroundColor: 'white',
+                  borderRadius: '12px',
+                  padding: '24px',
+                  maxWidth: '400px',
+                  width: '90%'
+                }}>
+                  <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#1f2937', marginBottom: '12px' }}>
+                    ⚠️ Gespreksverslag Wissen
+                  </h3>
+                  <p style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '20px' }}>
+                    Weet je zeker dat je alle {transcriptions.length} transcripties wilt verwijderen? 
+                    Deze actie kan niet ongedaan worden gemaakt.
+                  </p>
+                  <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                    <button
+                      onClick={() => setShowDeleteConfirm(false)}
+                      className="btn-neutral"
+                      style={{ fontSize: '0.875rem' }}
+                    >
+                      Annuleren
+                    </button>
+                    <button
+                      onClick={clearTranscriptionHistory}
+                      className="btn-danger"
+                      style={{ fontSize: '0.875rem' }}
+                    >
+                      Ja, Wissen
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
         {/* RECHTS: Sidebar */}
         <div className="meeting-room-sidebar">
           
-          {/* Agenda Sectie */}
+          {/* Agenda Sectie - Verbeterd met toevoeg functionaliteit */}
           <div className="meeting-room-sidebar-section" style={{ borderBottom: '1px solid #e5e7eb' }}>
             <div className="meeting-room-sidebar-header">
-              <h3 style={{ 
-                fontWeight: '500', 
-                color: '#1f2937', 
-                margin: 0,
-                fontSize: '1rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}>
-                <span>📝</span>
-                <span>Agenda ({meeting?.agenda_items?.length || 0})</span>
-              </h3>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h3 style={{ 
+                  fontWeight: '500', 
+                  color: '#1f2937', 
+                  margin: 0,
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <span>📝</span>
+                  <span>Agenda ({meeting?.agenda_items?.length || 0})</span>
+                </h3>
+                
+                <button
+                  onClick={() => setShowAddAgenda(true)}
+                  className="btn-primary"
+                  style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                  title="Agenda item toevoegen"
+                >
+                  ➕ Toevoegen
+                </button>
+              </div>
             </div>
             
             <div className="meeting-room-sidebar-content">
+              {/* Add Agenda Item Form */}
+              {showAddAgenda && (
+                <div style={{ 
+                  marginBottom: '16px', 
+                  padding: '12px', 
+                  backgroundColor: '#f0f9ff', 
+                  borderRadius: '8px',
+                  border: '1px solid #0ea5e9'
+                }}>
+                  <h4 style={{ fontSize: '0.875rem', fontWeight: '500', marginBottom: '8px', color: '#0c4a6e' }}>
+                    ➕ Nieuw Agenda Item
+                  </h4>
+                  <input
+                    type="text"
+                    value={newAgendaItem}
+                    onChange={(e) => setNewAgendaItem(e.target.value)}
+                    placeholder="Titel van agenda item..."
+                    style={{
+                      width: '100%',
+                      padding: '8px',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '6px',
+                      fontSize: '0.875rem',
+                      marginBottom: '8px'
+                    }}
+                    onKeyPress={(e) => {
+                      if (e.key === 'Enter') {
+                        handleAddAgendaItem();
+                      }
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={handleAddAgendaItem}
+                      disabled={!newAgendaItem.trim()}
+                      className="btn-primary"
+                      style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                    >
+                      ✅ Toevoegen
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowAddAgenda(false);
+                        setNewAgendaItem('');
+                      }}
+                      className="btn-neutral"
+                      style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+                    >
+                      ❌ Annuleren
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {meeting?.agenda_items?.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {meeting.agenda_items.map((item, index) => (
@@ -449,7 +643,7 @@ const MeetingRoom = () => {
                           fontSize: '0.875rem',
                           fontWeight: '500',
                           padding: '4px 8px',
-                          borderRadius: '4px',
+                          borderRadius: '6px',
                           backgroundColor: 
                             index === currentAgendaIndex
                               ? '#bfdbfe'
@@ -510,7 +704,7 @@ const MeetingRoom = () => {
                       onClick={handlers.handlePreviousAgendaItem}
                       disabled={currentAgendaIndex <= 0}
                       className="btn-neutral"
-                      style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+                      style={{ fontSize: '0.75rem', padding: '6px 12px', borderRadius: '8px' }}
                     >
                       ← Vorige
                     </button>
@@ -526,7 +720,7 @@ const MeetingRoom = () => {
                       onClick={handlers.handleNextAgendaItem}
                       disabled={currentAgendaIndex >= meeting.agenda_items.length - 1}
                       className="btn-primary"
-                      style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+                      style={{ fontSize: '0.75rem', padding: '6px 12px', borderRadius: '8px' }}
                     >
                       Volgende →
                     </button>
@@ -612,43 +806,42 @@ const MeetingRoom = () => {
                         <p style={{ 
                           fontSize: '0.75rem', 
                           color: '#6b7280',
-                          textTransform: 'capitalize',
-                          margin: 0
-                        }}>
-                          {participant.role}
-                        </p>
-                        {participant.email && (
-                          <p style={{ 
-                            fontSize: '0.75rem', 
-                            color: '#9ca3af',
-                            margin: 0,
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            whiteSpace: 'nowrap'
-                          }}>
-                            {participant.email}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p style={{ 
-                  color: '#6b7280', 
-                  fontSize: '0.875rem', 
-                  textAlign: 'center', 
-                  padding: '16px' 
-                }}>
-                  Geen deelnemers geregistreerd
-                </p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+textTransform: 'capitalize',
+margin: 0
+}}>
+{participant.role}
+</p>
+{participant.email && (
+<p style={{
+fontSize: '0.75rem',
+color: '#9ca3af',
+margin: 0,
+overflow: 'hidden',
+textOverflow: 'ellipsis',
+whiteSpace: 'nowrap'
+}}>
+{participant.email}
+</p>
+)}
+</div>
+</div>
+))}
+</div>
+) : (
+<p style={{
+color: '#6b7280',
+fontSize: '0.875rem',
+textAlign: 'center',
+padding: '16px'
+}}>
+Geen deelnemers geregistreerd
+</p>
+)}
+</div>
+</div>
+</div>
+</div>
+</div>
+);
 };
-
 export default MeetingRoom;
