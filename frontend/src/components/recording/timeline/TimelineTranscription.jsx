@@ -151,14 +151,24 @@ const TimelineTranscription = ({
   };
 
   return (
-    <div className="bg-white rounded-lg border">
-      {/* Header with timeline and controls */}
-      <div className="p-4 border-b bg-gray-50">
-        {/* Timeline Progress */}
-        <div className="mb-4">
-          <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-            <span>🕐 Timeline</span>
-            <span>{formatTime(currentTime)} {totalDuration > 0 && `/ ${formatTime(totalDuration)}`}</span>
+    <div className="bg-white rounded-lg border timeline-transcription-container" style={{ 
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      minHeight: '400px'
+    }}>
+      {/* Header with timeline and controls - FIXED: Compact header */}
+      <div className="p-3 border-b bg-gray-50" style={{ flexShrink: 0 }}>
+        {/* Timeline Progress - Compact */}
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-xs text-gray-600 mb-2">
+            <span className="flex items-center space-x-1">
+              <span>🕐</span>
+              <span>Timeline</span>
+            </span>
+            <span className="font-mono">
+              {formatTime(currentTime)} {totalDuration > 0 && `/ ${formatTime(totalDuration)}`}
+            </span>
           </div>
           
           <div className="relative">
@@ -174,40 +184,43 @@ const TimelineTranscription = ({
             {/* Time markers */}
             <div className="flex justify-between text-xs text-gray-500 mt-1">
               <span>Start</span>
-              {isRecording && <span className="flex items-center space-x-1">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                <span>Live</span>
-              </span>}
+              {isRecording && (
+                <span className="flex items-center space-x-1">
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <span>Live</span>
+                </span>
+              )}
               <span>Now</span>
             </div>
           </div>
         </div>
 
-        {/* View Controls */}
+        {/* View Controls - Compact */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <label className="text-sm font-medium text-gray-700">📱 Display Mode:</label>
+          <div className="flex items-center space-x-3">
+            <label className="text-xs font-medium text-gray-700">📱 Mode:</label>
             <select 
               value={viewMode} 
               onChange={(e) => setViewMode(e.target.value)}
-              className="text-sm border border-gray-300 rounded px-2 py-1"
+              className="text-xs border border-gray-300 rounded px-2 py-1"
             >
-              <option value="both">Both panels (comparison)</option>
-              <option value="smart">Smart auto-hide (best quality)</option>
-              <option value="whisper">Whisper only (clean view)</option>
-              <option value="live">Web Speech only (immediate)</option>
+              <option value="both">Both panels</option>
+              <option value="smart">Smart auto-hide</option>
+              <option value="whisper">Whisper only</option>
+              <option value="live">Live only</option>
             </select>
           </div>
 
-          <div className="flex items-center space-x-4">
-            <label className="flex items-center space-x-2 text-sm">
+          <div className="flex items-center space-x-3">
+            <label className="flex items-center space-x-1 text-xs">
               <input 
                 type="checkbox" 
                 checked={syncScroll} 
                 onChange={(e) => setSyncScroll(e.target.checked)}
                 className="rounded"
+                style={{ width: '12px', height: '12px' }}
               />
-              <span>🔄 Sync Scroll</span>
+              <span>🔄 Sync</span>
             </label>
             
             <div className="text-xs text-gray-500">
@@ -217,13 +230,24 @@ const TimelineTranscription = ({
         </div>
       </div>
 
-      {/* Main transcription area */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4" style={{ height: '500px' }}>
+      {/* Main transcription area - FIXED: Better height allocation */}
+      <div className="timeline-transcription-content" style={{ 
+        display: 'grid', 
+        gridTemplateColumns: 
+          viewMode === 'both' ? '1fr 1fr' : 
+          (viewMode === 'live' || viewMode === 'smart') && (viewMode === 'whisper' || viewMode === 'smart') ? '1fr 1fr' : 
+          '1fr', 
+        gap: '16px', 
+        padding: '16px',
+        flex: 1,
+        minHeight: 0,
+        overflow: 'hidden'
+      }}>
         
         {/* Left Panel: Web Speech (Live) */}
         {(viewMode === 'both' || viewMode === 'live' || viewMode === 'smart') && (
-          <div className="flex flex-col border rounded-lg">
-            <div className="bg-blue-50 px-3 py-2 border-b">
+          <div className="flex flex-col border rounded-lg" style={{ minHeight: 0 }}>
+            <div className="bg-blue-50 px-3 py-2 border-b" style={{ flexShrink: 0 }}>
               <h4 className="font-medium text-blue-800 text-sm flex items-center space-x-2">
                 <span>🎤</span>
                 <span>Web Speech (Live)</span>
@@ -240,6 +264,7 @@ const TimelineTranscription = ({
               ref={liveScrollRef}
               className="flex-1 overflow-y-auto p-3 space-y-3"
               onScroll={(e) => handleScroll('live', e)}
+              style={{ minHeight: 0 }}
             >
               {allTimeBlocks.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -322,8 +347,8 @@ const TimelineTranscription = ({
 
         {/* Right Panel: Whisper (Enhanced) */}
         {(viewMode === 'both' || viewMode === 'whisper' || viewMode === 'smart') && (
-          <div className="flex flex-col border rounded-lg">
-            <div className="bg-green-50 px-3 py-2 border-b">
+          <div className="flex flex-col border rounded-lg" style={{ minHeight: 0 }}>
+            <div className="bg-green-50 px-3 py-2 border-b" style={{ flexShrink: 0 }}>
               <h4 className="font-medium text-green-800 text-sm flex items-center space-x-2">
                 <span>🤖</span>
                 <span>Whisper Enhanced</span>
@@ -338,6 +363,7 @@ const TimelineTranscription = ({
               ref={whisperScrollRef}
               className="flex-1 overflow-y-auto p-3 space-y-3"
               onScroll={(e) => handleScroll('whisper', e)}
+              style={{ minHeight: 0 }}
             >
               {whisperTimeBlocks.length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
@@ -427,17 +453,31 @@ const TimelineTranscription = ({
         )}
       </div>
 
-      {/* Comparison Modal */}
+      {/* Comparison Modal - FIXED: Better positioning and z-index */}
       {showComparison && selectedTimeblock !== null && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowComparison(false)}>
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4 max-h-96 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center" 
+          onClick={() => setShowComparison(false)}
+          style={{ zIndex: 1000 }}
+        >
+          <div 
+            className="bg-white rounded-lg p-6 max-w-4xl w-full mx-4" 
+            onClick={(e) => e.stopPropagation()}
+            style={{ 
+              maxHeight: '80vh', 
+              overflowY: 'auto',
+              position: 'relative',
+              zIndex: 1001
+            }}
+          >
             <div className="flex justify-between items-center mb-4">
               <h3 className="text-lg font-medium">
                 📝 Comparison [{formatTime(selectedTimeblock)}]
               </h3>
               <button 
                 onClick={() => setShowComparison(false)}
-                className="text-gray-500 hover:text-gray-700"
+                className="text-gray-500 hover:text-gray-700 text-xl"
+                style={{ lineHeight: 1 }}
               >
                 ✕
               </button>
