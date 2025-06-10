@@ -833,3 +833,76 @@ button:focus {
   overflow-y: auto;
   min-height: 0;
 }
+
+/* Flexibele Meeting Room Layout - TOEVOEGEN AAN EINDE VAN BESTAND */
+
+/* Flexibele transcriptie container */
+.meeting-room-transcription-flexible {
+  flex: 1;
+  padding: 1.5rem;
+  overflow: visible; /* Changed from hidden to visible */
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Auto-sizing transcription content */
+.meeting-room-transcription-flexible > div {
+  flex: 1;
+  min-height: 400px; /* Minimum height */
+  max-height: 80vh; /* Maximum height */
+  height: auto; /* Auto height based on content */
+}
+
+/* Enhanced scrolling for transcription areas */
+.meeting-room-transcription-flexible .enhanced-transcription-container {
+  height: auto;
+  min-height: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+/* Status bolletje hover effects */
+.agenda-status-dot {
+  transition: all 0.2s ease;
+}
+
+.agenda-status-dot:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* Agenda item completed state */
+.agenda-item-completed {
+  opacity: 0.8;
+}
+
+.agenda-item-completed:hover {
+  opacity: 1;
+}
+
+/* Clear button hover effect */
+.transcript-clear-btn {
+  transition: all 0.2s ease;
+}
+
+.transcript-clear-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Responsive adjustments voor kleinere schermen */
+@media (max-width: 1024px) {
+  .meeting-room-transcription-flexible > div {
+    min-height: 300px;
+    max-height: 60vh;
+  }
+}
+
+@media (max-width: 768px) {
+  .meeting-room-transcription-flexible > div {
+    min-height: 250px;
+    max-height: 50vh;
+  }
+}
+
