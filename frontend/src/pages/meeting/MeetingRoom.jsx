@@ -18,7 +18,7 @@ const MeetingRoom = () => {
 
   // Transcription state
   const [transcriptions, setTranscriptions] = useState([]);
-  const [transcriptionMode, setTranscriptionMode] = useState('none'); // 'none', 'manual', 'enhanced'
+  const [transcriptionMode, setTranscriptionMode] = useState('enhanced');
 
   // Speaker state
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
@@ -105,22 +105,44 @@ const MeetingRoom = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-          <p className="mt-2 text-gray-600">Laden...</p>
-        </div>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'center', 
+        height: '100vh',
+        flexDirection: 'column' 
+      }}>
+        <div style={{
+          width: '32px',
+          height: '32px',
+          border: '4px solid #e5e7eb',
+          borderTop: '4px solid #2563eb',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite'
+        }}></div>
+        <p style={{ marginTop: '16px', color: '#6b7280' }}>Laden...</p>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="text-center py-8">
-        <div className="text-4xl mb-2">❌</div>
-        <h2 className="text-lg font-semibold text-gray-800 mb-2">Fout</h2>
-        <p className="text-red-600 mb-4">{error}</p>
-        <button onClick={() => navigate('/dashboard')} className="btn-primary text-sm px-4 py-2">
+      <div style={{ 
+        textAlign: 'center', 
+        padding: '32px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: '100vh'
+      }}>
+        <div style={{ fontSize: '2rem', marginBottom: '16px' }}>❌</div>
+        <h2 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#1f2937', marginBottom: '8px' }}>Fout</h2>
+        <p style={{ color: '#dc2626', marginBottom: '16px' }}>{error}</p>
+        <button 
+          onClick={() => navigate('/dashboard')} 
+          className="btn-primary"
+        >
           Terug naar Dashboard
         </button>
       </div>
@@ -128,265 +150,501 @@ const MeetingRoom = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <div className="meeting-room-container">
       {/* Header */}
-      <div className="bg-white rounded-lg border p-4 mb-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-1">{meeting?.title}</h1>
-            <div className="flex items-center space-x-4 text-sm text-gray-600">
-              <span>🆔 {id}</span>
-              <span>👥 {meeting?.participants?.length || 0} deelnemers</span>
-              <span>📝 {transcriptions.length} transcripties</span>
+      <div className="meeting-room-header">
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
+            <div>
+              <h1 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827', margin: 0 }}>
+                {meeting?.title}
+              </h1>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', fontSize: '0.875rem', color: '#6b7280', marginTop: '4px' }}>
+                <span>🆔 {id}</span>
+                <span>👥 {meeting?.participants?.length || 0} deelnemers</span>
+                <span>📝 {transcriptions.length} transcripties</span>
+              </div>
+            </div>
+
+            {/* Transcriptie Mode Selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: '500', color: '#374151' }}>
+                🎤 Transcriptie:
+              </label>
+              <select 
+                value={transcriptionMode} 
+                onChange={(e) => setTranscriptionMode(e.target.value)}
+                style={{
+                  backgroundColor: 'white',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  fontSize: '0.875rem',
+                  outline: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="enhanced">🎯 Live Transcriptie</option>
+                <option value="manual">🎤 Handmatige Opname</option>
+                <option value="none">⏸️ Geen Transcriptie</option>
+              </select>
             </div>
           </div>
-          <div className="flex space-x-3">
-            <button onClick={() => navigate('/dashboard')} className="btn-neutral px-4 py-2">
+
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button 
+              onClick={() => navigate('/dashboard')} 
+              className="btn-neutral"
+            >
               🏠 Dashboard
             </button>
-            <button onClick={finishMeeting} className="btn-danger px-4 py-2">
+            <button 
+              onClick={finishMeeting} 
+              className="btn-danger"
+            >
               ⏹️ Stop Meeting
             </button>
           </div>
         </div>
       </div>
 
-      {/* Main Layout: Links Transcriptie, Rechts Meeting Info */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main Content Area */}
+      <div className="meeting-room-content">
         
-        {/* LINKS: Transcriptie Gebied (2/3) */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* LINKS: Transcriptie Gebied */}
+        <div className="meeting-room-main">
           
-          {/* Transcriptie Mode Selector */}
-          <div className="bg-white rounded-lg border p-4">
-            <h2 className="text-lg font-medium mb-4">🎤 Transcriptie Opties</h2>
-            
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-              <button
-                onClick={() => setTranscriptionMode('none')}
-                className={`p-4 rounded-lg border-2 text-left transition-all ${
-                  transcriptionMode === 'none'
-                    ? 'border-gray-500 bg-gray-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="font-medium">⏸️ Geen Transcriptie</div>
-                <div className="text-sm text-gray-600">Handmatige notities</div>
-              </button>
-              
-              <button
-                onClick={() => setTranscriptionMode('manual')}
-                className={`p-4 rounded-lg border-2 text-left transition-all ${
-                  transcriptionMode === 'manual'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="font-medium">🎤 Handmatige Opname</div>
-                <div className="text-sm text-gray-600">Opnemen → Stop → Transcribeer</div>
-              </button>
-              
-              <button
-                onClick={() => setTranscriptionMode('enhanced')}
-                className={`p-4 rounded-lg border-2 text-left transition-all ${
-                  transcriptionMode === 'enhanced'
-                    ? 'border-green-500 bg-green-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="font-medium">🎯 Live Transcriptie</div>
-                <div className="text-sm text-gray-600">Real-time spraak naar tekst</div>
-              </button>
-            </div>
+          {/* Transcriptie Component */}
+          <div className="meeting-room-transcription">
+            {transcriptionMode === 'enhanced' && (
+              <div style={{ 
+                height: '100%', 
+                backgroundColor: 'white', 
+                borderRadius: '12px', 
+                border: '1px solid #e5e7eb',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                <div style={{ 
+                  padding: '16px', 
+                  borderBottom: '1px solid #e5e7eb',
+                  backgroundColor: '#f9fafb',
+                  borderRadius: '12px 12px 0 0'
+                }}>
+                  <h3 style={{ 
+                    fontWeight: '500', 
+                    color: '#1f2937', 
+                    margin: 0,
+                    fontSize: '1rem'
+                  }}>
+                    🎯 Live Transcriptie
+                  </h3>
+                </div>
+                <div style={{ flex: 1, padding: '24px', overflow: 'hidden' }}>
+                  <EnhancedLiveTranscription
+                    meetingId={parseInt(id)}
+                    participants={meeting?.participants || []}
+                    onTranscriptionUpdate={handleTranscriptionUpdate}
+                    onSessionStatsUpdate={(stats) => console.log('Session stats:', stats)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {transcriptionMode === 'manual' && (
+              <div style={{ 
+                height: '100%', 
+                backgroundColor: 'white', 
+                borderRadius: '12px', 
+                border: '1px solid #e5e7eb',
+                display: 'flex',
+                flexDirection: 'column'
+              }}>
+                <div style={{ 
+                  padding: '16px', 
+                  borderBottom: '1px solid #e5e7eb',
+                  backgroundColor: '#f9fafb',
+                  borderRadius: '12px 12px 0 0'
+                }}>
+                  <h3 style={{ 
+                    fontWeight: '500', 
+                    color: '#1f2937', 
+                    margin: 0,
+                    fontSize: '1rem'
+                  }}>
+                    🎤 Handmatige Audio Opname
+                  </h3>
+                </div>
+                <div style={{ padding: '24px' }}>
+                  <BasicAudioUploader
+                    onTranscriptionReceived={handleTranscriptionUpdate}
+                    meetingId={parseInt(id)}
+                  />
+                </div>
+              </div>
+            )}
+
+            {transcriptionMode === 'none' && (
+              <div style={{ 
+                height: '100%', 
+                backgroundColor: 'white', 
+                borderRadius: '12px', 
+                border: '1px solid #e5e7eb',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '16px' }}>📝</div>
+                  <h3 style={{ fontSize: '1.125rem', fontWeight: '500', color: '#374151', marginBottom: '8px' }}>
+                    Handmatige Notities
+                  </h3>
+                  <p style={{ color: '#6b7280', marginBottom: '16px' }}>
+                    Kies een transcriptie optie in de header om te beginnen met opnemen.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Transcriptie Component op basis van gekozen mode */}
-          {transcriptionMode === 'manual' && (
-            <div className="bg-white rounded-lg border">
-              <div className="p-4 border-b">
-                <h3 className="font-medium">🎤 Handmatige Audio Opname</h3>
+          {/* Gespreksverslag */}
+          <div className="meeting-room-transcript-log">
+            <h3 style={{ 
+              fontWeight: '500', 
+              color: '#1f2937', 
+              marginBottom: '12px',
+              fontSize: '1rem'
+            }}>
+              💬 Gespreksverslag ({transcriptions.length})
+            </h3>
+            {transcriptions.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '16px' }}>
+                <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>Nog geen gesprekstekst</p>
               </div>
-              <div className="p-6">
-                <BasicAudioUploader
-                  onTranscriptionReceived={handleTranscriptionUpdate}
-                  meetingId={parseInt(id)}
-                />
-              </div>
-            </div>
-          )}
-
-          {transcriptionMode === 'enhanced' && (
-            <div className="bg-white rounded-lg border">
-              <div className="p-4 border-b">
-                <h3 className="font-medium">🎯 Enhanced Live Transcriptie</h3>
-              </div>
-              <div className="p-6">
-                <EnhancedLiveTranscription
-                  meetingId={parseInt(id)}
-                  participants={meeting?.participants || []}
-                  onTranscriptionUpdate={handleTranscriptionUpdate}
-                  onSessionStatsUpdate={(stats) => console.log('Session stats:', stats)}
-                />
-              </div>
-            </div>
-          )}
-
-          {transcriptionMode === 'none' && (
-            <div className="bg-white rounded-lg border p-8 text-center">
-              <div className="text-4xl mb-4">📝</div>
-              <h3 className="text-lg font-medium text-gray-700 mb-2">Handmatige Notities</h3>
-              <p className="text-gray-600 mb-4">
-                Kies een transcriptie optie hierboven om te beginnen met opnemen.
-              </p>
-            </div>
-          )}
-
-          {/* Transcriptie Geschiedenis */}
-          <div className="bg-white rounded-lg border">
-            <div className="p-4 border-b">
-              <h3 className="font-medium">📝 Transcriptie Geschiedenis ({transcriptions.length})</h3>
-            </div>
-            <div className="p-4">
-              {transcriptions.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <div className="text-3xl mb-2">💬</div>
-                  <p>Nog geen transcripties</p>
-                </div>
-              ) : (
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  {transcriptions
-                    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-                    .map((transcription, index) => (
-                      <div key={transcription.id || index} className="bg-gray-50 rounded-lg p-3">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center space-x-2">
-                            <div
-                              className="w-3 h-3 rounded-full"
-                              style={{ backgroundColor: transcription.speakerColor || '#6B7280' }}
-                            ></div>
-                            <span className="font-medium text-sm">
-                              {transcription.speaker || 'Audio Upload'}
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {new Date(transcription.timestamp).toLocaleTimeString('nl-NL')}
-                            </span>
-                          </div>
-                          <span className="text-xs text-gray-500">
-                            {Math.round((transcription.confidence || 0) * 100)}%
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {transcriptions
+                  .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+                  .slice(0, 5)
+                  .map((transcription, index) => (
+                    <div 
+                      key={transcription.id || index} 
+                      style={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: '12px',
+                        padding: '8px',
+                        backgroundColor: '#f9fafb',
+                        borderRadius: '8px'
+                      }}
+                    >
+                      <div 
+                        style={{
+                          width: '12px',
+                          height: '12px',
+                          borderRadius: '50%',
+                          backgroundColor: transcription.speakerColor || '#6B7280',
+                          marginTop: '4px',
+                          flexShrink: 0
+                        }}
+                      ></div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                          <span style={{ 
+                            fontWeight: '500', 
+                            fontSize: '0.875rem', 
+                            color: '#1f2937' 
+                          }}>
+                            {transcription.speaker || 'Audio Upload'}
+                          </span>
+                          <span style={{ 
+                            fontSize: '0.75rem', 
+                            color: '#6b7280' 
+                          }}>
+                            {new Date(transcription.timestamp).toLocaleTimeString('nl-NL')}
                           </span>
                         </div>
-                        <p className="text-gray-900">{transcription.text}</p>
+                        <p style={{ 
+                          fontSize: '0.875rem', 
+                          color: '#111827', 
+                          lineHeight: '1.5',
+                          margin: 0
+                        }}>
+                          {transcription.text}
+                        </p>
                       </div>
-                    ))}
-                </div>
-              )}
-            </div>
+                    </div>
+                  ))}
+                {transcriptions.length > 5 && (
+                  <div style={{ textAlign: 'center' }}>
+                    <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                      ... en {transcriptions.length - 5} meer
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
-        {/* RECHTS: Meeting Informatie (1/3) */}
-        <div className="lg:col-span-1 space-y-6">
+        {/* RECHTS: Sidebar */}
+        <div className="meeting-room-sidebar">
           
-          {/* Meeting Details */}
-          <div className="bg-white rounded-lg border p-4">
-            <h3 className="font-medium mb-4">📋 Meeting Details</h3>
-            <div className="space-y-3 text-sm">
-              <div>
-                <span className="text-gray-600">Type:</span>
-                <span className="ml-2 font-medium capitalize">{meeting?.type}</span>
-              </div>
-              <div>
-                <span className="text-gray-600">Status:</span>
-                <span className="ml-2 font-medium capitalize">{meeting?.status}</span>
-              </div>
-              {meeting?.description && (
-                <div>
-                  <span className="text-gray-600">Beschrijving:</span>
-                  <p className="mt-1 text-gray-900">{meeting.description}</p>
+          {/* Agenda Sectie */}
+          <div className="meeting-room-sidebar-section" style={{ borderBottom: '1px solid #e5e7eb' }}>
+            <div className="meeting-room-sidebar-header">
+              <h3 style={{ 
+                fontWeight: '500', 
+                color: '#1f2937', 
+                margin: 0,
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span>📝</span>
+                <span>Agenda ({meeting?.agenda_items?.length || 0})</span>
+              </h3>
+            </div>
+            
+            <div className="meeting-room-sidebar-content">
+              {meeting?.agenda_items?.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {meeting.agenda_items.map((item, index) => (
+                    <div
+                      key={index}
+                      onClick={() => handlers.handleGoToAgendaItem(index)}
+                      style={{
+                        padding: '12px',
+                        borderRadius: '8px',
+                        borderLeft: `4px solid ${
+                          index === currentAgendaIndex
+                            ? '#3b82f6'
+                            : index < currentAgendaIndex
+                            ? '#10b981'
+                            : '#d1d5db'
+                        }`,
+                        backgroundColor: 
+                          index === currentAgendaIndex
+                            ? '#eff6ff'
+                            : index < currentAgendaIndex
+                            ? '#ecfdf5'
+                            : '#f9fafb',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => {
+                        if (index > currentAgendaIndex) {
+                          e.target.style.backgroundColor = '#f3f4f6';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (index > currentAgendaIndex) {
+                          e.target.style.backgroundColor = '#f9fafb';
+                        }
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                        <span style={{
+                          fontSize: '0.875rem',
+                          fontWeight: '500',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          backgroundColor: 
+                            index === currentAgendaIndex
+                              ? '#bfdbfe'
+                              : index < currentAgendaIndex
+                              ? '#bbf7d0'
+                              : '#e5e7eb',
+                          color:
+                            index === currentAgendaIndex
+                              ? '#1e40af'
+                              : index < currentAgendaIndex
+                              ? '#065f46'
+                              : '#374151'
+                        }}>
+                          {index + 1}
+                        </span>
+                        <div style={{ flex: 1 }}>
+                          <h4 style={{ 
+                            fontSize: '0.875rem', 
+                            fontWeight: '500', 
+                            color: '#1f2937',
+                            margin: 0,
+                            marginBottom: '4px'
+                          }}>
+                            {item.title}
+                          </h4>
+                          {item.description && (
+                            <p style={{ 
+                              fontSize: '0.75rem', 
+                              color: '#6b7280',
+                              margin: 0,
+                              marginBottom: '4px'
+                            }}>
+                              {item.description}
+                            </p>
+                          )}
+                          {item.estimated_duration && (
+                            <p style={{ 
+                              fontSize: '0.75rem', 
+                              color: '#9ca3af',
+                              margin: 0
+                            }}>
+                              ~{item.estimated_duration} min
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  {/* Agenda Navigatie */}
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    paddingTop: '12px',
+                    borderTop: '1px solid #e5e7eb'
+                  }}>
+                    <button
+                      onClick={handlers.handlePreviousAgendaItem}
+                      disabled={currentAgendaIndex <= 0}
+                      className="btn-neutral"
+                      style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+                    >
+                      ← Vorige
+                    </button>
+                    <span style={{ 
+                      fontSize: '0.75rem', 
+                      color: '#6b7280', 
+                      display: 'flex', 
+                      alignItems: 'center' 
+                    }}>
+                      {currentAgendaIndex + 1} / {meeting.agenda_items.length}
+                    </span>
+                    <button
+                      onClick={handlers.handleNextAgendaItem}
+                      disabled={currentAgendaIndex >= meeting.agenda_items.length - 1}
+                      className="btn-primary"
+                      style={{ fontSize: '0.75rem', padding: '6px 12px' }}
+                    >
+                      Volgende →
+                    </button>
+                  </div>
                 </div>
+              ) : (
+                <p style={{ 
+                  color: '#6b7280', 
+                  fontSize: '0.875rem', 
+                  textAlign: 'center', 
+                  padding: '16px' 
+                }}>
+                  Geen agenda items
+                </p>
               )}
             </div>
           </div>
 
-          {/* Deelnemers */}
-          <div className="bg-white rounded-lg border p-4">
-            <h3 className="font-medium mb-4">👥 Deelnemers ({meeting?.participants?.length || 0})</h3>
-            {meeting?.participants?.length > 0 ? (
-              <div className="space-y-2">
-                {meeting.participants.map((participant, index) => (
-                  <div key={index} className="flex items-center space-x-3 p-2 bg-gray-50 rounded">
-                    <div
-                      className="w-4 h-4 rounded-full"
-                      style={{ backgroundColor: getSpeakerColor(index + 1) }}
-                    ></div>
-                    <div className="flex-1">
-                      <div className="font-medium text-sm">{participant.name}</div>
-                      <div className="text-xs text-gray-500 capitalize">{participant.role}</div>
+          {/* Deelnemers Sectie */}
+          <div className="meeting-room-sidebar-section">
+            <div className="meeting-room-sidebar-header">
+              <h3 style={{ 
+                fontWeight: '500', 
+                color: '#1f2937', 
+                margin: 0,
+                fontSize: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span>👥</span>
+                <span>Deelnemers ({meeting?.participants?.length || 0})</span>
+              </h3>
+            </div>
+            
+            <div className="meeting-room-sidebar-content">
+              {meeting?.participants?.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {meeting.participants.map((participant, index) => (
+                    <div 
+                      key={index} 
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '12px',
+                        backgroundColor: '#f9fafb',
+                        borderRadius: '8px',
+                        transition: 'background-color 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.backgroundColor = '#f3f4f6'}
+                      onMouseLeave={(e) => e.target.style.backgroundColor = '#f9fafb'}
+                    >
+                      <div
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                          fontWeight: '500',
+                          fontSize: '0.875rem',
+                          backgroundColor: getSpeakerColor(index + 1),
+                          flexShrink: 0
+                        }}
+                      >
+                        {participant.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <h4 style={{ 
+                          fontWeight: '500', 
+                          fontSize: '0.875rem', 
+                          color: '#1f2937',
+                          margin: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}>
+                          {participant.name}
+                        </h4>
+                        <p style={{ 
+                          fontSize: '0.75rem', 
+                          color: '#6b7280',
+                          textTransform: 'capitalize',
+                          margin: 0
+                        }}>
+                          {participant.role}
+                        </p>
+                        {participant.email && (
+                          <p style={{ 
+                            fontSize: '0.75rem', 
+                            color: '#9ca3af',
+                            margin: 0,
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}>
+                            {participant.email}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm">Geen deelnemers geregistreerd</p>
-            )}
-          </div>
-
-          {/* Agenda */}
-          <div className="bg-white rounded-lg border p-4">
-            <h3 className="font-medium mb-4">📝 Agenda ({meeting?.agenda_items?.length || 0})</h3>
-            {meeting?.agenda_items?.length > 0 ? (
-              <div className="space-y-2">
-                {meeting.agenda_items.map((item, index) => (
-                  <div
-                    key={index}
-                    className={`p-3 rounded border-l-4 ${
-                      index === currentAgendaIndex
-                        ? 'border-blue-500 bg-blue-50'
-                        : index < currentAgendaIndex
-                        ? 'border-green-500 bg-green-50'
-                        : 'border-gray-300 bg-gray-50'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-2 mb-1">
-                      <span className="text-sm font-medium">
-                        {index + 1}. {item.title}
-                      </span>
-                    </div>
-                    {item.description && (
-                      <p className="text-xs text-gray-600">{item.description}</p>
-                    )}
-                    {item.estimated_duration && (
-                      <p className="text-xs text-gray-500">~{item.estimated_duration} min</p>
-                    )}
-                  </div>
-                ))}
-                
-                {/* Agenda Navigatie */}
-                <div className="flex justify-between pt-3">
-                  <button
-                    onClick={handlers.handlePreviousAgendaItem}
-                    disabled={currentAgendaIndex <= 0}
-                    className="px-3 py-1 text-xs bg-gray-200 text-gray-600 rounded disabled:opacity-50"
-                  >
-                    ← Vorige
-                  </button>
-                  <span className="text-xs text-gray-600 flex items-center">
-                    {currentAgendaIndex + 1} / {meeting.agenda_items.length}
-                  </span>
-                  <button
-                    onClick={handlers.handleNextAgendaItem}
-                    disabled={currentAgendaIndex >= meeting.agenda_items.length - 1}
-                    className="px-3 py-1 text-xs bg-gray-200 text-gray-600 rounded disabled:opacity-50"
-                  >
-                    Volgende →
-                  </button>
+                  ))}
                 </div>
-              </div>
-            ) : (
-              <p className="text-gray-500 text-sm">Geen agenda items</p>
-            )}
+              ) : (
+                <p style={{ 
+                  color: '#6b7280', 
+                  fontSize: '0.875rem', 
+                  textAlign: 'center', 
+                  padding: '16px' 
+                }}>
+                  Geen deelnemers geregistreerd
+                </p>
+              )}
+            </div>
           </div>
-
         </div>
       </div>
     </div>

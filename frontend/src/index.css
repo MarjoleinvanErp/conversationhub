@@ -756,3 +756,80 @@ button:focus {
   min-height: 0;
   overflow: hidden;
 }
+
+/* Meeting Room Layout - Expliciete Flexbox Styling */
+.meeting-room-container {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: #f9fafb;
+}
+
+.meeting-room-header {
+  flex-shrink: 0;
+  background-color: white;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 1rem 1.5rem;
+}
+
+.meeting-room-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.meeting-room-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.meeting-room-transcription {
+  flex: 1;
+  padding: 1.5rem;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.meeting-room-transcript-log {
+  flex-shrink: 0;
+  border-top: 1px solid #e5e7eb;
+  background-color: white;
+  padding: 1rem 1.5rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.meeting-room-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  background-color: white;
+  border-left: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.meeting-room-sidebar-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.meeting-room-sidebar-header {
+  flex-shrink: 0;
+  padding: 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+}
+
+.meeting-room-sidebar-content {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+  min-height: 0;
+}
