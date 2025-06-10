@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import enhancedLiveTranscriptionService from '../../services/api/enhancedLiveTranscriptionService';
+import TimelineTranscription from './timeline/TimelineTranscription.jsx';
 
 const EnhancedLiveTranscription = ({ 
   meetingId, 
@@ -553,272 +554,219 @@ const EnhancedLiveTranscription = ({
     );
   }
 
-  // Main UI: Side-by-side transcription panels
+// Main UI: Timeline-based transcription interface
   return (
     <div className="bg-white rounded-lg border">
-      {/* Header */}
-      <div className="flex justify-between items-center p-4 border-b">
-        <div className="flex items-center space-x-3">
-          <h3 className="font-medium">🎤 Enhanced Live Transcriptie</h3>
-          <div className="flex items-center space-x-2 text-sm">
-            <div className={`w-2 h-2 rounded-full ${
-              isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
-            }`}></div>
-            <span className="text-gray-600">
-              {isRecording ? 'Live Recording' : 'Gestopt'}
-            </span>
-          </div>
-        </div>
-        
-        <div className="flex items-center space-x-2">
-          {isProcessingWhisper && (
-            <div className="flex items-center space-x-1 text-xs text-blue-600">
-              <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-              <span>Whisper Processing...</span>
-            </div>
-          )}
-          <div className="text-xs text-gray-500">
-            Live: {liveTranscriptions.length} | Whisper: {whisperTranscriptions.length} | Queue: {waitingForWhisper.length}
-          </div>
-        </div>
-      </div>
-
-      {recordingError && (
-        <div className="bg-red-50 border-l-4 border-red-400 text-red-700 p-3 text-sm">
-          <div className="flex justify-between items-center">
-            <span>{recordingError}</span>
-            <button 
-              onClick={() => setRecordingError('')} 
-              className="text-red-500 hover:text-red-700"
+      {/* Voice setup UI blijft hetzelfde */}
+      {voiceSetupPhase && !voiceSetupComplete ? (
+        <div className="bg-white rounded-lg border p-6">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-medium">
+              Stem Setup - Stap {currentSetupSpeaker + 1} van {participants.length}
+            </h3>
+            
+            <button
+              onClick={skipVoiceSetup}
+              className="text-sm text-blue-600 hover:text-blue-700 underline"
             >
-              ✕
+              Skip hele setup
             </button>
           </div>
-        </div>
-      )}
-
-      {/* Controls */}
-      <div className="p-3 bg-gray-50 border-b">
-        {!sessionActive ? (
-          <button
-            onClick={startEnhancedSession}
-            className="btn-primary w-full text-sm py-2"
-            disabled={!speechSupported}
-          >
-            🚀 Start Enhanced Transcriptie
-          </button>
-        ) : !isRecording && voiceSetupComplete ? (
-          <button
-            onClick={startLiveTranscription}
-            className="btn-success w-full text-sm py-2"
-            disabled={!speechSupported}
-          >
-            🎤 Start Live Transcriptie
-          </button>
-        ) : isRecording ? (
-          <button
-            onClick={stopTranscription}
-            className="btn-danger w-full text-sm py-2"
-          >
-            ⏹️ Stop Transcriptie
-          </button>
-        ) : null}
-        
-        {!speechSupported && (
-          <p className="text-xs text-red-600 mt-2 text-center">
-            Speech recognition niet ondersteund. Gebruik Chrome of Edge.
-          </p>
-        )}
-
-        {/* FIXED: Processing status display */}
-        {whisperProgress && (
-          <div className="mt-2 text-xs text-blue-600 text-center">
-            🤖 {whisperProgress}
-          </div>
-        )}
-      </div>
-
-      {/* Side-by-side transcription panels */}
-      <div className="grid grid-cols-2 gap-4 p-4">
-        
-        {/* LEFT: Web Speech API (Live) */}
-        <div className="border rounded-lg">
-          <div className="bg-blue-50 px-3 py-2 border-b">
-            <h4 className="font-medium text-blue-800 text-sm flex items-center space-x-2">
-              <span>🎤</span>
-              <span>Web Speech API (Live)</span>
-              <span className="text-xs bg-blue-200 px-2 py-1 rounded">{liveTranscriptions.length}</span>
-              {waitingForWhisper.length > 0 && (
-                <span className="text-xs bg-orange-200 text-orange-700 px-2 py-1 rounded">
-                  {waitingForWhisper.length} pending
-                </span>
-              )}
-            </h4>
-          </div>
           
-          <div className="h-64 overflow-y-auto p-3">
-            {liveTranscriptions.length === 0 && !interimTranscript ? (
-              <div className="text-center py-8 text-gray-500">
-                <div className="text-2xl mb-2">🎤</div>
-                <p className="text-sm">Live Web Speech results verschijnen hier</p>
-                <p className="text-xs text-gray-400 mt-1">Real-time browser speech recognition</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {liveTranscriptions.map((transcription) => (
-                  <div key={transcription.id} className="bg-blue-50 rounded p-2 border-l-4 border-blue-400">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <div 
-                        className="w-2 h-2 rounded-full"
-                        style={{ backgroundColor: transcription.speaker_color }}
-                      ></div>
-                      <span className="font-medium text-xs text-blue-700">
-                        {transcription.speaker_name}
-                      </span>
-                      <span className="text-xs text-blue-600">
-                        {Math.round((transcription.original_confidence || 0) * 100)}%
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        #{transcription.chunk_number || '?'}
-                      </span>
+          <div className="text-center">
+            {participants[currentSetupSpeaker] ? (
+              <div className="mb-6">
+                <div className="flex items-center justify-center mb-4">
+                  <div 
+                    className="w-16 h-16 rounded-full flex items-center justify-center text-white text-xl font-bold"
+                    style={{ backgroundColor: participants[currentSetupSpeaker].color || '#6B7280' }}
+                  >
+                    {participants[currentSetupSpeaker].name.charAt(0).toUpperCase()}
+                  </div>
+                </div>
+                
+                <h4 className="text-xl font-medium mb-2">{participants[currentSetupSpeaker].name}</h4>
+                <p className="text-gray-600 mb-4">
+                  Zeg je naam en een korte zin zodat het systeem je stem kan leren herkennen.
+                </p>
+                
+                {isRecordingVoice ? (
+                  <div className="mb-6">
+                    <div className="flex items-center justify-center mb-2">
+                      <div className="w-4 h-4 bg-red-500 rounded-full animate-pulse mr-2"></div>
+                      <span className="text-red-600 font-medium">Opname bezig... (5 seconden)</span>
                     </div>
-                    <div className="text-sm text-blue-900">{transcription.text}</div>
-                    <div className="text-xs text-blue-600 mt-1">
-                      {new Date(transcription.created_at || transcription.timestamp).toLocaleTimeString('nl-NL', {
-                        hour: '2-digit', minute: '2-digit', second: '2-digit'
-                      })}
+                    <div className="text-sm text-gray-500">
+                      Spreek nu duidelijk in de microfoon
                     </div>
                   </div>
-                ))}
-                
-                {/* Interim results */}
-                {interimTranscript && (
-                  <div className="bg-blue-100 rounded p-2 border-l-4 border-blue-300 opacity-60">
-                    <div className="text-blue-600 italic text-sm">
-                      {interimTranscript}
-                    </div>
-                    <div className="text-xs text-blue-500">
-                      typing...
-                    </div>
+                ) : (
+                  <div className="mb-6">
+                    <button
+                      onClick={startVoiceSetup}
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium"
+                      disabled={isRecordingVoice}
+                    >
+                      🎤 Start Stem Opname
+                    </button>
                   </div>
                 )}
-                
-                <div ref={liveTranscriptEndRef} />
-              </div>
-            )}
-          </div>
-        </div>
 
-        {/* RIGHT: Azure Whisper (Verified) */}
-        <div className="border rounded-lg">
-          <div className="bg-green-50 px-3 py-2 border-b">
-            <h4 className="font-medium text-green-800 text-sm flex items-center space-x-2">
-              <span>🤖</span>
-              <span>Azure Whisper (Verified)</span>
-              <span className="text-xs bg-green-200 px-2 py-1 rounded">{whisperTranscriptions.length}</span>
-              {isProcessingWhisper && (
-                <span className="text-xs bg-yellow-200 text-yellow-700 px-2 py-1 rounded animate-pulse">
-                  Processing...
-                </span>
-              )}
-            </h4>
-          </div>
-          
-          <div className="h-64 overflow-y-auto p-3">
-            {whisperTranscriptions.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <div className="text-2xl mb-2">🤖</div>
-                <p className="text-sm">Whisper verified results verschijnen hier</p>
-                <p className="text-xs text-gray-400 mt-1">Azure OpenAI Whisper transcriptie iedere 30 seconden</p>
-                {isProcessingWhisper && (
-                  <div className="mt-3 text-xs text-blue-600">
-                    <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin mx-auto mb-1"></div>
-                    Whisper aan het verwerken...
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {whisperTranscriptions.map((transcription) => (
-                  <div key={transcription.id} className="bg-green-50 rounded p-2 border-l-4 border-green-400">
-                    <div className="flex items-center justify-between mb-1">
-                      <div className="flex items-center space-x-2">
-                        <div 
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: transcription.speaker_color }}
-                        ></div>
-                        <span className="font-medium text-xs text-green-700">
-                          {transcription.speaker_name}
-                        </span>
-                        {transcription.improved && (
-                          <span className="text-xs bg-orange-200 text-orange-700 px-1 rounded">
-                            IMPROVED
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-xs text-green-600">
-                        {Math.round((transcription.text_confidence || 0) * 100)}%
-                      </span>
-                    </div>
+                {!isRecordingVoice && (
+                  <div className="flex justify-center space-x-4 mb-4">
+                    <button
+                      onClick={previousSpeaker}
+                      disabled={currentSetupSpeaker === 0}
+                      className={`px-4 py-2 rounded-lg ${
+                        currentSetupSpeaker === 0 
+                          ? 'bg-gray-200 text-gray-400 cursor-not-allowed' 
+                          : 'bg-gray-300 hover:bg-gray-400 text-gray-700'
+                      }`}
+                    >
+                      ← Vorige
+                    </button>
                     
-                    <div className="text-sm text-green-900 font-medium">{transcription.text}</div>
-                    
-                    {/* Show comparison if improved */}
-                    {transcription.improved && transcription.original_live_text && (
-                      <div className="text-xs text-gray-600 mt-1 p-1 bg-gray-100 rounded">
-                        <span className="font-medium">Was:</span> {transcription.original_live_text}
-                      </div>
+                    {currentSetupSpeaker >= participants.length - 1 ? (
+                      <button
+                        onClick={completeVoiceSetup}
+                        className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg"
+                      >
+                        ✅ Setup Voltooien
+                      </button>
+                    ) : (
+                      <button
+                        onClick={nextSpeaker}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg"
+                      >
+                        Volgende →
+                      </button>
                     )}
-                    
-                    <div className="text-xs text-green-600 mt-1 flex justify-between">
-                      <span>
-                        {new Date(transcription.chunk_processed_at || transcription.timestamp).toLocaleTimeString('nl-NL', {
-                          hour: '2-digit', minute: '2-digit', second: '2-digit'
-                        })}
-                      </span>
-                      <span className="text-gray-500">
-                        Chunk #{transcription.chunk_number || '?'}
-                      </span>
-                    </div>
                   </div>
-                ))}
-                
-                <div ref={whisperTranscriptEndRef} />
+                )}
+              </div>
+            ) : (
+              <div className="mb-6 text-red-600">
+                Fout: Geen deelnemer gevonden
               </div>
             )}
+            
+            {voiceSetupError && (
+              <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded mb-4">
+                {voiceSetupError}
+                <button 
+                  onClick={() => setVoiceSetupError('')} 
+                  className="ml-2 text-xs underline"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            
+            <div className="flex justify-center space-x-2 mt-4">
+              {participants.map((participant, index) => (
+                <div
+                  key={index}
+                  className={`w-3 h-3 rounded-full cursor-pointer ${
+                    index < currentSetupSpeaker ? 'bg-green-500' :
+                    index === currentSetupSpeaker ? 'bg-blue-500' : 'bg-gray-300'
+                  }`}
+                  onClick={() => !isRecordingVoice && setCurrentSetupSpeaker(index)}
+                  title={participant.name}
+                />
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-
-      {/* FIXED: Enhanced Debug Footer */}
-      {isRecording && (
-        <div className="p-2 bg-gray-100 border-t text-xs text-gray-500">
-          <div className="grid grid-cols-3 gap-4">
-            <div>
-              <span className="font-medium">🎤 Recording:</span>
-              <div>Live: {liveTranscriptions.length}</div>
-              <div>Waiting: {waitingForWhisper.length}</div>
+      ) : (
+        // NIEUWE Timeline Transcription Interface
+        <div>
+          {/* Header met status */}
+          <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+            <div className="flex items-center space-x-3">
+              <h3 className="font-medium">🎯 Enhanced Live Transcriptie</h3>
+              <div className="flex items-center space-x-2 text-sm">
+                <div className={`w-2 h-2 rounded-full ${
+                  isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
+                }`}></div>
+                <span className="text-gray-600">
+                  {isRecording ? 'Live Recording' : 'Gestopt'}
+                </span>
+              </div>
             </div>
-            <div>
-              <span className="font-medium">🤖 Whisper:</span>
-              <div>Verified: {whisperTranscriptions.length}</div>
-              <div>Queue: {audioChunkQueue.length}</div>
-            </div>
-            <div>
-              <span className="font-medium">📊 Status:</span>
-              <div>{isProcessingWhisper ? 'Processing...' : 'Ready'}</div>
-              <div>{sessionId ? `Session: ${sessionId.substring(0, 8)}...` : 'No Session'}</div>
+            
+            <div className="flex items-center space-x-2 text-xs text-gray-500">
+              {isProcessingWhisper && (
+                <span className="text-blue-600 animate-pulse">🤖 Processing...</span>
+              )}
+              <span>Session: {sessionId ? sessionId.substring(0, 8) + '...' : 'None'}</span>
             </div>
           </div>
-          {whisperProgress && (
-            <div className="mt-1 text-center text-blue-600 font-medium">
-              🤖 {whisperProgress}
+
+          {recordingError && (
+            <div className="bg-red-50 border-l-4 border-red-400 text-red-700 p-3 text-sm">
+              <div className="flex justify-between items-center">
+                <span>{recordingError}</span>
+                <button 
+                  onClick={() => setRecordingError('')} 
+                  className="text-red-500 hover:text-red-700"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
           )}
+
+          {/* Controls */}
+          <div className="p-3 bg-gray-50 border-b">
+            {!sessionActive ? (
+              <button
+                onClick={startEnhancedSession}
+                className="btn-primary w-full text-sm py-2"
+                disabled={!speechSupported}
+              >
+                🚀 Start Enhanced Session
+              </button>
+            ) : !isRecording && voiceSetupComplete ? (
+              <button
+                onClick={startLiveTranscription}
+                className="btn-success w-full text-sm py-2"
+                disabled={!speechSupported}
+              >
+                🎤 Start Timeline Transcriptie
+              </button>
+            ) : isRecording ? (
+              <button
+                onClick={stopTranscription}
+                className="btn-danger w-full text-sm py-2"
+              >
+                ⏹️ Stop Transcriptie
+              </button>
+            ) : null}
+            
+            {!speechSupported && (
+              <p className="text-xs text-red-600 mt-2 text-center">
+                Speech recognition niet ondersteund. Gebruik Chrome of Edge.
+              </p>
+            )}
+
+            {whisperProgress && (
+              <div className="mt-2 text-xs text-blue-600 text-center">
+                🤖 {whisperProgress}
+              </div>
+            )}
+          </div>
+
+          {/* Timeline Transcription Component */}
+          <TimelineTranscription
+            liveTranscriptions={liveTranscriptions}
+            whisperTranscriptions={whisperTranscriptions}
+            isRecording={isRecording}
+            meetingStartTime={sessionActive ? new Date() : null}
+            onTranscriptionUpdate={onTranscriptionUpdate}
+          />
         </div>
       )}
     </div>
   );
 };
-
 export default EnhancedLiveTranscription;
