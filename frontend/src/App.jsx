@@ -7,7 +7,7 @@ import './App.css';
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
 
 // Import components
-import EnhancedLayout from './components/common/Layout/EnhancedLayout.jsx';
+import MaterialProLayout from './layouts/materialpro/MaterialProLayout.jsx';
 import Dashboard from './pages/dashboard/Dashboard.jsx';
 import Login from './pages/auth/Login.jsx';
 import CreateMeeting from './pages/meeting/CreateMeeting.jsx';
@@ -70,11 +70,15 @@ function App() {
             <Route path="/login" element={<Login />} />
             
             {/* Protected routes met Enhanced Layout */}
-            <Route path="/" element={
-              <ProtectedRoute>
-                <EnhancedLayout />
-              </ProtectedRoute>
-            }>
+
+<Route path="/" element={
+  <ProtectedRoute>
+    <MaterialProLayout />
+  </ProtectedRoute>
+}>
+
+
+
               <Route index element={<Navigate to="/dashboard" />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="meetings/create" element={<CreateMeeting />} />
