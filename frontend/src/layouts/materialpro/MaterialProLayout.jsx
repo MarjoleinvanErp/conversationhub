@@ -82,6 +82,13 @@ const ContentWrapper = styled("div")(({ theme, sidebarOpen, sidebarWidth }) => (
   },
 }));
 
+// Nieuwe styled component voor de content die onder de header komt
+const MainContent = styled(Box)(({ theme }) => ({
+  marginTop: "70px", // Ruimte voor de fixed header (70px hoog)
+  flexGrow: 1,
+  minHeight: "calc(100vh - 70px)",
+}));
+
 const MaterialProLayout = () => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isMobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -117,22 +124,25 @@ const MaterialProLayout = () => {
             toggleMobileSidebar={handleMobileSidebarToggle}
             toggleSidebar={handleSidebarToggle}
             isSidebarOpen={isSidebarOpen}
+            sidebarWidth={sidebarWidth}
           />
           
-          {/* Page Content */}
-          <Container
-            sx={{
-              paddingTop: "20px",
-              paddingBottom: "20px",
-              maxWidth: "1200px",
-              flexGrow: 1,
-            }}
-            maxWidth={false}
-          >
-            <Box sx={{ minHeight: "calc(100vh - 140px)" }}>
-              <Outlet />
-            </Box>
-          </Container>
+          {/* Page Content - nu met correcte margin top */}
+          <MainContent>
+            <Container
+              sx={{
+                paddingTop: "20px",
+                paddingBottom: "20px",
+                maxWidth: "1200px",
+                height: "100%",
+              }}
+              maxWidth={false}
+            >
+              <Box sx={{ minHeight: "calc(100vh - 140px)" }}>
+                <Outlet />
+              </Box>
+            </Container>
+          </MainContent>
         </ContentWrapper>
       </MainWrapper>
     </ThemeProvider>

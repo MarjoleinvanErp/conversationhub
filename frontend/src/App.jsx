@@ -1,7 +1,6 @@
-// frontend/src/App.jsx
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import './App.css';
+import TestTailwind from './components/TestTailwind.jsx';
 
 // Import contexts
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
@@ -17,28 +16,28 @@ import MeetingRoom from './pages/meeting/MeetingRoom.jsx';
 const MeetingsPage = () => (
   <div className="modern-card p-8">
     <h1 className="text-3xl font-bold gradient-text mb-4">Gesprekken</h1>
-    <p className="text-gray-600">Hier komen je gesprekken te staan</p>
+    <p className="text-slate-600">Hier komen je gesprekken te staan</p>
   </div>
 );
 
 const ParticipantsPage = () => (
   <div className="modern-card p-8">
     <h1 className="text-3xl font-bold gradient-text mb-4">Deelnemers</h1>
-    <p className="text-gray-600">Hier komen de deelnemers te staan</p>
+    <p className="text-slate-600">Hier komen de deelnemers te staan</p>
   </div>
 );
 
 const TemplatesPage = () => (
   <div className="modern-card p-8">
     <h1 className="text-3xl font-bold gradient-text mb-4">Sjablonen</h1>
-    <p className="text-gray-600">Hier komen de gesprekssjablonen te staan</p>
+    <p className="text-slate-600">Hier komen de gesprekssjablonen te staan</p>
   </div>
 );
 
 const SettingsPage = () => (
   <div className="modern-card p-8">
     <h1 className="text-3xl font-bold gradient-text mb-4">Instellingen</h1>
-    <p className="text-gray-600">Hier komen de instellingen te staan</p>
+    <p className="text-slate-600">Hier komen de instellingen te staan</p>
   </div>
 );
 
@@ -51,7 +50,7 @@ const ProtectedRoute = ({ children }) => {
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto"></div>
-          <p className="mt-4 text-conversation-muted">Laden...</p>
+          <p className="mt-4 text-slate-600">Laden...</p>
         </div>
       </div>
     );
@@ -64,21 +63,17 @@ function App() {
   return (
     <AuthProvider>
       <Router>
-        <div className="App">
+        <div className="min-h-screen bg-slate-50">
           <Routes>
             {/* Public routes */}
             <Route path="/login" element={<Login />} />
             
-            {/* Protected routes met Enhanced Layout */}
-
-<Route path="/" element={
-  <ProtectedRoute>
-    <MaterialProLayout />
-  </ProtectedRoute>
-}>
-
-
-
+            {/* Protected routes met Material Pro Layout */}
+            <Route path="/" element={
+              <ProtectedRoute>
+                <MaterialProLayout />
+              </ProtectedRoute>
+            }>
               <Route index element={<Navigate to="/dashboard" />} />
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="meetings/create" element={<CreateMeeting />} />
@@ -95,6 +90,7 @@ function App() {
               <Route path="templates/progress" element={<TemplatesPage />} />
               <Route path="templates/custom" element={<TemplatesPage />} />
               <Route path="settings" element={<SettingsPage />} />
+			  <Route path="/test-tailwind" element={<TestTailwind />} />
             </Route>
           </Routes>
         </div>

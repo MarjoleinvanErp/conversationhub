@@ -1,23 +1,23 @@
 FROM node:18-alpine
 
+# Set working directory
 WORKDIR /app
 
-# Copy package files
-COPY package.json ./
+# Add npm optimization
+RUN npm config set registry https://registry.npmjs.org/
+RUN npm config set fetch-retries 5
+RUN npm config set fetch-retry-factor 2
+RUN npm config set fetch-timeout 60000
 
-# Clean install (debug version)
-RUN npm cache clean --force
-RUN npm install --verbose
+# Install dependencies first (for Docker layer caching)
+COPY package.json package-lock.json ./
+RUN npm ci --only=production --silent
 
 # Copy source code
 COPY . .
 
 # Expose port
-EXPOSE 3000
+EXPOSE 5173
 
-# Set environment variables
-ENV REACT_APP_API_URL=http://localhost:8000
-ENV NODE_ENV=development
-
-# Start with Vite
-CMD ["npm", "run", "dev"]
+# Start development server
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]

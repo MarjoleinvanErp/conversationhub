@@ -21,7 +21,7 @@ import NotificationsIcon from "@mui/icons-material/Notifications";
 import VideoCallIcon from "@mui/icons-material/VideoCall";
 import FiberManualRecordIcon from "@mui/icons-material/FiberManualRecord";
 
-const MaterialProHeader = ({ toggleMobileSidebar, toggleSidebar, isSidebarOpen }) => {
+const MaterialProHeader = ({ toggleMobileSidebar, toggleSidebar, isSidebarOpen, sidebarWidth = 270 }) => {
   const theme = useTheme();
   const lgUp = useMediaQuery(theme.breakpoints.up("lg"));
   
@@ -47,7 +47,6 @@ const MaterialProHeader = ({ toggleMobileSidebar, toggleSidebar, isSidebarOpen }
   };
 
   const handleNewMeeting = () => {
-    // Deze functie kun je later uitbreiden
     console.log("Starting new meeting...");
   };
 
@@ -58,11 +57,16 @@ const MaterialProHeader = ({ toggleMobileSidebar, toggleSidebar, isSidebarOpen }
         backgroundColor: "white",
         color: "#1f2937",
         borderBottom: "1px solid #e5e7eb",
-        zIndex: 1300, // Boven sidebar
+        zIndex: 1100, // Lager dan sidebar (1200) maar hoger dan content
         position: "fixed",
-        width: "100%",
+        // Belangrijk: width aanpassen op basis van sidebar status
+        width: lgUp && isSidebarOpen ? `calc(100% - ${sidebarWidth}px)` : "100%",
+        marginLeft: lgUp && isSidebarOpen ? `${sidebarWidth}px` : 0,
+        transition: theme.transitions.create(["width", "margin"], {
+          easing: theme.transitions.easing.sharp,
+          duration: theme.transitions.duration.leavingScreen,
+        }),
       }}
-      position="sticky"
       color="default"
     >
       <Toolbar sx={{ minHeight: "70px !important" }}>
@@ -180,7 +184,11 @@ const MaterialProHeader = ({ toggleMobileSidebar, toggleSidebar, isSidebarOpen }
           open={Boolean(notificationAnchor)}
           onClose={handleClose}
           PaperProps={{
-            sx: { width: 300, mt: 1 },
+            sx: { 
+              width: 300, 
+              mt: 1,
+              zIndex: 1300, // Hoger dan header
+            },
           }}
         >
           <Box sx={{ p: 2, borderBottom: "1px solid #e5e7eb" }}>
@@ -223,10 +231,14 @@ const MaterialProHeader = ({ toggleMobileSidebar, toggleSidebar, isSidebarOpen }
         {/* User Menu */}
         <Menu
           anchorEl={userAnchor}
-	open={Boolean(userAnchor)}
+          open={Boolean(userAnchor)}
           onClose={handleClose}
           PaperProps={{
-            sx: { width: 250, mt: 1 },
+            sx: { 
+              width: 250, 
+              mt: 1,
+              zIndex: 1300, // Hoger dan header
+            },
           }}
         >
           <Box sx={{ p: 2, borderBottom: "1px solid #e5e7eb" }}>

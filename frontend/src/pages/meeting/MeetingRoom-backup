@@ -1,0 +1,594 @@
+import React, { useState, useEffect } from 'react';
+
+// Simple icon components as replacement for lucide-react
+const Icon = ({ children, className = "w-4 h-4" }) => (
+  <span className={`inline-block ${className}`} style={{ fontSize: '16px' }}>
+    {children}
+  </span>
+);
+
+const Mic = ({ className }) => <Icon className={className}>🎤</Icon>;
+const MicOff = ({ className }) => <Icon className={className}>🔇</Icon>;
+const Square = ({ className }) => <Icon className={className}>⏹️</Icon>;
+const ChevronDown = ({ className }) => <Icon className={className}>⬇️</Icon>;
+const ChevronUp = ({ className }) => <Icon className={className}>⬆️</Icon>;
+const Trash2 = ({ className }) => <Icon className={className}>🗑️</Icon>;
+const Clock = ({ className }) => <Icon className={className}>🕐</Icon>;
+const Users = ({ className }) => <Icon className={className}>👥</Icon>;
+const FileText = ({ className }) => <Icon className={className}>📄</Icon>;
+const Settings = ({ className }) => <Icon className={className}>⚙️</Icon>;
+const Volume2 = ({ className }) => <Icon className={className}>🔊</Icon>;
+const VolumeX = ({ className }) => <Icon className={className}>🔇</Icon>;
+const Download = ({ className }) => <Icon className={className}>⬇️</Icon>;
+const Send = ({ className }) => <Icon className={className}>📤</Icon>;
+const AlertCircle = ({ className }) => <Icon className={className}>⚠️</Icon>;
+const CheckCircle2 = ({ className }) => <Icon className={className}>✅</Icon>;
+const Calendar = ({ className }) => <Icon className={className}>📅</Icon>;
+const Type = ({ className }) => <Icon className={className}>⌨️</Icon>;
+
+const MeetingRoom = () => {
+  // Mock navigation for demo
+  const navigateToMeetings = () => {
+    alert('Navigating to meetings page...');
+  };
+
+  // State voor de verschillende panels
+  const [expandedPanels, setExpandedPanels] = useState({
+    liveTranscription: true,
+    whisperEnhanced: false,
+    agenda: true,
+    participants: true
+  });
+
+  // State voor recording en transcriptie
+  const [isRecording, setIsRecording] = useState(false);
+  const [isLiveTranscriptionActive, setIsLiveTranscriptionActive] = useState(false);
+  const [isVoiceSetupActive, setIsVoiceSetupActive] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [volume, setVolume] = useState(75);
+  const [isMuted, setIsMuted] = useState(false);
+
+  // State voor transcriptie content
+  const [liveTranscript, setLiveTranscript] = useState([
+    { id: 1, speaker: 'Gespreksbegeleider', text: 'Goedemorgen, fijn dat je er bent. Zullen we beginnen met de voortgang van je zoektocht?', timestamp: '09:15:23' },
+    { id: 2, speaker: 'Deelnemer', text: 'Ja, dat is goed. Ik heb deze week drie sollicitaties verstuurd.', timestamp: '09:15:45' }
+  ]);
+
+  const [whisperTranscript, setWhisperTranscript] = useState([
+    { id: 1, speaker: 'Gespreksbegeleider', text: 'Goedemorgen, fijn dat je er bent. Zullen we beginnen met de voortgang van je zoektocht naar werk?', timestamp: '09:15:23', confidence: 0.95 },
+    { id: 2, speaker: 'Deelnemer', text: 'Ja, dat is goed. Ik heb deze week drie sollicitaties verstuurd en heb volgende week een gesprek.', timestamp: '09:15:45', confidence: 0.92 }
+  ]);
+
+  // State voor agenda
+  const [agendaItems, setAgendaItems] = useState([
+    { id: 1, title: 'Welkom en introductie', completed: true, timeSpent: 3 },
+    { id: 2, title: 'Voortgang sollicitaties', completed: true, timeSpent: 8 },
+    { id: 3, title: 'Nieuwe kansen bespreken', completed: false, timeSpent: 0 },
+    { id: 4, title: 'Vervolgafspraken plannen', completed: false, timeSpent: 0 },
+    { id: 5, title: 'Afsluiting', completed: false, timeSpent: 0 }
+  ]);
+
+  // State voor participants
+  const [participants] = useState([
+    { id: 1, name: 'Alex van der Berg', role: 'Gespreksbegeleider', status: 'online' },
+    { id: 2, name: 'Maria Janssen', role: 'Deelnemer', status: 'online' }
+  ]);
+
+  // Timer voor recording
+  useEffect(() => {
+    let interval = null;
+    if (isRecording) {
+      interval = setInterval(() => {
+        setRecordingTime(seconds => seconds + 1);
+      }, 1000);
+    } else if (!isRecording && recordingTime !== 0) {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [isRecording, recordingTime]);
+
+  // Helper functions
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const togglePanel = (panelName) => {
+    setExpandedPanels(prev => ({
+      ...prev,
+      [panelName]: !prev[panelName]
+    }));
+  };
+
+  const startManualRecording = () => {
+    setIsRecording(true);
+    setExpandedPanels(prev => ({ ...prev, liveTranscription: true }));
+  };
+
+  const startLiveTranscription = () => {
+    setIsLiveTranscriptionActive(true);
+    setExpandedPanels(prev => ({ ...prev, liveTranscription: true }));
+  };
+
+  const startVoiceSetup = () => {
+    setIsVoiceSetupActive(true);
+    setExpandedPanels(prev => ({ ...prev, whisperEnhanced: true }));
+  };
+
+  const stopRecording = () => {
+    setIsRecording(false);
+    setIsLiveTranscriptionActive(false);
+  };
+
+  const clearTranscript = (type) => {
+    if (type === 'live') {
+      setLiveTranscript([]);
+    } else {
+      setWhisperTranscript([]);
+    }
+  };
+
+  const canClearTranscript = (type) => {
+    if (type === 'live') {
+      return liveTranscript.length > 0;
+    }
+    return whisperTranscript.length > 0;
+  };
+
+  const toggleAgendaItem = (id) => {
+    setAgendaItems(prev => prev.map(item => 
+      item.id === id ? { ...item, completed: !item.completed } : item
+    ));
+  };
+
+  // Simulate typing capability check
+  const [canType, setCanType] = useState(true);
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Header met Quick Actions */}
+      <div className="bg-white shadow-sm border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={navigateToMeetings}
+                className="text-slate-600 hover:text-slate-900 transition-colors"
+              >
+                ← Terug naar gesprekken
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">Participatie Gesprek</h1>
+                <p className="text-slate-600">Met Maria Janssen • Gestart om 09:15</p>
+              </div>
+            </div>
+
+            {/* Quick Action Buttons */}
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={startManualRecording}
+                disabled={isRecording}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  isRecording
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
+                }`}
+              >
+                <Mic className="w-4 h-4 inline mr-2" />
+                Start Handmatige opname
+              </button>
+
+              <button
+                onClick={startLiveTranscription}
+                disabled={isLiveTranscriptionActive}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  isLiveTranscriptionActive
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
+                }`}
+              >
+                <Type className="w-4 h-4 inline mr-2" />
+                Start Live transcriptie
+              </button>
+
+              <button
+                onClick={startVoiceSetup}
+                disabled={isVoiceSetupActive}
+                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                  isVoiceSetupActive
+                    ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                    : 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
+                }`}
+              >
+                <Settings className="w-4 h-4 inline mr-2" />
+                Start Voice setup
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-6 py-6">
+        <div className="grid grid-cols-12 gap-6">
+          {/* Main Content Area */}
+          <div className="col-span-8 space-y-6">
+            {/* Live Transcriptie Panel */}
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-100 cursor-pointer hover:from-blue-100 hover:to-blue-150 transition-all"
+                onClick={() => togglePanel('liveTranscription')}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className={`w-3 h-3 rounded-full ${isLiveTranscriptionActive ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`}></div>
+                  <h3 className="font-semibold text-slate-900">Live Transcriptie</h3>
+                  {isLiveTranscriptionActive && (
+                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                      Actief
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2">
+                  {liveTranscript.length > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearTranscript('live');
+                      }}
+                      disabled={!canClearTranscript('live')}
+                      className={`p-1 rounded ${
+                        canClearTranscript('live')
+                          ? 'hover:bg-red-100 text-red-600'
+                          : 'text-gray-300 cursor-not-allowed'
+                      }`}
+                      title="Wis alles"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {expandedPanels.liveTranscription ? (
+                    <ChevronUp className="w-5 h-5 text-slate-600" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-slate-600" />
+                  )}
+                </div>
+              </div>
+              
+              {expandedPanels.liveTranscription && (
+                <div className="p-4">
+                  {isRecording && (
+                    <div className="flex items-center justify-between mb-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                        <span className="text-red-700 font-medium">Opname actief</span>
+                        <span className="text-red-600">{formatTime(recordingTime)}</span>
+                      </div>
+                      <button
+                        onClick={stopRecording}
+                        className="bg-red-600 text-white px-3 py-1 rounded-lg hover:bg-red-700 transition-colors"
+                      >
+                        <Square className="w-4 h-4 inline mr-1" />
+                        Stop
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {liveTranscript.map((entry) => (
+                      <div key={entry.id} className="flex space-x-3 p-3 rounded-lg hover:bg-slate-50">
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <span className="text-xs font-medium text-blue-600">
+                              {entry.speaker.charAt(0)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <span className="font-medium text-slate-900">{entry.speaker}</span>
+                            <span className="text-xs text-slate-500">{entry.timestamp}</span>
+                          </div>
+                          <p className="text-slate-700 leading-relaxed">{entry.text}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {liveTranscript.length === 0 && (
+                      <div className="text-center py-8 text-slate-500">
+                        <Type className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                        <p>Start live transcriptie om gesproken tekst hier te zien</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Whisper Enhanced Panel */}
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-purple-100 cursor-pointer hover:from-purple-100 hover:to-purple-150 transition-all"
+                onClick={() => togglePanel('whisperEnhanced')}
+              >
+                <div className="flex items-center space-x-3">
+                  <div className={`w-3 h-3 rounded-full ${isVoiceSetupActive ? 'bg-purple-500 animate-pulse' : 'bg-gray-300'}`}></div>
+                  <h3 className="font-semibold text-slate-900">Whisper Enhanced</h3>
+                  {isVoiceSetupActive && (
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                      Configuratie actief
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-2">
+                  {whisperTranscript.length > 0 && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        clearTranscript('whisper');
+                      }}
+                      disabled={!canClearTranscript('whisper')}
+                      className={`p-1 rounded ${
+                        canClearTranscript('whisper')
+                          ? 'hover:bg-red-100 text-red-600'
+                          : 'text-gray-300 cursor-not-allowed'
+                      }`}
+                      title="Wis alles"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  {expandedPanels.whisperEnhanced ? (
+                    <ChevronUp className="w-5 h-5 text-slate-600" />
+                  ) : (
+                    <ChevronDown className="w-5 h-5 text-slate-600" />
+                  )}
+                </div>
+              </div>
+              
+              {expandedPanels.whisperEnhanced && (
+                <div className="p-4">
+                  {isVoiceSetupActive && (
+                    <div className="mb-4 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <Settings className="w-5 h-5 text-purple-600" />
+                        <span className="text-purple-700 font-medium">Voice Setup Configuratie</span>
+                      </div>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-slate-700">Volume niveau</span>
+                          <div className="flex items-center space-x-2">
+                            <VolumeX className="w-4 h-4 text-slate-400" />
+                            <input 
+                              type="range" 
+                              min="0" 
+                              max="100" 
+                              value={volume}
+                              onChange={(e) => setVolume(e.target.value)}
+                              className="w-20"
+                            />
+                            <Volume2 className="w-4 h-4 text-slate-400" />
+                            <span className="text-sm text-slate-600 w-8">{volume}%</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-slate-700">Microfoon test</span>
+                          <button
+                            onClick={() => setIsMuted(!isMuted)}
+                            className={`p-2 rounded-lg transition-colors ${
+                              isMuted 
+                                ? 'bg-red-100 text-red-600' 
+                                : 'bg-green-100 text-green-600'
+                            }`}
+                          >
+                            {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {whisperTranscript.map((entry) => (
+                      <div key={entry.id} className="flex space-x-3 p-3 rounded-lg hover:bg-slate-50">
+                        <div className="flex-shrink-0">
+                          <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                            <span className="text-xs font-medium text-purple-600">
+                              {entry.speaker.charAt(0)}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <span className="font-medium text-slate-900">{entry.speaker}</span>
+                            <span className="text-xs text-slate-500">{entry.timestamp}</span>
+                            <span className={`text-xs px-2 py-1 rounded-full ${
+                              entry.confidence > 0.9 
+                                ? 'bg-green-100 text-green-700' 
+                                : entry.confidence > 0.8 
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {Math.round(entry.confidence * 100)}%
+                            </span>
+                          </div>
+                          <p className="text-slate-700 leading-relaxed">{entry.text}</p>
+                        </div>
+                      </div>
+                    ))}
+                    {whisperTranscript.length === 0 && (
+                      <div className="text-center py-8 text-slate-500">
+                        <Settings className="w-12 h-12 mx-auto mb-4 text-slate-300" />
+                        <p>Start voice setup om enhanced transcriptie te configureren</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="col-span-4 space-y-6">
+            {/* Agenda Panel */}
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 cursor-pointer hover:from-green-100 hover:to-green-150 transition-all"
+                onClick={() => togglePanel('agenda')}
+              >
+                <div className="flex items-center space-x-3">
+                  <Calendar className="w-5 h-5 text-green-600" />
+                  <h3 className="font-semibold text-slate-900">Agenda</h3>
+                </div>
+                {expandedPanels.agenda ? (
+                  <ChevronUp className="w-5 h-5 text-slate-600" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-slate-600" />
+                )}
+              </div>
+              
+              {expandedPanels.agenda && (
+                <div className="p-4">
+                  <div className="space-y-3">
+                    {agendaItems.map((item) => (
+                      <div key={item.id} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50">
+                        <button
+                          onClick={() => toggleAgendaItem(item.id)}
+                          className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                            item.completed 
+                              ? 'bg-green-500 border-green-500 text-white' 
+                              : 'border-slate-300 hover:border-green-400'
+                          }`}
+                        >
+                          {item.completed && <CheckCircle2 className="w-3 h-3" />}
+                        </button>
+                        <div className="flex-1">
+                          <p className={`font-medium ${item.completed ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+                            {item.title}
+                          </p>
+                          {item.timeSpent > 0 && (
+                            <p className="text-xs text-slate-500 mt-1">
+                              <Clock className="w-3 h-3 inline mr-1" />
+                              {item.timeSpent} min
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <div className="flex items-center justify-between text-sm text-slate-600 mb-2">
+                      <span>Voortgang</span>
+                      <span>{Math.round((agendaItems.filter(item => item.completed).length / agendaItems.length) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-slate-200 rounded-full h-2">
+                      <div 
+                        className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                        style={{ 
+                          width: `${(agendaItems.filter(item => item.completed).length / agendaItems.length) * 100}%` 
+                        }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Notitie veld - fix voor typing issue */}
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">
+                      Notities bij agenda
+                    </label>
+                    <textarea
+                      placeholder="Type hier je notities..."
+                      rows={3}
+                      className={`w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none ${
+                        !canType ? 'bg-gray-50 cursor-not-allowed' : ''
+                      }`}
+                      disabled={!canType}
+                      onFocus={(e) => {
+                        // Prevent tab navigation away from textarea
+                        e.target.addEventListener('keydown', (event) => {
+                          if (event.key === 'Tab') {
+                            event.stopPropagation();
+                          }
+                        });
+                      }}
+                    />
+                    {!canType && (
+                      <p className="text-xs text-red-500 mt-1 flex items-center">
+                        <AlertCircle className="w-3 h-3 mr-1" />
+                        Typing is momenteel beperkt. Check je browser instellingen.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Participants Panel */}
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-100 cursor-pointer hover:from-blue-100 hover:to-blue-150 transition-all"
+                onClick={() => togglePanel('participants')}
+              >
+                <div className="flex items-center space-x-3">
+                  <Users className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-semibold text-slate-900">Deelnemers</h3>
+                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                    {participants.length}
+                  </span>
+                </div>
+                {expandedPanels.participants ? (
+                  <ChevronUp className="w-5 h-5 text-slate-600" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-slate-600" />
+                )}
+              </div>
+              
+              {expandedPanels.participants && (
+                <div className="p-4">
+                  <div className="space-y-3">
+                    {participants.map((participant) => (
+                      <div key={participant.id} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-slate-50">
+                        <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                          <span className="font-medium text-blue-600">
+                            {participant.name.split(' ').map(n => n[0]).join('')}
+                          </span>
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-medium text-slate-900">{participant.name}</p>
+                          <p className="text-sm text-slate-500">{participant.role}</p>
+                        </div>
+                        <div className={`w-3 h-3 rounded-full ${
+                          participant.status === 'online' ? 'bg-green-500' : 'bg-gray-300'
+                        }`}></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Export Actions */}
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4">
+              <h3 className="font-semibold text-slate-900 mb-4 flex items-center">
+                <FileText className="w-5 h-5 mr-2 text-slate-600" />
+                Export & Acties
+              </h3>
+              <div className="space-y-3">
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center">
+                  <Download className="w-4 h-4 mr-2" />
+                  Download Verslag
+                </button>
+                <button className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center">
+                  <Send className="w-4 h-4 mr-2" />
+                  Verstuur naar N8N
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default MeetingRoom;

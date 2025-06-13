@@ -114,15 +114,15 @@ const MaterialProSidebar = ({
               fontWeight: "bold",
             }}
           >
-            C
+            
           </Box>
-          ConversationHub
+          Babbelbox
         </Typography>
         <Typography
           variant="caption"
           sx={{ color: "#94a3b8", mt: 0.5, display: "block" }}
         >
-          Nederlandse Overheid
+          Gemeente Meierijstad
         </Typography>
       </Box>
 

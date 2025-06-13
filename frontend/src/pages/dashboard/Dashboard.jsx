@@ -1,5 +1,28 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Box,
+  Typography,
+  Card,
+  CardContent,
+  CardActions,
+  Button,
+  Grid,
+  Chip,
+  Avatar,
+  CircularProgress,
+  Divider,
+  Container,
+} from '@mui/material';
+import {
+  PlayArrow as PlayIcon,
+  Visibility as ViewIcon,
+  Add as AddIcon,
+  Group as GroupIcon,
+  Assignment as AssignmentIcon,
+  Schedule as ScheduleIcon,
+  VideoCall as VideoCallIcon,
+} from '@mui/icons-material';
 import meetingService from '../../services/api/meetingService.js';
 
 const Dashboard = () => {
@@ -33,173 +56,417 @@ const Dashboard = () => {
     meeting.status === 'completed' || meeting.status === 'cancelled'
   );
 
-  const getStatusBadge = (status) => {
+  const getStatusChip = (status) => {
     const statusConfig = {
-      scheduled: { class: 'status-scheduled', label: 'Gepland', icon: '📅' },
-      active: { class: 'status-active', label: 'Actief', icon: '🔴' },
-      completed: { class: 'status-completed', label: 'Voltooid', icon: '✅' },
-      cancelled: { class: 'status-cancelled', label: 'Geannuleerd', icon: '❌' },
+      scheduled: { 
+        color: 'info', 
+        label: 'Gepland',
+        bgcolor: '#e3f2fd',
+        textColor: '#1565c0'
+      },
+      active: { 
+        color: 'success', 
+        label: 'Actief',
+        bgcolor: '#e8f5e8',
+        textColor: '#2e7d32'
+      },
+      completed: { 
+        color: 'default', 
+        label: 'Voltooid',
+        bgcolor: '#f5f5f5',
+        textColor: '#616161'
+      },
+      cancelled: { 
+        color: 'error', 
+        label: 'Geannuleerd',
+        bgcolor: '#ffebee',
+        textColor: '#c62828'
+      },
     };
 
     const config = statusConfig[status] || statusConfig.scheduled;
     
     return (
-      <span className={`status-badge ${config.class}`}>
-        <span>{config.icon}</span>
-        <span>{config.label}</span>
-      </span>
+      <Chip
+        label={config.label}
+        sx={{
+          backgroundColor: config.bgcolor,
+          color: config.textColor,
+          fontWeight: 500,
+          fontSize: '0.75rem',
+        }}
+        size="small"
+      />
     );
   };
 
-  const getTypeLabel = (type) => {
+  const getTypeInfo = (type) => {
     const types = {
-      general: { label: 'Algemeen', icon: '💼' },
-      participation: { label: 'Participatie', icon: '🤝' },
-      care: { label: 'Zorg', icon: '❤️' },
-      education: { label: 'Onderwijs', icon: '🎓' },
+      general: { label: 'Algemeen', icon: '💼', color: '#64748b' },
+      participation: { label: 'Participatie', icon: '🤝', color: '#3b82f6' },
+      care: { label: 'Zorg', icon: '❤️', color: '#ef4444' },
+      education: { label: 'Onderwijs', icon: '🎓', color: '#8b5cf6' },
     };
     
-    const config = types[type] || types.general;
-    return (
-      <span className="flex items-center space-x-1 text-sm text-gray-600">
-        <span>{config.icon}</span>
-        <span>{config.label}</span>
-      </span>
-    );
+    return types[type] || types.general;
   };
 
-  const renderMeetingList = (meetings, title, emptyMessage, showCreateButton = false) => (
-    <div className="modern-card p-6 mb-8">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center space-x-3">
-          <span>📋</span>
-          <span>{title}</span>
-          <span className="text-lg text-gray-500">({meetings.length})</span>
-        </h2>
+  const renderMeetingSection = (meetings, title, emptyMessage, emptyIcon, showCreateButton = false) => (
+    <Box sx={{ mb: 4 }}>
+      {/* Section Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography 
+          variant="h5" 
+          sx={{ 
+            fontWeight: 600, 
+            color: '#1e293b',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2
+          }}
+        >
+          📋 {title}
+          <Chip 
+            label={meetings.length}
+            size="small"
+            sx={{ bgcolor: '#f1f5f9', color: '#64748b', fontWeight: 500 }}
+          />
+        </Typography>
         {showCreateButton && (
-          <button 
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
             onClick={() => navigate('/meetings/create')}
-            className="btn-primary px-6 py-3"
+            sx={{
+              backgroundColor: '#3b82f6',
+              '&:hover': { backgroundColor: '#2563eb' },
+              borderRadius: 2,
+              px: 3,
+              py: 1.5,
+            }}
           >
-            <span className="mr-2">🚀</span>
             Nieuw Gesprek
-          </button>
+          </Button>
         )}
-      </div>
+      </Box>
 
+      {/* Meetings Grid */}
       {meetings.length === 0 ? (
-        <div className="text-center py-12">
-          <div className="text-6xl mb-4">🌟</div>
-          <h3 className="text-xl font-semibold text-gray-700 mb-2">
-            {emptyMessage}
-          </h3>
-          {showCreateButton && (
-            <div>
-              <p className="text-gray-600 mb-6">
-                Begin vandaag nog met je eerste intelligente gesprek!
-              </p>
-              <button 
-                onClick={() => navigate('/meetings/create')}
-                className="btn-primary px-8 py-3"
-              >
-                <span className="mr-2">➕</span>
-                Eerste Gesprek Aanmaken
-              </button>
-            </div>
-          )}
-        </div>
+        <Card sx={{ textAlign: 'center', py: 8, bgcolor: '#f8fafc' }}>
+          <CardContent>
+            <Typography variant="h1" sx={{ fontSize: '4rem', mb: 2 }}>
+              {emptyIcon}
+            </Typography>
+            <Typography variant="h6" sx={{ color: '#64748b', mb: 2, fontWeight: 500 }}>
+              {emptyMessage}
+            </Typography>
+            {showCreateButton && (
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Begin vandaag nog met je eerste intelligente gesprek!
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => navigate('/meetings/create')}
+                  size="large"
+                  sx={{
+                    backgroundColor: '#3b82f6',
+                    '&:hover': { backgroundColor: '#2563eb' },
+                    px: 4,
+                    py: 1.5,
+                  }}
+                >
+                  Eerste Gesprek Aanmaken
+                </Button>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
       ) : (
-        <div className="space-y-4">
-          {meetings.map((meeting) => (
-            <div key={meeting.id} className="modern-card p-4 hover-lift border border-gray-100">
-              <div className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center space-x-4 mb-2">
-                    <h3 className="font-semibold text-gray-800 text-lg">{meeting.title}</h3>
-                    {getStatusBadge(meeting.status)}
-                    {getTypeLabel(meeting.type)}
-                  </div>
-                  <div className="flex items-center space-x-6 text-sm text-gray-600">
-                    <span className="flex items-center space-x-1">
-                      <span>👥</span>
-                      <span>{meeting.participants?.length || 0} deelnemers</span>
-                    </span>
-                    <span className="flex items-center space-x-1">
-                      <span>📝</span>
-                      <span>{meeting.agenda_items?.length || 0} agenda punten</span>
-                    </span>
-                    {meeting.scheduled_at && (
-                      <span className="flex items-center space-x-1">
-                        <span>🕐</span>
-                        <span>{new Date(meeting.scheduled_at).toLocaleString('nl-NL')}</span>
-                      </span>
+        <Grid container spacing={3}>
+          {meetings.map((meeting) => {
+            const typeInfo = getTypeInfo(meeting.type);
+            
+            return (
+              <Grid item xs={12} lg={6} key={meeting.id}>
+                <Card 
+                  sx={{ 
+                    height: '100%',
+                    border: meeting.status === 'active' ? '2px solid #10b981' : '1px solid #e5e7eb',
+                    '&:hover': { 
+                      boxShadow: '0 4px 12px 0 rgba(0, 0, 0, 0.15)',
+                      transform: 'translateY(-2px)',
+                      transition: 'all 0.2s ease-in-out'
+                    },
+                    transition: 'all 0.2s ease-in-out'
+                  }}
+                >
+                  <CardContent>
+                    {/* Meeting Header */}
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                      <Typography 
+                        variant="h6" 
+                        sx={{ 
+                          fontWeight: 600, 
+                          color: '#1e293b',
+                          flexGrow: 1,
+                          mr: 2
+                        }}
+                      >
+                        {meeting.title}
+                      </Typography>
+                      {getStatusChip(meeting.status)}
+                    </Box>
+
+                    {/* Meeting Type */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 1,
+                          color: typeInfo.color,
+                          bgcolor: `${typeInfo.color}15`,
+                          px: 2,
+                          py: 0.5,
+                          borderRadius: 1,
+                          fontWeight: 500
+                        }}
+                      >
+                        <span>{typeInfo.icon}</span>
+                        {typeInfo.label}
+                      </Typography>
+                    </Box>
+
+                    {/* Meeting Stats */}
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mb: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <GroupIcon sx={{ fontSize: 16, color: '#64748b' }} />
+                        <Typography variant="body2" color="text.secondary">
+                          {meeting.participants?.length || 0} deelnemers
+                        </Typography>
+                      </Box>
+                      
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <AssignmentIcon sx={{ fontSize: 16, color: '#64748b' }} />
+                        <Typography variant="body2" color="text.secondary">
+                          {meeting.agenda_items?.length || 0} agenda punten
+                        </Typography>
+                      </Box>
+
+                      {meeting.scheduled_at && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <ScheduleIcon sx={{ fontSize: 16, color: '#64748b' }} />
+                          <Typography variant="body2" color="text.secondary">
+                            {new Date(meeting.scheduled_at).toLocaleDateString('nl-NL', {
+                              day: 'numeric',
+                              month: 'short',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </Typography>
+                        </Box>
+                      )}
+                    </Box>
+
+                    {/* Participants Avatars */}
+                    {meeting.participants && meeting.participants.length > 0 && (
+                      <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                        {meeting.participants.slice(0, 4).map((participant, index) => (
+                          <Avatar
+                            key={participant.id || index}
+                            sx={{ 
+                              width: 28, 
+                              height: 28, 
+                              fontSize: '0.75rem',
+                              bgcolor: '#3b82f6'
+                            }}
+                          >
+                            {participant.name?.charAt(0) || 'D'}
+                          </Avatar>
+                        ))}
+                        {meeting.participants.length > 4 && (
+                          <Avatar 
+                            sx={{ 
+                              width: 28, 
+                              height: 28, 
+                              fontSize: '0.75rem',
+                              bgcolor: '#64748b'
+                            }}
+                          >
+                            +{meeting.participants.length - 4}
+                          </Avatar>
+                        )}
+                      </Box>
                     )}
-                  </div>
-                </div>
-                
-                <div className="flex space-x-3">
-                  {meeting.status === 'scheduled' && (
-                    <button 
-                      onClick={() => navigate(`/meetings/${meeting.id}/room`)}
-                      className="btn-success px-4 py-2"
+                  </CardContent>
+
+                  <Divider />
+
+                  <CardActions sx={{ p: 2, justifyContent: 'space-between' }}>
+                    <Button
+                      variant="outlined"
+                      startIcon={<ViewIcon />}
+                      onClick={() => navigate(`/meetings/${meeting.id}`)}
+                      size="small"
+                      sx={{ borderRadius: 2 }}
                     >
-                      🚀 Start
-                    </button>
-                  )}
-                  {meeting.status === 'active' && (
-                    <button 
-                      onClick={() => navigate(`/meetings/${meeting.id}/room`)}
-                      className="btn-primary px-4 py-2"
-                    >
-                      🎙️ Deelnemen
-                    </button>
-                  )}
-                  <button 
-                    onClick={() => navigate(`/meetings/${meeting.id}`)}
-                    className="btn-neutral px-4 py-2"
-                  >
-                    👁️ Bekijk
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
+                      Bekijk
+                    </Button>
+                    
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      {meeting.status === 'scheduled' && (
+                        <Button
+                          variant="contained"
+                          startIcon={<PlayIcon />}
+                          onClick={() => navigate(`/meetings/${meeting.id}/room`)}
+                          size="small"
+                          sx={{
+                            backgroundColor: '#10b981',
+                            '&:hover': { backgroundColor: '#059669' },
+                            borderRadius: 2
+                          }}
+                        >
+                          Start
+                        </Button>
+                      )}
+                      {meeting.status === 'active' && (
+                        <Button
+                          variant="contained"
+                          startIcon={<VideoCallIcon />}
+                          onClick={() => navigate(`/meetings/${meeting.id}/room`)}
+                          size="small"
+                          sx={{
+                            backgroundColor: '#3b82f6',
+                            '&:hover': { backgroundColor: '#2563eb' },
+                            borderRadius: 2
+                          }}
+                        >
+                          Deelnemen
+                        </Button>
+                      )}
+                    </Box>
+                  </CardActions>
+                </Card>
+              </Grid>
+            );
+          })}
+        </Grid>
       )}
-    </div>
+    </Box>
   );
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-200 border-t-blue-600 rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-medium">Laden...</p>
-        </div>
-      </div>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+          <Box sx={{ textAlign: 'center' }}>
+            <CircularProgress size={48} sx={{ color: '#3b82f6', mb: 2 }} />
+            <Typography variant="body1" sx={{ color: '#64748b', fontWeight: 500 }}>
+              Gesprekken laden...
+            </Typography>
+          </Box>
+        </Box>
+      </Container>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 p-6">
+    <Container maxWidth="lg" sx={{ py: 4 }}>
+      {/* Page Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography 
+          variant="h4" 
+          sx={{ 
+            fontWeight: 700, 
+            color: '#1e293b',
+            mb: 1
+          }}
+        >
+          Dashboard
+        </Typography>
+        <Typography variant="body1" color="text.secondary">
+          Overzicht van al je gesprekken en hun voortgang
+        </Typography>
+      </Box>
 
+      {/* Quick Stats */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={4}>
+          <Card sx={{ bgcolor: '#f0f9ff', border: '1px solid #e0f2fe' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <VideoCallIcon sx={{ color: '#0284c7', mr: 2, fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" sx={{ color: '#0284c7', fontWeight: 600 }}>
+                    {openMeetings.length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Actieve Gesprekken
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+        
+        <Grid item xs={12} md={4}>
+          <Card sx={{ bgcolor: '#f0fdf4', border: '1px solid #dcfce7' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <GroupIcon sx={{ color: '#16a34a', mr: 2, fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" sx={{ color: '#16a34a', fontWeight: 600 }}>
+                    {meetings.reduce((total, meeting) => total + (meeting.participants?.length || 0), 0)}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Totaal Deelnemers
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card sx={{ bgcolor: '#fefce8', border: '1px solid #fef3c7' }}>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                <AssignmentIcon sx={{ color: '#ca8a04', mr: 2, fontSize: 32 }} />
+                <Box>
+                  <Typography variant="h5" sx={{ color: '#ca8a04', fontWeight: 600 }}>
+                    {closedMeetings.length}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Voltooide Gesprekken
+                  </Typography>
+                </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
 
       {/* Open Meetings Section */}
-      {renderMeetingList(
+      {renderMeetingSection(
         openMeetings, 
         "Actieve Gesprekken", 
         "Geen actieve gesprekken",
+        "🌟",
         true // Show create button for empty open meetings
       )}
 
       {/* Closed Meetings Section */}
-      {renderMeetingList(
+      {renderMeetingSection(
         closedMeetings, 
         "Voltooide Gesprekken", 
         "Geen voltooide gesprekken",
+        "📋",
         false // No create button for closed meetings
       )}
-    </div>
+    </Container>
   );
 };
 
