@@ -26,6 +26,39 @@ const Type = ({ className }) => <Icon className={className}>⌨️</Icon>;
 const Shield = ({ className }) => <Icon className={className}>🛡️</Icon>;
 const Play = ({ className }) => <Icon className={className}>▶️</Icon>;
 const Pause = ({ className }) => <Icon className={className}>⏸️</Icon>;
+const CheckCircle = ({ className }) => <Icon className={className}>✅</Icon>;
+const Calendar = ({ className }) => <Icon className={className}>📅</Icon>;
+
+// Confirmation Modal Component
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4">
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
+        <p className="text-gray-600 mb-6">{message}</p>
+        <div className="flex space-x-3 justify-end">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Annuleren
+          </button>
+          <button
+            onClick={() => {
+              onConfirm();
+              onClose();
+            }}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Verwijderen
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const MeetingRoom = () => {
   const { id } = useParams();
@@ -44,15 +77,23 @@ const MeetingRoom = () => {
     recording: true,
     liveTranscription: true,
     whisperTranscription: true,
+    agenda: true,
     report: false,
     privacy: false
   });
+
+  // Recording mode selection
+  const [recordingMode, setRecordingMode] = useState('none'); // 'none', 'manual', 'automatic'
 
   // Recording states
   const [isRecording, setIsRecording] = useState(false);
   const [isAutoTranscriptionActive, setIsAutoTranscriptionActive] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
+
+  // Modal states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   // Speaker management
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
@@ -66,7 +107,27 @@ const MeetingRoom = () => {
   // Privacy data
   const [privacyData, setPrivacyData] = useState({
     totalFiltered: 8,
-    confidenceScore: 98.5
+    confidenceScore: 98.5,
+    recentEvents: [
+      { type: 'BSN', action: 'gefilterd', time: '2 min geleden', status: 'success' },
+      { type: 'Telefoonnummer', action: 'gedetecteerd', time: '5 min geleden', status: 'info' },
+      { type: 'Adres', action: 'gemarkeerd', time: '8 min geleden', status: 'warning' }
+    ],
+    filteredTypes: {
+      bsn: 3,
+      phone: 2,
+      email: 1,
+      address: 2
+    }
+  });
+
+  // Report data
+  const [reportData, setReportData] = useState({
+    hasReport: false,
+    summary: '',
+    keyPoints: [],
+    actionItems: [],
+    nextSteps: []
   });
 
   // Initialize meeting handlers
@@ -188,6 +249,14 @@ const MeetingRoom = () => {
     setExpandedPanels(prev => ({...prev, [panelName]: !prev[panelName]}));
   };
 
+  // Recording mode selection
+  const selectRecordingMode = (mode) => {
+    setRecordingMode(mode);
+    if (mode === 'none') {
+      stopRecording();
+    }
+  };
+
   // Recording management
   const startManualRecording = () => {
     setIsRecording(true);
@@ -208,12 +277,35 @@ const MeetingRoom = () => {
     setIsRecording(false);
     setIsAutoTranscriptionActive(false);
     setRecordingStartTime(null);
+    setRecordingMode('none');
     console.log('⏹️ Recording stopped');
   };
 
   const pauseRecording = () => {
     setIsRecording(false);
     console.log('⏸️ Recording paused');
+  };
+
+  // Delete transcriptions with confirmation
+  const handleDeleteTranscriptions = (type) => {
+    setDeleteTarget(type);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = () => {
+    if (deleteTarget === 'live') {
+      setLiveTranscriptions([]);
+      console.log('🗑️ Live transcriptions cleared');
+    } else if (deleteTarget === 'whisper') {
+      setWhisperTranscriptions([]);
+      console.log('🗑️ Whisper transcriptions cleared');
+    } else {
+      setLiveTranscriptions([]);
+      setWhisperTranscriptions([]);
+      setTranscriptions([]);
+      console.log('🗑️ All transcriptions cleared');
+    }
+    setDeleteTarget(null);
   };
 
   // Transcription handlers
@@ -247,16 +339,19 @@ const MeetingRoom = () => {
     handlers.handleTranscriptionReceived(newTranscription);
   };
 
-  const clearTranscriptions = (type) => {
-    if (type === 'live') {
-      setLiveTranscriptions([]);
-    } else if (type === 'whisper') {
-      setWhisperTranscriptions([]);
-    } else {
-      setLiveTranscriptions([]);
-      setWhisperTranscriptions([]);
-      setTranscriptions([]);
+  // Agenda functions
+  const toggleAgendaItem = (index) => {
+    const updatedMeeting = { ...meeting };
+    if (updatedMeeting.agenda_items && updatedMeeting.agenda_items[index]) {
+      updatedMeeting.agenda_items[index].completed = !updatedMeeting.agenda_items[index].completed;
+      setMeeting(updatedMeeting);
     }
+  };
+
+  const calculateAgendaProgress = () => {
+    if (!meeting?.agenda_items || meeting.agenda_items.length === 0) return 0;
+    const completed = meeting.agenda_items.filter(item => item.completed).length;
+    return Math.round((completed / meeting.agenda_items.length) * 100);
   };
 
   const navigateToMeetings = () => {
@@ -309,6 +404,15 @@ const MeetingRoom = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Transcripties verwijderen"
+        message="Weet je zeker dat je deze transcripties wilt verwijderen? Deze actie kan niet ongedaan gemaakt worden."
+      />
+
       {/* Header met Meeting Info */}
       <div className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-7xl mx-auto px-6 py-4">
@@ -383,95 +487,119 @@ const MeetingRoom = () => {
               
               {expandedPanels.recording && (
                 <div className="p-6">
-                  {/* Recording Status Display */}
-                  <div className="text-center mb-6">
-                    <div className="text-4xl font-mono text-slate-800 mb-2">
-                      {formatTime(recordingTime)}
-                    </div>
-                    <div className="text-sm text-slate-600">
-                      {isRecording ? (
-                        <span className="flex items-center justify-center space-x-2">
-                          <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                          <span>Opname actief sinds {recordingStartTime ? recordingStartTime.toLocaleTimeString('nl-NL') : ''}</span>
-                        </span>
-                      ) : (
-                        'Opname gestopt'
-                      )}
+                  {/* Recording Mode Selection */}
+                  <div className="mb-6">
+                    <h4 className="font-medium text-gray-800 mb-3">Selecteer Opname Modus</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Handmatige Opname Option */}
+                      <button
+                        onClick={() => selectRecordingMode('manual')}
+                        className={`p-4 rounded-lg border-2 transition-all text-left ${
+                          recordingMode === 'manual'
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3 mb-2">
+                          <Mic className="w-5 h-5 text-gray-600" />
+                          <h5 className="font-medium text-gray-800">Handmatige Opname</h5>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Start handmatige audio opname zonder automatische transcriptie
+                        </p>
+                      </button>
+
+                      {/* Automatische Opname Option */}
+                      <button
+                        onClick={() => selectRecordingMode('automatic')}
+                        className={`p-4 rounded-lg border-2 transition-all text-left ${
+                          recordingMode === 'automatic'
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300'
+                        }`}
+                      >
+                        <div className="flex items-center space-x-3 mb-2">
+                          <Type className="w-5 h-5 text-blue-600" />
+                          <h5 className="font-medium text-gray-800">Automatische Opname</h5>
+                        </div>
+                        <p className="text-sm text-gray-600">
+                          Start opname met automatische real-time transcriptie
+                        </p>
+                      </button>
                     </div>
                   </div>
 
-                  {/* Recording Controls */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                    {/* Handmatige Opname */}
-                    <div className="modern-card p-4 border-2 border-gray-200">
-                      <h4 className="font-medium text-gray-800 mb-3 flex items-center">
-                        <Mic className="w-4 h-4 mr-2" />
-                        Handmatige Opname
-                      </h4>
-                      <p className="text-sm text-gray-600 mb-4">
-                        Start handmatige audio opname zonder automatische transcriptie
-                      </p>
+                  {/* Recording Content Based on Mode */}
+                  {recordingMode === 'manual' && (
+                    <div className="border-t pt-6">
+                      <h4 className="font-medium text-gray-800 mb-4">📁 Handmatige Audio Opname</h4>
                       
-                      <div className="flex space-x-2">
+                      {/* Recording Status Display */}
+                      <div className="text-center mb-6">
+                        <div className="text-4xl font-mono text-slate-800 mb-2">
+                          {formatTime(recordingTime)}
+                        </div>
+                        <div className="text-sm text-slate-600">
+                          {isRecording ? (
+                            <span className="flex items-center justify-center space-x-2">
+                              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                              <span>Handmatige opname actief sinds {recordingStartTime ? recordingStartTime.toLocaleTimeString('nl-NL') : ''}</span>
+                            </span>
+                          ) : (
+                            'Opname gestopt'
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Manual Recording Controls */}
+                      <div className="flex justify-center space-x-4 mb-6">
                         {!isRecording ? (
-                          <button onClick={startManualRecording} className="btn-primary flex-1">
+                          <button onClick={startManualRecording} className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors flex items-center">
                             <Play className="w-4 h-4 mr-2" />
-                            Start Opname
+                            Start Handmatige Opname
                           </button>
                         ) : (
                           <>
-                            <button onClick={pauseRecording} className="btn-neutral flex-1">
+                            <button onClick={pauseRecording} className="bg-yellow-600 text-white px-4 py-3 rounded-lg hover:bg-yellow-700 transition-colors flex items-center">
                               <Pause className="w-4 h-4 mr-2" />
                               Pauzeer
                             </button>
-                            <button onClick={stopRecording} className="btn-danger">
-                              <Square className="w-4 h-4" />
+                            <button onClick={stopRecording} className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors flex items-center">
+                              <Square className="w-4 h-4 mr-2" />
+                              Stop
                             </button>
                           </>
                         )}
                       </div>
-                    </div>
 
-                    {/* Automatische Opname + Transcriptie */}
-                    <div className="modern-card p-4 border-2 border-blue-200 bg-blue-50">
-                      <h4 className="font-medium text-blue-800 mb-3 flex items-center">
-                        <Type className="w-4 h-4 mr-2" />
-                        Auto Opname + Transcriptie
-                      </h4>
-                      <p className="text-sm text-blue-600 mb-4">
-                        Start opname met automatische real-time transcriptie
-                      </p>
-                      
-                      <div className="flex space-x-2">
-                        {!isAutoTranscriptionActive ? (
-                          <button onClick={startAutoTranscription} className="btn-primary flex-1">
-                            <Type className="w-4 h-4 mr-2" />
-                            Start Auto-transcriptie
-                          </button>
-                        ) : (
-                          <>
-                            <button onClick={pauseRecording} className="btn-neutral flex-1">
-                              <Pause className="w-4 h-4 mr-2" />
-                              Pauzeer
-                            </button>
-                            <button onClick={stopRecording} className="btn-danger">
-                              <Square className="w-4 h-4" />
-                            </button>
-                          </>
-                        )}
+                      {/* Audio Upload Component */}
+                      <div className="border-t pt-4">
+                        <h5 className="font-medium text-gray-700 mb-3">Of upload een audio bestand:</h5>
+                        <AudioUploadRecorder
+                          onTranscriptionReceived={handleWhisperTranscriptionReceived}
+                          meetingId={id}
+                          disabled={isRecording}
+                        />
                       </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Audio Upload Recorder */}
-                  {!isRecording && (
-                    <div className="border-t pt-4">
-                      <h4 className="font-medium text-gray-700 mb-3">📁 Audio Bestand Uploaden</h4>
-                      <AudioUploadRecorder
-                        onTranscriptionReceived={handleWhisperTranscriptionReceived}
+                  {recordingMode === 'automatic' && (
+                    <div className="border-t pt-6">
+                      <h4 className="font-medium text-gray-800 mb-4">🤖 Enhanced Live Transcriptie</h4>
+                      <EnhancedLiveTranscription
                         meetingId={id}
-                        disabled={isRecording}
+                        participants={meeting.participants || []}
+                        onTranscriptionUpdate={handleLiveTranscriptionReceived}
+                        onSessionStatsUpdate={handlers.handleSessionStatsUpdate}
                       />
+                    </div>
+                  )}
+
+                  {recordingMode === 'none' && (
+                    <div className="text-center py-8 text-gray-500">
+                      <Mic className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p>Selecteer een opname modus om te beginnen</p>
                     </div>
                   )}
                 </div>
@@ -496,7 +624,7 @@ const MeetingRoom = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        clearTranscriptions('live');
+                        handleDeleteTranscriptions('live');
                       }}
                       className="p-1 rounded hover:bg-red-100 text-red-600"
                       title="Wis live transcripties"
@@ -514,15 +642,6 @@ const MeetingRoom = () => {
               
               {expandedPanels.liveTranscription && (
                 <div className="p-4">
-                  {isAutoTranscriptionActive && (
-                    <EnhancedLiveTranscription
-                      meetingId={id}
-                      participants={meeting.participants || []}
-                      onTranscriptionUpdate={handleLiveTranscriptionReceived}
-                      onSessionStatsUpdate={handlers.handleSessionStatsUpdate}
-                    />
-                  )}
-
                   {/* Live Transcription History */}
                   <div className="space-y-3 max-h-96 overflow-y-auto">
                     {liveTranscriptions.map((entry) => (
@@ -579,7 +698,7 @@ const MeetingRoom = () => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        clearTranscriptions('whisper');
+                        handleDeleteTranscriptions('whisper');
                       }}
                       className="p-1 rounded hover:bg-red-100 text-red-600"
                       title="Wis whisper transcripties"
@@ -643,7 +762,109 @@ const MeetingRoom = () => {
           {/* Sidebar - 4 kolommen breed */}
           <div className="col-span-4 space-y-6">
             
-            {/* 4. Verslag Panel */}
+            {/* 4. Agenda Panel */}
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+              <div 
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 cursor-pointer hover:from-green-100 hover:to-green-150 transition-all"
+                onClick={() => togglePanel('agenda')}
+              >
+                <div className="flex items-center space-x-3">
+                  <Calendar className="w-5 h-5 text-green-600" />
+                  <h3 className="font-semibold text-slate-900">📋 Agenda</h3>
+                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+                    {calculateAgendaProgress()}% voltooid
+                  </span>
+                </div>
+                {expandedPanels.agenda ? (
+                  <ChevronUp className="w-5 h-5 text-slate-600" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-slate-600" />
+                )}
+              </div>
+              
+              {expandedPanels.agenda && (
+                <div className="p-4">
+                  {meeting?.agenda_items && meeting.agenda_items.length > 0 ? (
+                    <div className="space-y-4">
+                      {/* Progress Bar */}
+                      <div>
+                        <div className="flex justify-between text-sm text-gray-600 mb-2">
+                          <span>Voortgang</span>
+                          <span>{calculateAgendaProgress()}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${calculateAgendaProgress()}%` }}
+                          ></div>
+                        </div>
+                      </div>
+
+                      {/* Agenda Items */}
+                      <div className="space-y-3">
+                        {meeting.agenda_items.map((item, index) => (
+                          <div
+                            key={index}
+                            onClick={() => toggleAgendaItem(index)}
+                            className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                              item.completed
+                                ? 'border-green-500 bg-green-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-3">
+                              <button
+                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                  item.completed
+                                    ? 'bg-green-500 border-green-500 text-white'
+                                    : 'border-gray-300 hover:border-green-400'
+                                }`}
+                              >
+                                {item.completed && <CheckCircle className="w-3 h-3" />}
+                              </button>
+                              <div className="flex-1">
+                                <h4 className={`font-medium ${item.completed ? 'text-gray-500 line-through' : 'text-gray-800'}`}>
+                                  {item.title}
+                                </h4>
+                                {item.description && (
+                                  <p className="text-sm text-gray-600 mt-1">{item.description}</p>
+                                )}
+                                {item.estimated_duration && (
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    ⏱️ ~{item.estimated_duration} min
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Current Agenda Item */}
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-gray-700 mb-2">📍 Huidig Agendapunt</h4>
+                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
+                          <p className="font-medium text-blue-800">
+                            {meeting.agenda_items[currentAgendaIndex]?.title || 'Geen actief item'}
+                          </p>
+                          <p className="text-sm text-blue-600">
+                            Item {currentAgendaIndex + 1} van {meeting.agenda_items.length}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                      <p>Geen agenda items</p>
+                      <p className="text-sm">Dit gesprek heeft geen agenda gedefinieerd</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 5. Verslag Panel */}
             <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
               <div 
                 className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-purple-100 cursor-pointer hover:from-purple-100 hover:to-purple-150 transition-all"
@@ -652,6 +873,11 @@ const MeetingRoom = () => {
                 <div className="flex items-center space-x-3">
                   <FileText className="w-5 h-5 text-purple-600" />
                   <h3 className="font-semibold text-slate-900">📋 Verslag</h3>
+                  {reportData.hasReport && (
+                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                      Beschikbaar
+                    </span>
+                  )}
                 </div>
                 {expandedPanels.report ? (
                   <ChevronUp className="w-5 h-5 text-slate-600" />
@@ -662,88 +888,145 @@ const MeetingRoom = () => {
               
               {expandedPanels.report && (
                 <div className="p-4">
-                  <div className="space-y-4">
-                    <div>
-                      <h4 className="font-medium text-gray-700 mb-2">📊 Gesprek Statistieken</h4>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div>
-                          <span className="text-gray-500">Duur:</span>
-                          <div className="font-medium">{formatTime(recordingTime)}</div>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Transcripties:</span>
-                          <div className="font-medium">{liveTranscriptions.length + whisperTranscriptions.length}</div>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Deelnemers:</span>
-                          <div className="font-medium">{meeting.participants?.length || 0}</div>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Agenda items:</span>
-                          <div className="font-medium">{meeting.agenda_items?.length || 0}</div>
+                  {reportData.hasReport ? (
+                    <div className="space-y-4">
+                      {/* Report Summary */}
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">📝 Samenvatting</h4>
+                        <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
+                          <p className="text-sm text-purple-800">{reportData.summary}</p>
                         </div>
                       </div>
-                    </div>
 
-                    {/* Agenda Progress */}
-                    {meeting.agenda_items && meeting.agenda_items.length > 0 && (
-                      <div>
-                        <h4 className="font-medium text-gray-700 mb-2">📋 Agenda Voortgang</h4>
-                        <div className="space-y-2">
-                          {meeting.agenda_items.map((item, index) => (
-                            <div key={index} className="flex items-center space-x-2 text-sm">
-                              <div className={`w-3 h-3 rounded-full ${
-                                item.completed ? 'bg-green-500' : 'bg-gray-300'
-                              }`}></div>
-                              <span className={item.completed ? 'line-through text-gray-500' : 'text-gray-700'}>
-                                {item.title}
-                              </span>
-                            </div>
-                          ))}
+                      {/* Key Points */}
+                      {reportData.keyPoints.length > 0 && (
+                        <div>
+                          <h4 className="font-medium text-gray-700 mb-2">🎯 Belangrijke Punten</h4>
+                          <ul className="space-y-1">
+                            {reportData.keyPoints.map((point, index) => (
+                              <li key={index} className="text-sm text-gray-700 flex items-start">
+                                <span className="text-purple-500 mr-2">•</span>
+                                {point}
+                              </li>
+                            ))}
+                          </ul>
                         </div>
-                        <div className="mt-3">
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-green-500 h-2 rounded-full transition-all"
-                              style={{ 
-                                width: `${(meeting.agenda_items.filter(item => item.completed).length / meeting.agenda_items.length) * 100}%` 
-                              }}
-                            ></div>
+                      )}
+
+                      {/* Action Items */}
+                      {reportData.actionItems.length > 0 && (
+                        <div>
+                          <h4 className="font-medium text-gray-700 mb-2">✅ Actiepunten</h4>
+                          <ul className="space-y-1">
+                            {reportData.actionItems.map((action, index) => (
+                              <li key={index} className="text-sm text-gray-700 flex items-start">
+                                <span className="text-green-500 mr-2">▶</span>
+                                {action}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {/* Next Steps */}
+                      {reportData.nextSteps.length > 0 && (
+                        <div>
+                          <h4 className="font-medium text-gray-700 mb-2">➡️ Vervolgstappen</h4>
+                          <ul className="space-y-1">
+                            {reportData.nextSteps.map((step, index) => (
+                              <li key={index} className="text-sm text-gray-700 flex items-start">
+                                <span className="text-blue-500 mr-2">→</span>
+                                {step}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {/* Meeting Statistics */}
+                      <div>
+                        <h4 className="font-medium text-gray-700 mb-2">📊 Gesprek Statistieken</h4>
+                        <div className="grid grid-cols-2 gap-3 text-sm">
+                          <div>
+                            <span className="text-gray-500">Duur:</span>
+                            <div className="font-medium">{formatTime(recordingTime)}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Transcripties:</span>
+                            <div className="font-medium">{liveTranscriptions.length + whisperTranscriptions.length}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Deelnemers:</span>
+                            <div className="font-medium">{meeting.participants?.length || 0}</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Agenda items:</span>
+                            <div className="font-medium">{meeting.agenda_items?.length || 0}</div>
                           </div>
                         </div>
                       </div>
-                    )}
 
-                    {/* Export Actions */}
-                    <div className="border-t pt-4">
-                      <h4 className="font-medium text-gray-700 mb-3">📤 Export Opties</h4>
-                      <div className="space-y-2">
-                        <button 
-                          className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center text-sm"
-                          onClick={() => {
-                            alert('Download verslag functionaliteit wordt nog geïmplementeerd');
-                          }}
-                        >
-                          <Download className="w-4 h-4 mr-2" />
-                          Download Verslag
-                        </button>
-                        <button 
-                          className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center text-sm"
-                          onClick={() => {
-                            alert('N8N export functionaliteit wordt nog geïmplementeerd');
-                          }}
-                        >
-                          <Send className="w-4 h-4 mr-2" />
-                          Verstuur naar N8N
-                        </button>
+                      {/* Export Actions */}
+                      <div className="border-t pt-4">
+                        <h4 className="font-medium text-gray-700 mb-3">📤 Export Opties</h4>
+                        <div className="space-y-2">
+                          <button 
+                            className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center text-sm"
+                            onClick={() => {
+                              alert('Download verslag functionaliteit wordt nog geïmplementeerd');
+                            }}
+                          >
+                            <Download className="w-4 h-4 mr-2" />
+                            Download Verslag
+                          </button>
+                          <button 
+                            className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center text-sm"
+                            onClick={() => {
+                              alert('N8N export functionaliteit wordt nog geïmplementeerd');
+                            }}
+                          >
+                            <Send className="w-4 h-4 mr-2" />
+                            Verstuur naar N8N
+                          </button>
+                          <button 
+                            className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center text-sm"
+                            onClick={() => {
+                              // Simulate report generation
+                              setReportData({
+                                hasReport: true,
+                                summary: 'Dit gesprek ging over de voortgang van de werkzoekende. Er zijn concrete vervolgstappen afgesproken.',
+                                keyPoints: [
+                                  'Sollicitaties zijn verstuurd naar 3 bedrijven',
+                                  'Gesprek gepland voor volgende week',
+                                  'CV moet worden bijgewerkt'
+                                ],
+                                actionItems: [
+                                  'CV bijwerken voor vrijdag',
+                                  'Voorbereiding gesprek bij Bedrijf X',
+                                  'Netwerk uitbreiden via LinkedIn'
+                                ],
+                                nextSteps: [
+                                  'Volgende afspraak inplannen over 2 weken',
+                                  'Feedback verwerken na sollicitatiegesprek',
+                                  'Nieuwe vacatures zoeken in IT sector'
+                                ]
+                              });
+                            }}
+                          >
+                            <FileText className="w-4 h-4 mr-2" />
+                            Genereer Verslag
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )}
                 </div>
               )}
             </div>
 
-            {/* 5. Privacy Gevoelige Data Panel */}
+            {/* 6. Privacy Gevoelige Data Panel */}
             <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
               <div 
                 className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-yellow-100 cursor-pointer hover:from-yellow-100 hover:to-yellow-150 transition-all"
@@ -766,6 +1049,7 @@ const MeetingRoom = () => {
               {expandedPanels.privacy && (
                 <div className="p-4">
                   <div className="space-y-4">
+                    {/* Privacy Status */}
                     <div>
                       <h4 className="font-medium text-gray-700 mb-3">🔒 Privacy Status</h4>
                       <div className="space-y-3">
@@ -790,19 +1074,19 @@ const MeetingRoom = () => {
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600">BSN Nummers</span>
-                          <span className="font-medium">3 gefilterd</span>
+                          <span className="font-medium">{privacyData.filteredTypes.bsn} gefilterd</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Telefoonnummers</span>
-                          <span className="font-medium">2 gefilterd</span>
+                          <span className="font-medium">{privacyData.filteredTypes.phone} gefilterd</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Email adressen</span>
-                          <span className="font-medium">1 gefilterd</span>
+                          <span className="font-medium">{privacyData.filteredTypes.email} gefilterd</span>
                         </div>
                         <div className="flex justify-between">
                           <span className="text-gray-600">Adressen</span>
-                          <span className="font-medium">2 gefilterd</span>
+                          <span className="font-medium">{privacyData.filteredTypes.address} gefilterd</span>
                         </div>
                       </div>
                     </div>
@@ -811,24 +1095,30 @@ const MeetingRoom = () => {
                     <div>
                       <h4 className="font-medium text-gray-700 mb-3">📝 Recente Privacy Events</h4>
                       <div className="space-y-2">
-                        <div className="text-xs bg-green-50 border border-green-200 rounded p-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-green-700">BSN automatisch gefilterd</span>
-                            <span className="text-green-600">2 min geleden</span>
+                        {privacyData.recentEvents.map((event, index) => (
+                          <div key={index} className={`text-xs border rounded p-2 ${
+                            event.status === 'success' ? 'bg-green-50 border-green-200' :
+                            event.status === 'info' ? 'bg-blue-50 border-blue-200' :
+                            'bg-yellow-50 border-yellow-200'
+                          }`}>
+                            <div className="flex justify-between items-center">
+                              <span className={
+                                event.status === 'success' ? 'text-green-700' :
+                                event.status === 'info' ? 'text-blue-700' :
+                                'text-yellow-700'
+                              }>
+                                {event.type} {event.action}
+                              </span>
+                              <span className={
+                                event.status === 'success' ? 'text-green-600' :
+                                event.status === 'info' ? 'text-blue-600' :
+                                'text-yellow-600'
+                              }>
+                                {event.time}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="text-xs bg-blue-50 border border-blue-200 rounded p-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-blue-700">Telefoonnummer gedetecteerd</span>
-                            <span className="text-blue-600">5 min geleden</span>
-                          </div>
-                        </div>
-                        <div className="text-xs bg-yellow-50 border border-yellow-200 rounded p-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-yellow-700">Adres gemarkeerd</span>
-                            <span className="text-yellow-600">8 min geleden</span>
-                          </div>
-                        </div>
+                        ))}
                       </div>
                     </div>
 
