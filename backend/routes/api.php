@@ -75,3 +75,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/privacy/settings', [\App\Http\Controllers\Api\PrivacyController::class, 'settings']);
     Route::post('/privacy/consent', [\App\Http\Controllers\Api\PrivacyController::class, 'consent']);
 });
+
+// Delete transcriptions by type or ID
+Route::delete('/meetings/{meeting}/transcriptions/{type?}', [TranscriptionController::class, 'deleteTranscriptions']);
+Route::delete('/transcriptions/{transcription}', [TranscriptionController::class, 'deleteTranscription']);

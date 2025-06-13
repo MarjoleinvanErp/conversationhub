@@ -3,56 +3,122 @@ import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService.js';
 import transcriptionService from '../../services/api/transcriptionService.js';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
-import { getSpeakerColor, formatTimestamp } from './utils/meetingUtils.js';
-import EnhancedLiveTranscription from '../../components/recording/EnhancedLiveTranscription.jsx';
-import AudioUploadRecorder from '../../components/recording/AudioRecorder/AudioUploadRecorder.jsx';
+import { getSpeakerColor } from './utils/meetingUtils.js';
 
-// Simple icon components
-const Icon = ({ children, className = "w-4 h-4" }) => (
-  <span className={`inline-block ${className}`} style={{ fontSize: '16px' }}>{children}</span>
-);
+// Import alle nieuwe components
+import {
+  MeetingHeader,
+  RecordingPanel,
+  LiveTranscriptionPanel,
+  WhisperTranscriptionPanel,
+  AgendaPanel,
+  ReportPanel,
+  PrivacyPanel,
+  SpeakerPanel,
+  ConfirmationModal
+} from '../../components/meeting/MeetingRoom/index.js';
 
-const Mic = ({ className }) => <Icon className={className}>🎤</Icon>;
-const Square = ({ className }) => <Icon className={className}>⏹️</Icon>;
-const ChevronDown = ({ className }) => <Icon className={className}>⬇️</Icon>;
-const ChevronUp = ({ className }) => <Icon className={className}>⬆️</Icon>;
-const Trash2 = ({ className }) => <Icon className={className}>🗑️</Icon>;
-const Users = ({ className }) => <Icon className={className}>👥</Icon>;
-const FileText = ({ className }) => <Icon className={className}>📄</Icon>;
-const Settings = ({ className }) => <Icon className={className}>⚙️</Icon>;
-const Download = ({ className }) => <Icon className={className}>⬇️</Icon>;
-const Send = ({ className }) => <Icon className={className}>📤</Icon>;
-const Type = ({ className }) => <Icon className={className}>⌨️</Icon>;
-const Shield = ({ className }) => <Icon className={className}>🛡️</Icon>;
-const Play = ({ className }) => <Icon className={className}>▶️</Icon>;
-const Pause = ({ className }) => <Icon className={className}>⏸️</Icon>;
-const CheckCircle = ({ className }) => <Icon className={className}>✅</Icon>;
-const Calendar = ({ className }) => <Icon className={className}>📅</Icon>;
+// Debug Component - VERWIJDER DIT IN PRODUCTIE
+const DebugPanel = ({ transcriptions, liveTranscriptions, whisperTranscriptions }) => {
+  const [showDebug, setShowDebug] = useState(false);
 
-// Confirmation Modal Component
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
-  if (!isOpen) return null;
+  if (!showDebug) {
+    return (
+      <div className="fixed bottom-4 right-4">
+        <button
+          onClick={() => setShowDebug(true)}
+          className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-purple-700"
+        >
+          🐛 Debug Data
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl p-6 max-w-sm w-full mx-4">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
-        <p className="text-gray-600 mb-6">{message}</p>
-        <div className="flex space-x-3 justify-end">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            Annuleren
-          </button>
+    <div className="fixed bottom-4 right-4 bg-white border-2 border-purple-500 rounded-lg p-4 max-w-md max-h-96 overflow-y-auto shadow-lg z-50">
+      <div className="flex justify-between items-center mb-2">
+        <h3 className="font-bold text-purple-800">Debug Info</h3>
+        <button
+          onClick={() => setShowDebug(false)}
+          className="text-purple-600 hover:text-purple-800"
+        >
+          ✕
+        </button>
+      </div>
+      
+      <div className="space-y-3 text-xs">
+        <div>
+          <h4 className="font-semibold text-gray-700">📊 Totaal Overzicht</h4>
+          <p>Alle transcripties: {transcriptions.length}</p>
+          <p>Live transcripties: {liveTranscriptions.length}</p>
+          <p>Whisper transcripties: {whisperTranscriptions.length}</p>
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-green-700">🎤 Live Transcripties</h4>
+          {liveTranscriptions.length === 0 ? (
+            <p className="text-gray-500">Geen live transcripties</p>
+          ) : (
+            liveTranscriptions.slice(0, 3).map((t, i) => (
+              <div key={i} className="bg-green-50 p-2 rounded mb-1">
+                <p><strong>ID:</strong> {t.id}</p>
+                <p><strong>Source:</strong> {t.source}</p>
+                <p><strong>Speaker:</strong> {t.speaker_name || t.speaker}</p>
+                <p><strong>Text:</strong> {(t.text || '').substring(0, 50)}...</p>
+                <p><strong>Timestamp:</strong> {t.created_at ? new Date(t.created_at).toLocaleTimeString() : 'Nu'}</p>
+              </div>
+            ))
+          )}
+          {liveTranscriptions.length > 3 && (
+            <p className="text-gray-500">... en {liveTranscriptions.length - 3} meer</p>
+          )}
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-blue-700">🤖 Whisper Transcripties</h4>
+          {whisperTranscriptions.length === 0 ? (
+            <p className="text-gray-500">Geen whisper transcripties</p>
+          ) : (
+            whisperTranscriptions.slice(0, 3).map((t, i) => (
+              <div key={i} className="bg-blue-50 p-2 rounded mb-1">
+                <p><strong>ID:</strong> {t.id}</p>
+                <p><strong>Source:</strong> {t.source}</p>
+                <p><strong>Speaker:</strong> {t.speaker_name || t.speaker}</p>
+                <p><strong>Text:</strong> {(t.text || '').substring(0, 50)}...</p>
+                <p><strong>Confidence:</strong> {t.confidence ? Math.round(parseFloat(t.confidence) * 100) + '%' : 'N/A'}</p>
+                <p><strong>Timestamp:</strong> {t.created_at ? new Date(t.created_at).toLocaleTimeString() : 'Nu'}</p>
+              </div>
+            ))
+          )}
+          {whisperTranscriptions.length > 3 && (
+            <p className="text-gray-500">... en {whisperTranscriptions.length - 3} meer</p>
+          )}
+        </div>
+
+        <div>
+          <h4 className="font-semibold text-gray-700">🔄 Source Types</h4>
+          {Object.entries(transcriptions.reduce((acc, t) => {
+            acc[t.source] = (acc[t.source] || 0) + 1;
+            return acc;
+          }, {})).map(([source, count]) => (
+            <p key={source}>{source}: {count}</p>
+          ))}
+        </div>
+
+        <div className="pt-2 border-t">
           <button
             onClick={() => {
-              onConfirm();
-              onClose();
+              console.log('🐛 DEBUG DATA:', {
+                allTranscriptions: transcriptions,
+                liveTranscriptions,
+                whisperTranscriptions
+              });
+              alert('Debug data logged to console (F12)');
             }}
-            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+            className="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700"
           >
-            Verwijderen
+            Log to Console
           </button>
         </div>
       </div>
@@ -94,6 +160,7 @@ const MeetingRoom = () => {
   // Modal states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Speaker management
   const [currentSpeaker, setCurrentSpeaker] = useState(null);
@@ -169,19 +236,15 @@ const MeetingRoom = () => {
       setLoading(true);
       setError('');
 
+      console.log('📥 Loading meeting data for ID:', id);
+
       const meetingResult = await meetingService.getMeeting(id);
       if (!meetingResult.success) {
         throw new Error(meetingResult.message || 'Failed to load meeting');
       }
       setMeeting(meetingResult.data);
 
-      const transcriptionsResult = await transcriptionService.getTranscriptions(id);
-      if (transcriptionsResult.success) {
-        const allTranscriptions = transcriptionsResult.data || [];
-        setTranscriptions(allTranscriptions);
-        setLiveTranscriptions(allTranscriptions.filter(t => t.source === 'live' || t.source === 'speech'));
-        setWhisperTranscriptions(allTranscriptions.filter(t => t.source === 'whisper' || t.source === 'upload'));
-      }
+      await loadTranscriptions();
 
       if (meetingResult.data.agenda_items && meetingResult.data.agenda_items.length > 0) {
         setAgendaStartTimes({ 0: new Date() });
@@ -192,6 +255,66 @@ const MeetingRoom = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Load transcriptions from database - FIXED VERSION
+  const loadTranscriptions = async () => {
+    try {
+      console.log('📥 Loading transcriptions from database...');
+      
+      const transcriptionsResult = await transcriptionService.getTranscriptions(id);
+      if (transcriptionsResult.success) {
+        const allTranscriptions = transcriptionsResult.data || [];
+        
+        console.log('✅ Loaded transcriptions:', {
+          total: allTranscriptions.length,
+          sources: [...new Set(allTranscriptions.map(t => t.source))],
+          bySource: allTranscriptions.reduce((acc, t) => {
+            acc[t.source] = (acc[t.source] || 0) + 1;
+            return acc;
+          }, {})
+        });
+
+        setTranscriptions(allTranscriptions);
+        
+        // FIXED: Separate live and whisper transcriptions met alle mogelijke source types
+        const liveData = allTranscriptions.filter(t => {
+          const source = t.source?.toLowerCase();
+          return source === 'live' || 
+                 source === 'speech' || 
+                 source === 'live_fallback' ||
+                 source === 'live_verified';  // ← Dit was missing!
+        });
+        
+        const whisperData = allTranscriptions.filter(t => {
+          const source = t.source?.toLowerCase();
+          return source === 'whisper' || 
+                 source === 'upload' ||      // ← Dit had je al, goed!
+                 source === 'whisper_verified';
+        });
+        
+        console.log('📊 Data distribution:', {
+          live: liveData.length,
+          whisper: whisperData.length,
+          liveIds: liveData.map(t => t.id),
+          whisperIds: whisperData.map(t => t.id)
+        });
+        
+        setLiveTranscriptions(liveData);
+        setWhisperTranscriptions(whisperData);
+        
+      } else {
+        console.warn('Failed to load transcriptions:', transcriptionsResult.message);
+      }
+    } catch (error) {
+      console.error('Error loading transcriptions:', error);
+    }
+  };
+
+  // Reload transcriptions from database
+  const reloadTranscriptions = async () => {
+    console.log('🔄 Reloading transcriptions from database...');
+    await loadTranscriptions();
   };
 
   // Setup available speakers from meeting participants
@@ -286,57 +409,126 @@ const MeetingRoom = () => {
     console.log('⏸️ Recording paused');
   };
 
-  // Delete transcriptions with confirmation
+  // Delete transcriptions with confirmation - UPDATED VERSION
   const handleDeleteTranscriptions = (type) => {
     setDeleteTarget(type);
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    if (deleteTarget === 'live') {
-      setLiveTranscriptions([]);
-      console.log('🗑️ Live transcriptions cleared');
-    } else if (deleteTarget === 'whisper') {
-      setWhisperTranscriptions([]);
-      console.log('🗑️ Whisper transcriptions cleared');
-    } else {
-      setLiveTranscriptions([]);
-      setWhisperTranscriptions([]);
-      setTranscriptions([]);
-      console.log('🗑️ All transcriptions cleared');
+  // FIXED: Delete function that handles all source types
+  const confirmDelete = async () => {
+    try {
+      setIsDeleting(true);
+      console.log('🗑️ Starting delete process for:', deleteTarget);
+      
+      if (deleteTarget === 'live') {
+        // Delete live transcriptions from backend - ALL live types
+        const liveTypes = ['live', 'speech', 'live_fallback', 'live_verified'];
+        
+        // Delete each type
+        for (const type of liveTypes) {
+          try {
+            const result = await transcriptionService.deleteTranscriptionsByType(id, type);
+            if (result.success) {
+              console.log(`✅ Deleted ${type} transcriptions`);
+            }
+          } catch (error) {
+            console.warn(`⚠️ No ${type} transcriptions to delete or error:`, error.message);
+          }
+        }
+        
+        console.log('✅ All live transcriptions deleted from database');
+        await reloadTranscriptions();
+        
+      } else if (deleteTarget === 'whisper') {
+        // Delete whisper transcriptions from backend - ALL whisper types
+        const whisperTypes = ['whisper', 'upload', 'whisper_verified'];
+        
+        // Delete each type
+        for (const type of whisperTypes) {
+          try {
+            const result = await transcriptionService.deleteTranscriptionsByType(id, type);
+            if (result.success) {
+              console.log(`✅ Deleted ${type} transcriptions`);
+            }
+          } catch (error) {
+            console.warn(`⚠️ No ${type} transcriptions to delete or error:`, error.message);
+          }
+        }
+        
+        console.log('✅ All whisper transcriptions deleted from database');
+        await reloadTranscriptions();
+        
+      } else if (deleteTarget === 'all') {
+        // Delete all transcriptions from backend
+        const result = await transcriptionService.deleteTranscriptionsByType(id); // No type = all
+        
+        if (result.success) {
+          console.log('✅ All transcriptions deleted from database');
+          // Clear all local state
+          setLiveTranscriptions([]);
+          setWhisperTranscriptions([]);
+          setTranscriptions([]);
+        } else {
+          console.error('Failed to delete all transcriptions:', result.message);
+          alert('Fout bij verwijderen van alle transcripties: ' + result.message);
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error during delete:', error);
+      alert('Er is een fout opgetreden bij het verwijderen: ' + error.message);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTarget(null);
     }
-    setDeleteTarget(null);
   };
 
-  // Transcription handlers
+  // Transcription handlers - UPDATED to handle real data
   const handleLiveTranscriptionReceived = (transcriptionData) => {
     console.log('📝 Live transcription received:', transcriptionData);
     
+    // Add to live transcriptions immediately for real-time display
     const newTranscription = {
       ...transcriptionData,
-      id: `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      source: 'live',
-      timestamp: new Date(),
+      id: transcriptionData.id || `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      source: transcriptionData.source || 'live',
+      timestamp: transcriptionData.timestamp || new Date(),
       panel: 'live'
     };
 
     setLiveTranscriptions(prev => [...prev, newTranscription]);
-    handlers.handleTranscriptionReceived(newTranscription);
+    
+    // Also add to main transcriptions array
+    setTranscriptions(prev => [...prev, newTranscription]);
+    
+    // Handle through meeting handlers for additional processing
+    if (handlers.handleTranscriptionReceived) {
+      handlers.handleTranscriptionReceived(newTranscription);
+    }
   };
 
   const handleWhisperTranscriptionReceived = (transcriptionData) => {
     console.log('🤖 Whisper transcription received:', transcriptionData);
     
+    // Add to whisper transcriptions immediately for real-time display
     const newTranscription = {
       ...transcriptionData,
-      id: `whisper_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      source: 'whisper',
-      timestamp: new Date(),
+      id: transcriptionData.id || `whisper_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      source: transcriptionData.source || 'whisper',
+      timestamp: transcriptionData.timestamp || new Date(),
       panel: 'whisper'
     };
 
     setWhisperTranscriptions(prev => [...prev, newTranscription]);
-    handlers.handleTranscriptionReceived(newTranscription);
+    
+    // Also add to main transcriptions array
+    setTranscriptions(prev => [...prev, newTranscription]);
+    
+    // Handle through meeting handlers for additional processing
+    if (handlers.handleTranscriptionReceived) {
+      handlers.handleTranscriptionReceived(newTranscription);
+    }
   };
 
   // Agenda functions
@@ -345,6 +537,9 @@ const MeetingRoom = () => {
     if (updatedMeeting.agenda_items && updatedMeeting.agenda_items[index]) {
       updatedMeeting.agenda_items[index].completed = !updatedMeeting.agenda_items[index].completed;
       setMeeting(updatedMeeting);
+      
+      // TODO: Save agenda progress to backend
+      console.log('📋 Agenda item toggled:', index, updatedMeeting.agenda_items[index].completed);
     }
   };
 
@@ -378,7 +573,10 @@ const MeetingRoom = () => {
           <div className="text-red-500 text-6xl mb-4">⚠️</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Fout bij laden</h2>
           <p className="text-gray-600 mb-4">{error}</p>
-          <button onClick={() => navigate('/dashboard')} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+          <button 
+            onClick={() => navigate('/dashboard')} 
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
             Terug naar Dashboard
           </button>
         </div>
@@ -394,7 +592,10 @@ const MeetingRoom = () => {
           <div className="text-gray-400 text-6xl mb-4">❓</div>
           <h2 className="text-2xl font-bold text-gray-800 mb-2">Gesprek niet gevonden</h2>
           <p className="text-gray-600 mb-4">Het gesprek met ID {id} kon niet worden gevonden.</p>
-          <button onClick={() => navigate('/dashboard')} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700">
+          <button 
+            onClick={() => navigate('/dashboard')} 
+            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          >
             Terug naar Dashboard
           </button>
         </div>
@@ -407,54 +608,26 @@ const MeetingRoom = () => {
       {/* Confirmation Modal */}
       <ConfirmationModal
         isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
+        onClose={() => !isDeleting && setShowDeleteModal(false)}
         onConfirm={confirmDelete}
         title="Transcripties verwijderen"
-        message="Weet je zeker dat je deze transcripties wilt verwijderen? Deze actie kan niet ongedaan gemaakt worden."
+        message={`Weet je zeker dat je ${
+          deleteTarget === 'live' ? 'live transcripties' : 
+          deleteTarget === 'whisper' ? 'whisper transcripties' : 
+          'alle transcripties'
+        } wilt verwijderen? Deze actie kan niet ongedaan gemaakt worden.`}
+        isLoading={isDeleting}
       />
 
-      {/* Header met Meeting Info */}
-      <div className="bg-white shadow-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <button onClick={navigateToMeetings} className="text-slate-600 hover:text-slate-900 transition-colors">
-                ← Terug naar dashboard
-              </button>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">{meeting.title}</h1>
-                <p className="text-slate-600">
-                  {meeting.participants && meeting.participants.length > 0 
-                    ? `Met ${meeting.participants.map(p => p.name).join(', ')}`
-                    : 'Geen deelnemers'
-                  } • 
-                  {meeting.scheduled_at 
-                    ? `Gepland voor ${new Date(meeting.scheduled_at).toLocaleString('nl-NL')}`
-                    : 'Niet gepland'
-                  }
-                </p>
-              </div>
-            </div>
-
-            {/* Status indicators */}
-            <div className="flex items-center space-x-4">
-              {isRecording && (
-                <div className="flex items-center space-x-2 bg-red-50 text-red-700 px-4 py-2 rounded-lg">
-                  <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-                  <span className="font-medium">Opname actief: {formatTime(recordingTime)}</span>
-                </div>
-              )}
-              
-              {isAutoTranscriptionActive && (
-                <div className="flex items-center space-x-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-lg">
-                  <Type className="w-4 h-4" />
-                  <span className="font-medium">Auto-transcriptie actief</span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Header */}
+      <MeetingHeader
+        meeting={meeting}
+        isRecording={isRecording}
+        recordingTime={recordingTime}
+        isAutoTranscriptionActive={isAutoTranscriptionActive}
+        onNavigateBack={navigateToMeetings}
+        formatTime={formatTime}
+      />
 
       <div className="max-w-7xl mx-auto px-6 py-6">
         <div className="grid grid-cols-12 gap-6">
@@ -462,727 +635,94 @@ const MeetingRoom = () => {
           <div className="col-span-8 space-y-6">
             
             {/* 1. Opname Meeting Panel */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-              <div 
-                className="flex items-center justify-between p-4 bg-gradient-to-r from-red-50 to-red-100 cursor-pointer hover:from-red-100 hover:to-red-150 transition-all"
-                onClick={() => togglePanel('recording')}
-              >
-                <div className="flex items-center space-x-3">
-                  <div className={`w-3 h-3 rounded-full ${isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'}`}></div>
-                  <h3 className="font-semibold text-slate-900">🎤 Opname Meeting</h3>
-                  {isRecording && (
-                    <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
-                      {formatTime(recordingTime)}
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center space-x-2">
-                  {expandedPanels.recording ? (
-                    <ChevronUp className="w-5 h-5 text-slate-600" />
-                  ) : (
-                    <ChevronDown className="w-5 h-5 text-slate-600" />
-                  )}
-                </div>
-              </div>
-              
-              {expandedPanels.recording && (
-                <div className="p-6">
-                  {/* Recording Mode Selection */}
-                  <div className="mb-6">
-                    <h4 className="font-medium text-gray-800 mb-3">Selecteer Opname Modus</h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Handmatige Opname Option */}
-                      <button
-                        onClick={() => selectRecordingMode('manual')}
-                        className={`p-4 rounded-lg border-2 transition-all text-left ${
-                          recordingMode === 'manual'
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-3 mb-2">
-                          <Mic className="w-5 h-5 text-gray-600" />
-                          <h5 className="font-medium text-gray-800">Handmatige Opname</h5>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          Start handmatige audio opname zonder automatische transcriptie
-                        </p>
-                      </button>
-
-                      {/* Automatische Opname Option */}
-                      <button
-                        onClick={() => selectRecordingMode('automatic')}
-                        className={`p-4 rounded-lg border-2 transition-all text-left ${
-                          recordingMode === 'automatic'
-                            ? 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-3 mb-2">
-                          <Type className="w-5 h-5 text-blue-600" />
-                          <h5 className="font-medium text-gray-800">Automatische Opname</h5>
-                        </div>
-                        <p className="text-sm text-gray-600">
-                          Start opname met automatische real-time transcriptie
-                        </p>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Recording Content Based on Mode */}
-                  {recordingMode === 'manual' && (
-                    <div className="border-t pt-6">
-                      <h4 className="font-medium text-gray-800 mb-4">📁 Handmatige Audio Opname</h4>
-                      
-                      {/* Recording Status Display */}
-                      <div className="text-center mb-6">
-                        <div className="text-4xl font-mono text-slate-800 mb-2">
-                          {formatTime(recordingTime)}
-                        </div>
-                        <div className="text-sm text-slate-600">
-                          {isRecording ? (
-                            <span className="flex items-center justify-center space-x-2">
-                              <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                              <span>Handmatige opname actief sinds {recordingStartTime ? recordingStartTime.toLocaleTimeString('nl-NL') : ''}</span>
-                            </span>
-                          ) : (
-                            'Opname gestopt'
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Manual Recording Controls */}
-                      <div className="flex justify-center space-x-4 mb-6">
-                        {!isRecording ? (
-                          <button onClick={startManualRecording} className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors flex items-center">
-                            <Play className="w-4 h-4 mr-2" />
-                            Start Handmatige Opname
-                          </button>
-                        ) : (
-                          <>
-                            <button onClick={pauseRecording} className="bg-yellow-600 text-white px-4 py-3 rounded-lg hover:bg-yellow-700 transition-colors flex items-center">
-                              <Pause className="w-4 h-4 mr-2" />
-                              Pauzeer
-                            </button>
-                            <button onClick={stopRecording} className="bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors flex items-center">
-                              <Square className="w-4 h-4 mr-2" />
-                              Stop
-                            </button>
-                          </>
-                        )}
-                      </div>
-
-                      {/* Audio Upload Component */}
-                      <div className="border-t pt-4">
-                        <h5 className="font-medium text-gray-700 mb-3">Of upload een audio bestand:</h5>
-                        <AudioUploadRecorder
-                          onTranscriptionReceived={handleWhisperTranscriptionReceived}
-                          meetingId={id}
-                          disabled={isRecording}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {recordingMode === 'automatic' && (
-                    <div className="border-t pt-6">
-                      <h4 className="font-medium text-gray-800 mb-4">🤖 Enhanced Live Transcriptie</h4>
-                      <EnhancedLiveTranscription
-                        meetingId={id}
-                        participants={meeting.participants || []}
-                        onTranscriptionUpdate={handleLiveTranscriptionReceived}
-                        onSessionStatsUpdate={handlers.handleSessionStatsUpdate}
-                      />
-                    </div>
-                  )}
-
-                  {recordingMode === 'none' && (
-                    <div className="text-center py-8 text-gray-500">
-                      <Mic className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                      <p>Selecteer een opname modus om te beginnen</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <RecordingPanel
+              isExpanded={expandedPanels.recording}
+              onToggle={() => togglePanel('recording')}
+              recordingMode={recordingMode}
+              onSelectRecordingMode={selectRecordingMode}
+              isRecording={isRecording}
+              recordingTime={recordingTime}
+              recordingStartTime={recordingStartTime}
+              onStartManualRecording={startManualRecording}
+              onStartAutoTranscription={startAutoTranscription}
+              onPauseRecording={pauseRecording}
+              onStopRecording={stopRecording}
+              onLiveTranscriptionReceived={handleLiveTranscriptionReceived}
+              onWhisperTranscriptionReceived={handleWhisperTranscriptionReceived}
+              meetingId={id}
+              meeting={meeting}
+              formatTime={formatTime}
+            />
 
             {/* 2. Live Transcriptie Panel */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-              <div 
-                className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-100 cursor-pointer hover:from-blue-100 hover:to-blue-150 transition-all"
-                onClick={() => togglePanel('liveTranscription')}
-              >
-                <div className="flex items-center space-x-3">
-                  <div className={`w-3 h-3 rounded-full ${isAutoTranscriptionActive ? 'bg-blue-500 animate-pulse' : 'bg-gray-300'}`}></div>
-                  <h3 className="font-semibold text-slate-900">🎤 Live Transcriptie</h3>
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
-                    {liveTranscriptions.length} items
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {liveTranscriptions.length > 0 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteTranscriptions('live');
-                      }}
-                      className="p-1 rounded hover:bg-red-100 text-red-600"
-                      title="Wis live transcripties"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                  {expandedPanels.liveTranscription ? (
-                    <ChevronUp className="w-5 h-5 text-slate-600" />
-                  ) : (
-                    <ChevronDown className="w-5 h-5 text-slate-600" />
-                  )}
-                </div>
-              </div>
-              
-              {expandedPanels.liveTranscription && (
-                <div className="p-4">
-                  {/* Live Transcription History */}
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {liveTranscriptions.map((entry) => (
-                      <div key={entry.id} className="flex space-x-3 p-3 rounded-lg hover:bg-blue-50 border border-blue-100">
-                        <div className="flex-shrink-0">
-                          <div 
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium"
-                            style={{ backgroundColor: entry.speakerColor || entry.speaker_color || '#3B82F6' }}
-                          >
-                            {(entry.speaker || entry.speaker_name || 'S').charAt(0).toUpperCase()}
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <span className="font-medium text-slate-900">{entry.speaker || entry.speaker_name}</span>
-                            <span className="text-xs text-slate-500">
-                              {entry.timestamp ? formatTimestamp(entry.timestamp) : 'Nu'}
-                            </span>
-                            <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">
-                              Live
-                            </span>
-                          </div>
-                          <p className="text-slate-700 leading-relaxed">{entry.text}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {liveTranscriptions.length === 0 && (
-                      <div className="text-center py-8 text-slate-500">
-                        <Type className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                        <p>Geen live transcripties</p>
-                        <p className="text-sm">Start auto-transcriptie om live tekst hier te zien</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <LiveTranscriptionPanel
+              isExpanded={expandedPanels.liveTranscription}
+              onToggle={() => togglePanel('liveTranscription')}
+              liveTranscriptions={liveTranscriptions}
+              isAutoTranscriptionActive={isAutoTranscriptionActive}
+              onDeleteTranscriptions={handleDeleteTranscriptions}
+              isDeleting={isDeleting && deleteTarget === 'live'}
+            />
 
             {/* 3. Whisper Transcriptie Panel */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-              <div 
-                className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 cursor-pointer hover:from-green-100 hover:to-green-150 transition-all"
-                onClick={() => togglePanel('whisperTranscription')}
-              >
-                <div className="flex items-center space-x-3">
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  <h3 className="font-semibold text-slate-900">🤖 Whisper Transcriptie</h3>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                    {whisperTranscriptions.length} items
-                  </span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {whisperTranscriptions.length > 0 && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeleteTranscriptions('whisper');
-                      }}
-                      className="p-1 rounded hover:bg-red-100 text-red-600"
-                      title="Wis whisper transcripties"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  )}
-                  {expandedPanels.whisperTranscription ? (
-                    <ChevronUp className="w-5 h-5 text-slate-600" />
-                  ) : (
-                    <ChevronDown className="w-5 h-5 text-slate-600" />
-                  )}
-                </div>
-              </div>
-              
-              {expandedPanels.whisperTranscription && (
-                <div className="p-4">
-                  <div className="space-y-3 max-h-96 overflow-y-auto">
-                    {whisperTranscriptions.map((entry) => (
-                      <div key={entry.id} className="flex space-x-3 p-3 rounded-lg hover:bg-green-50 border border-green-100">
-                        <div className="flex-shrink-0">
-                          <div 
-                            className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium"
-                            style={{ backgroundColor: entry.speakerColor || entry.speaker_color || '#10B981' }}
-                          >
-                            {(entry.speaker || entry.speaker_name || 'S').charAt(0).toUpperCase()}
-                          </div>
-                        </div>
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-2 mb-1">
-                            <span className="font-medium text-slate-900">{entry.speaker || entry.speaker_name}</span>
-                            <span className="text-xs text-slate-500">
-                              {entry.timestamp ? formatTimestamp(entry.timestamp) : 'Nu'}
-                            </span>
-                            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
-                              Whisper
-                            </span>
-                            {entry.confidence && (
-                              <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
-                                {Math.round(entry.confidence * 100)}%
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-slate-700 leading-relaxed font-medium">{entry.text}</p>
-                        </div>
-                      </div>
-                    ))}
-                    {whisperTranscriptions.length === 0 && (
-                      <div className="text-center py-8 text-slate-500">
-                        <Settings className="w-12 h-12 mx-auto mb-4 text-slate-300" />
-                        <p>Geen Whisper transcripties</p>
-                        <p className="text-sm">Upload audiobestanden om Whisper transcripties te zien</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
+            <WhisperTranscriptionPanel
+              isExpanded={expandedPanels.whisperTranscription}
+              onToggle={() => togglePanel('whisperTranscription')}
+              whisperTranscriptions={whisperTranscriptions}
+              onDeleteTranscriptions={handleDeleteTranscriptions}
+              isDeleting={isDeleting && deleteTarget === 'whisper'}
+            />
           </div>
 
           {/* Sidebar - 4 kolommen breed */}
           <div className="col-span-4 space-y-6">
             
             {/* 4. Agenda Panel */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-              <div 
-                className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 cursor-pointer hover:from-green-100 hover:to-green-150 transition-all"
-                onClick={() => togglePanel('agenda')}
-              >
-                <div className="flex items-center space-x-3">
-                  <Calendar className="w-5 h-5 text-green-600" />
-                  <h3 className="font-semibold text-slate-900">📋 Agenda</h3>
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
-                    {calculateAgendaProgress()}% voltooid
-                  </span>
-                </div>
-                {expandedPanels.agenda ? (
-                  <ChevronUp className="w-5 h-5 text-slate-600" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-slate-600" />
-                )}
-              </div>
-              
-              {expandedPanels.agenda && (
-                <div className="p-4">
-                  {meeting?.agenda_items && meeting.agenda_items.length > 0 ? (
-                    <div className="space-y-4">
-                      {/* Progress Bar */}
-                      <div>
-                        <div className="flex justify-between text-sm text-gray-600 mb-2">
-                          <span>Voortgang</span>
-                          <span>{calculateAgendaProgress()}%</span>
-                        </div>
-                        <div className="w-full bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                            style={{ width: `${calculateAgendaProgress()}%` }}
-                          ></div>
-                        </div>
-                      </div>
-
-                      {/* Agenda Items */}
-                      <div className="space-y-3">
-                        {meeting.agenda_items.map((item, index) => (
-                          <div
-                            key={index}
-                            onClick={() => toggleAgendaItem(index)}
-                            className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
-                              item.completed
-                                ? 'border-green-500 bg-green-50'
-                                : 'border-gray-200 hover:border-gray-300'
-                            }`}
-                          >
-                            <div className="flex items-center space-x-3">
-                              <button
-                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                                  item.completed
-                                    ? 'bg-green-500 border-green-500 text-white'
-                                    : 'border-gray-300 hover:border-green-400'
-                                }`}
-                              >
-                                {item.completed && <CheckCircle className="w-3 h-3" />}
-                              </button>
-                              <div className="flex-1">
-                                <h4 className={`font-medium ${item.completed ? 'text-gray-500 line-through' : 'text-gray-800'}`}>
-                                  {item.title}
-                                </h4>
-                                {item.description && (
-                                  <p className="text-sm text-gray-600 mt-1">{item.description}</p>
-                                )}
-                                {item.estimated_duration && (
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    ⏱️ ~{item.estimated_duration} min
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Current Agenda Item */}
-                      <div className="border-t pt-4">
-                        <h4 className="font-medium text-gray-700 mb-2">📍 Huidig Agendapunt</h4>
-                        <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
-                          <p className="font-medium text-blue-800">
-                            {meeting.agenda_items[currentAgendaIndex]?.title || 'Geen actief item'}
-                          </p>
-                          <p className="text-sm text-blue-600">
-                            Item {currentAgendaIndex + 1} van {meeting.agenda_items.length}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
-                      <p>Geen agenda items</p>
-                      <p className="text-sm">Dit gesprek heeft geen agenda gedefinieerd</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <AgendaPanel
+              isExpanded={expandedPanels.agenda}
+              onToggle={() => togglePanel('agenda')}
+              meeting={meeting}
+              currentAgendaIndex={currentAgendaIndex}
+              onToggleAgendaItem={toggleAgendaItem}
+              calculateAgendaProgress={calculateAgendaProgress}
+            />
 
             {/* 5. Verslag Panel */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-              <div 
-                className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-purple-100 cursor-pointer hover:from-purple-100 hover:to-purple-150 transition-all"
-                onClick={() => togglePanel('report')}
-              >
-                <div className="flex items-center space-x-3">
-                  <FileText className="w-5 h-5 text-purple-600" />
-                  <h3 className="font-semibold text-slate-900">📋 Verslag</h3>
-                  {reportData.hasReport && (
-                    <span className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
-                      Beschikbaar
-                    </span>
-                  )}
-                </div>
-                {expandedPanels.report ? (
-                  <ChevronUp className="w-5 h-5 text-slate-600" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-slate-600" />
-                )}
-              </div>
-              
-              {expandedPanels.report && (
-                <div className="p-4">
-                  {reportData.hasReport ? (
-                    <div className="space-y-4">
-                      {/* Report Summary */}
-                      <div>
-                        <h4 className="font-medium text-gray-700 mb-2">📝 Samenvatting</h4>
-                        <div className="bg-purple-50 p-3 rounded-lg border border-purple-200">
-                          <p className="text-sm text-purple-800">{reportData.summary}</p>
-                        </div>
-                      </div>
+            <ReportPanel
+              isExpanded={expandedPanels.report}
+              onToggle={() => togglePanel('report')}
+              reportData={reportData}
+              setReportData={setReportData}
+              recordingTime={recordingTime}
+              liveTranscriptions={liveTranscriptions}
+              whisperTranscriptions={whisperTranscriptions}
+              meeting={meeting}
+              formatTime={formatTime}
+            />
 
-                      {/* Key Points */}
-                      {reportData.keyPoints.length > 0 && (
-                        <div>
-                          <h4 className="font-medium text-gray-700 mb-2">🎯 Belangrijke Punten</h4>
-                          <ul className="space-y-1">
-                            {reportData.keyPoints.map((point, index) => (
-                              <li key={index} className="text-sm text-gray-700 flex items-start">
-                                <span className="text-purple-500 mr-2">•</span>
-                                {point}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
+            {/* 6. Privacy Panel */}
+            <PrivacyPanel
+              isExpanded={expandedPanels.privacy}
+              onToggle={() => togglePanel('privacy')}
+              privacyData={privacyData}
+            />
 
-                      {/* Action Items */}
-                      {reportData.actionItems.length > 0 && (
-                        <div>
-                          <h4 className="font-medium text-gray-700 mb-2">✅ Actiepunten</h4>
-                          <ul className="space-y-1">
-                            {reportData.actionItems.map((action, index) => (
-                              <li key={index} className="text-sm text-gray-700 flex items-start">
-                                <span className="text-green-500 mr-2">▶</span>
-                                {action}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-
-                      {/* Next Steps */}
-                      {reportData.nextSteps.length > 0 && (
-                        <div>
-                          <h4 className="font-medium text-gray-700 mb-2">➡️ Vervolgstappen</h4>
-                          <ul className="space-y-1">
-                            {reportData.nextSteps.map((step, index) => (
-                              <li key={index} className="text-sm text-gray-700 flex items-start">
-                                <span className="text-blue-500 mr-2">→</span>
-                                {step}
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {/* Meeting Statistics */}
-                      <div>
-                        <h4 className="font-medium text-gray-700 mb-2">📊 Gesprek Statistieken</h4>
-                        <div className="grid grid-cols-2 gap-3 text-sm">
-                          <div>
-                            <span className="text-gray-500">Duur:</span>
-                            <div className="font-medium">{formatTime(recordingTime)}</div>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Transcripties:</span>
-                            <div className="font-medium">{liveTranscriptions.length + whisperTranscriptions.length}</div>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Deelnemers:</span>
-                            <div className="font-medium">{meeting.participants?.length || 0}</div>
-                          </div>
-                          <div>
-                            <span className="text-gray-500">Agenda items:</span>
-                            <div className="font-medium">{meeting.agenda_items?.length || 0}</div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Export Actions */}
-                      <div className="border-t pt-4">
-                        <h4 className="font-medium text-gray-700 mb-3">📤 Export Opties</h4>
-                        <div className="space-y-2">
-                          <button 
-                            className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center text-sm"
-                            onClick={() => {
-                              alert('Download verslag functionaliteit wordt nog geïmplementeerd');
-                            }}
-                          >
-                            <Download className="w-4 h-4 mr-2" />
-                            Download Verslag
-                          </button>
-                          <button 
-                            className="w-full bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center text-sm"
-                            onClick={() => {
-                              alert('N8N export functionaliteit wordt nog geïmplementeerd');
-                            }}
-                          >
-                            <Send className="w-4 h-4 mr-2" />
-                            Verstuur naar N8N
-                          </button>
-                          <button 
-                            className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition-colors flex items-center justify-center text-sm"
-                            onClick={() => {
-                              // Simulate report generation
-                              setReportData({
-                                hasReport: true,
-                                summary: 'Dit gesprek ging over de voortgang van de werkzoekende. Er zijn concrete vervolgstappen afgesproken.',
-                                keyPoints: [
-                                  'Sollicitaties zijn verstuurd naar 3 bedrijven',
-                                  'Gesprek gepland voor volgende week',
-                                  'CV moet worden bijgewerkt'
-                                ],
-                                actionItems: [
-                                  'CV bijwerken voor vrijdag',
-                                  'Voorbereiding gesprek bij Bedrijf X',
-                                  'Netwerk uitbreiden via LinkedIn'
-                                ],
-                                nextSteps: [
-                                  'Volgende afspraak inplannen over 2 weken',
-                                  'Feedback verwerken na sollicitatiegesprek',
-                                  'Nieuwe vacatures zoeken in IT sector'
-                                ]
-                              });
-                            }}
-                          >
-                            <FileText className="w-4 h-4 mr-2" />
-                            Genereer Verslag
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* 6. Privacy Gevoelige Data Panel */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-              <div 
-                className="flex items-center justify-between p-4 bg-gradient-to-r from-yellow-50 to-yellow-100 cursor-pointer hover:from-yellow-100 hover:to-yellow-150 transition-all"
-                onClick={() => togglePanel('privacy')}
-              >
-                <div className="flex items-center space-x-3">
-                  <Shield className="w-5 h-5 text-yellow-600" />
-                  <h3 className="font-semibold text-slate-900">🛡️ Privacy Gevoelige Data</h3>
-                  <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
-                    {privacyData.totalFiltered} gefilterd
-                  </span>
-                </div>
-                {expandedPanels.privacy ? (
-                  <ChevronUp className="w-5 h-5 text-slate-600" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-slate-600" />
-                )}
-              </div>
-              
-              {expandedPanels.privacy && (
-                <div className="p-4">
-                  <div className="space-y-4">
-                    {/* Privacy Status */}
-                    <div>
-                      <h4 className="font-medium text-gray-700 mb-3">🔒 Privacy Status</h4>
-                      <div className="space-y-3">
-                        <div>
-                          <div className="flex justify-between text-sm mb-1">
-                            <span className="text-gray-600">AVG Compliance</span>
-                            <span className="font-semibold text-green-600">{privacyData.confidenceScore}%</span>
-                          </div>
-                          <div className="w-full bg-gray-200 rounded-full h-2">
-                            <div 
-                              className="bg-green-500 h-2 rounded-full transition-all"
-                              style={{ width: `${privacyData.confidenceScore}%` }}
-                            ></div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Filtered Data Types */}
-                    <div>
-                      <h4 className="font-medium text-gray-700 mb-3">🔍 Gefilterde Data Types</h4>
-                      <div className="space-y-2 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">BSN Nummers</span>
-                          <span className="font-medium">{privacyData.filteredTypes.bsn} gefilterd</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Telefoonnummers</span>
-                          <span className="font-medium">{privacyData.filteredTypes.phone} gefilterd</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Email adressen</span>
-                          <span className="font-medium">{privacyData.filteredTypes.email} gefilterd</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">Adressen</span>
-                          <span className="font-medium">{privacyData.filteredTypes.address} gefilterd</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Recent Privacy Events */}
-                    <div>
-                      <h4 className="font-medium text-gray-700 mb-3">📝 Recente Privacy Events</h4>
-                      <div className="space-y-2">
-                        {privacyData.recentEvents.map((event, index) => (
-                          <div key={index} className={`text-xs border rounded p-2 ${
-                            event.status === 'success' ? 'bg-green-50 border-green-200' :
-                            event.status === 'info' ? 'bg-blue-50 border-blue-200' :
-                            'bg-yellow-50 border-yellow-200'
-                          }`}>
-                            <div className="flex justify-between items-center">
-                              <span className={
-                                event.status === 'success' ? 'text-green-700' :
-                                event.status === 'info' ? 'text-blue-700' :
-                                'text-yellow-700'
-                              }>
-                                {event.type} {event.action}
-                              </span>
-                              <span className={
-                                event.status === 'success' ? 'text-green-600' :
-                                event.status === 'info' ? 'text-blue-600' :
-                                'text-yellow-600'
-                              }>
-                                {event.time}
-                              </span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Privacy Settings */}
-                    <div className="border-t pt-4">
-                      <h4 className="font-medium text-gray-700 mb-3">⚙️ Privacy Instellingen</h4>
-                      <div className="space-y-2">
-                        <label className="flex items-center space-x-2 text-sm">
-                          <input type="checkbox" defaultChecked className="rounded" />
-                          <span>Auto-filter BSN nummers</span>
-                        </label>
-                        <label className="flex items-center space-x-2 text-sm">
-                          <input type="checkbox" defaultChecked className="rounded" />
-                          <span>Auto-filter telefoonnummers</span>
-                        </label>
-                        <label className="flex items-center space-x-2 text-sm">
-                          <input type="checkbox" defaultChecked className="rounded" />
-                          <span>Auto-filter email adressen</span>
-                        </label>
-                        <label className="flex items-center space-x-2 text-sm">
-                          <input type="checkbox" defaultChecked className="rounded" />
-                          <span>Auto-filter adressen</span>
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Current Speaker Selection */}
-            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4">
-              <h3 className="font-semibold text-slate-900 mb-3 flex items-center">
-                <Users className="w-5 h-5 mr-2 text-slate-600" />
-                🎤 Actieve Spreker
-              </h3>
-              <div className="space-y-2">
-                {availableSpeakers.slice(0, 3).map((speaker) => (
-                  <button
-                    key={speaker.id}
-                    onClick={() => handlers.handleSpeakerChange(speaker)}
-                    className={`w-full flex items-center space-x-2 p-2 rounded-lg transition-all text-sm ${
-                      currentSpeaker?.id === speaker.id
-                        ? 'bg-blue-50 border-2 border-blue-500'
-                        : 'bg-gray-50 hover:bg-gray-100 border-2 border-transparent'
-                    }`}
-                  >
-                    <div
-                      className="w-5 h-5 rounded-full flex items-center justify-center text-white text-xs font-bold"
-                      style={{ backgroundColor: speaker.color }}
-                    >
-                      {speaker.displayName.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="flex-1 text-left font-medium">{speaker.displayName}</span>
-                    {currentSpeaker?.id === speaker.id && (
-                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
+            {/* 7. Speaker Panel */}
+            <SpeakerPanel
+              availableSpeakers={availableSpeakers}
+              currentSpeaker={currentSpeaker}
+              onSpeakerChange={handlers.handleSpeakerChange}
+            />
           </div>
         </div>
       </div>
+
+      {/* Debug Panel - VERWIJDER DIT IN PRODUCTIE */}
+      <DebugPanel
+        transcriptions={transcriptions}
+        liveTranscriptions={liveTranscriptions}
+        whisperTranscriptions={whisperTranscriptions}
+      />
     </div>
   );
 };

@@ -47,6 +47,64 @@ class TranscriptionController extends Controller
     }
 
 /**
+ * Delete transcriptions by type
+ */
+public function deleteTranscriptions(Request $request, Meeting $meeting, $type = null)
+{
+    try {
+        $query = $meeting->transcriptions();
+        
+        if ($type) {
+            $validTypes = ['live', 'whisper', 'speech', 'upload'];
+            if (!in_array($type, $validTypes)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid transcription type'
+                ], 400);
+            }
+            
+            $query->where('source', $type);
+        }
+        
+        $deletedCount = $query->delete();
+        
+        return response()->json([
+            'success' => true,
+            'message' => "Deleted {$deletedCount} transcriptions",
+            'deleted_count' => $deletedCount
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to delete transcriptions: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+/**
+ * Delete single transcription
+ */
+public function deleteTranscription(Transcription $transcription)
+{
+    try {
+        $transcription->delete();
+        
+        return response()->json([
+            'success' => true,
+            'message' => 'Transcription deleted successfully'
+        ]);
+        
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Failed to delete transcription: ' . $e->getMessage()
+        ], 500);
+    }
+}
+
+
+/**
  * Store a new transcription
  */
 public function store(Request $request): JsonResponse
