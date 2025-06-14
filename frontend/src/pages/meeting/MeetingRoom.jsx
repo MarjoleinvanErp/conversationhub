@@ -696,13 +696,14 @@ const fetchMeetingData = async () => {
 
 {/* 4. Agenda Panel */}
 <AgendaPanel
+  key={meeting?.agendaItems?.length || meeting?.agenda_items?.length || 0} // Force re-render when agenda changes
   isExpanded={expandedPanels.agenda}
   onToggle={() => togglePanel('agenda')}
   meeting={meeting}
   currentAgendaIndex={currentAgendaIndex}
   onToggleAgendaItem={toggleAgendaItem}
   calculateAgendaProgress={calculateAgendaProgress}
-  onMeetingUpdate={fetchMeetingData} // Add this line
+  onMeetingUpdate={fetchMeetingData}
 />
 
 

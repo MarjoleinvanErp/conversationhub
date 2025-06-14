@@ -76,12 +76,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/privacy/settings', [\App\Http\Controllers\Api\PrivacyController::class, 'settings']);
     Route::post('/privacy/consent', [\App\Http\Controllers\Api\PrivacyController::class, 'consent']);
 
-    // Agenda routes
-    Route::prefix('meetings/{meetingId}/agenda')->group(function () {
-        Route::get('/', [AgendaController::class, 'index']);
-        Route::post('/', [AgendaController::class, 'store']);
-        Route::put('{agendaItemId}/status', [AgendaController::class, 'updateStatus']);
-    });
+    // Agenda routes - CORRECTED VERSION
+    Route::get('/meetings/{meetingId}/agenda', [AgendaController::class, 'index']);
+    Route::post('/meetings/{meetingId}/agenda', [AgendaController::class, 'store']);
+    Route::put('/meetings/{meetingId}/agenda/{agendaItemId}/status', [AgendaController::class, 'updateStatus']);
+    Route::delete('/meetings/{meetingId}/agenda/{agendaItemId}', [AgendaController::class, 'destroy']);
 
     // Delete transcriptions by type or ID
     Route::delete('/meetings/{meeting}/transcriptions/{type?}', [\App\Http\Controllers\Api\TranscriptionController::class, 'deleteTranscriptions']);

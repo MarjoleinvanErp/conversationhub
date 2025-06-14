@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import enhancedLiveTranscriptionService from '../../services/api/enhancedLiveTranscriptionService';
-import TimelineTranscription from './timeline/TimelineTranscription.jsx';
 
 const EnhancedLiveTranscription = ({ 
   meetingId, 
@@ -11,39 +10,30 @@ const EnhancedLiveTranscription = ({
   // Session state
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionId, setSessionId] = useState(null);
-  const [sessionStats, setSessionStats] = useState(null);
 
-  // Voice setup state
-  const [voiceSetupPhase, setVoiceSetupPhase] = useState(false);
+  // Setup state
+  const [setupPhase, setSetupPhase] = useState('initial'); // 'initial', 'voice_setup', 'ready'
   const [currentSetupSpeaker, setCurrentSetupSpeaker] = useState(0);
-  const [voiceSetupComplete, setVoiceSetupComplete] = useState(false);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [voiceSetupError, setVoiceSetupError] = useState('');
+  
+  // Loading states
+  const [isStartingSession, setIsStartingSession] = useState(false);
+  const [startupProgress, setStartupProgress] = useState('');
 
   // Recording state
   const [isRecording, setIsRecording] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [recordingStartTime, setRecordingStartTime] = useState(null);
   const [recordingError, setRecordingError] = useState('');
   const [speechSupported, setSpeechSupported] = useState(false);
 
-  // Transcription state
-  const [liveTranscriptions, setLiveTranscriptions] = useState([]);
-  const [whisperTranscriptions, setWhisperTranscriptions] = useState([]);
-  const [interimTranscript, setInterimTranscript] = useState('');
-  
-  // FIXED: Better transcription queue management
-  const [waitingForWhisper, setWaitingForWhisper] = useState([]); // Transcriptions waiting for Whisper
-  const [audioChunkQueue, setAudioChunkQueue] = useState([]); // Audio chunks waiting to be processed
+  // Processing for background transcription
+  const [isProcessingBackground, setIsProcessingBackground] = useState(false);
 
-  // Processing state
-  const [isProcessingWhisper, setIsProcessingWhisper] = useState(false);
-  const [whisperProgress, setWhisperProgress] = useState('');
-
-  // UI state
-  const [autoScroll, setAutoScroll] = useState(true);
-
-  // Refs
-  const liveTranscriptEndRef = useRef(null);
-  const whisperTranscriptEndRef = useRef(null);
+  // Timer ref
+  const timerRef = useRef(null);
 
   // Check speech recognition support
   useEffect(() => {
@@ -51,47 +41,62 @@ const EnhancedLiveTranscription = ({
     setSpeechSupported(!!SpeechRecognition);
   }, []);
 
-  // Auto-scroll
+  // Recording timer
   useEffect(() => {
-    if (autoScroll && liveTranscriptions.length > 0) {
-      setTimeout(() => {
-        liveTranscriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }, 100);
+    if (isRecording && !isPaused) {
+      timerRef.current = setInterval(() => {
+        setRecordingTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
     }
-  }, [liveTranscriptions.length, autoScroll]);
 
-  useEffect(() => {
-    if (autoScroll && whisperTranscriptions.length > 0) {
-      setTimeout(() => {
-        whisperTranscriptEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-      }, 100);
-    }
-  }, [whisperTranscriptions.length, autoScroll]);
-
-  // Process audio chunk queue when chunks arrive
-  useEffect(() => {
-    if (audioChunkQueue.length > 0 && waitingForWhisper.length > 0 && !isProcessingWhisper) {
-      processNextWhisperVerification();
-    }
-  }, [audioChunkQueue.length, waitingForWhisper.length, isProcessingWhisper]);
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [isRecording, isPaused]);
 
   // Cleanup
   useEffect(() => {
     return () => {
       try {
         enhancedLiveTranscriptionService.stopRecording();
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
       } catch (error) {
         console.error('Cleanup error:', error);
       }
     };
   }, []);
 
-  // Start enhanced session
-  const startEnhancedSession = async () => {
+  // Format recording time
+  const formatTime = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Start enhanced session with voice setup choice (WITH LOADING STATES)
+  const handleVoiceSetupChoice = async (useVoiceSetup) => {
     try {
+      setIsStartingSession(true);
       setRecordingError('');
+      setStartupProgress('Initialiseren...');
+      
       console.log('🚀 Starting enhanced session for meeting:', meetingId);
       
+      setStartupProgress('Deelnemers verwerken...');
       const processedParticipants = participants.map((p, index) => {
         const participantId = p.id ? `participant_${p.id}` : `participant_${p.name.toLowerCase().replace(/\s+/g, '_')}_${index}`;
         
@@ -102,22 +107,24 @@ const EnhancedLiveTranscription = ({
         };
       });
       
+      setStartupProgress('Verbinden met server...');
       const result = await enhancedLiveTranscriptionService.startEnhancedSession(
         meetingId,
         processedParticipants
       );
 
+      console.log('Enhanced session result:', result);
+
       if (result.success) {
+        setStartupProgress('Session gestart!');
         setSessionActive(true);
         setSessionId(result.session_id);
         
-        if (result.voice_setup_required && participants.length > 0) {
-          setVoiceSetupPhase(true);
+        if (useVoiceSetup && participants.length > 0) {
+          setSetupPhase('voice_setup');
           setCurrentSetupSpeaker(0);
-          setVoiceSetupComplete(false);
         } else {
-          setVoiceSetupPhase(false);
-          setVoiceSetupComplete(true);
+          setSetupPhase('ready');
         }
       } else {
         setRecordingError(result.error || 'Failed to start session');
@@ -125,10 +132,13 @@ const EnhancedLiveTranscription = ({
     } catch (error) {
       console.error('❌ Enhanced session exception:', error);
       setRecordingError('Failed to start enhanced session: ' + error.message);
+    } finally {
+      setIsStartingSession(false);
+      setTimeout(() => setStartupProgress(''), 2000);
     }
   };
 
-  // Voice setup functions
+  // Voice setup functions (FROM ORIGINAL)
   const startVoiceSetup = async () => {
     const speaker = participants[currentSetupSpeaker];
     if (!speaker) return;
@@ -160,7 +170,8 @@ const EnhancedLiveTranscription = ({
       setCurrentSetupSpeaker(nextIndex);
       setVoiceSetupError('');
     } else {
-      completeVoiceSetup();
+      setSetupPhase('ready');
+      setCurrentSetupSpeaker(0);
     }
   };
 
@@ -171,20 +182,10 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  const completeVoiceSetup = () => {
-    setVoiceSetupPhase(false);
-    setVoiceSetupComplete(true);
-    setCurrentSetupSpeaker(0);
-  };
-
-  const skipVoiceSetup = () => {
-    completeVoiceSetup();
-  };
-
-  // Start live transcription
-  const startLiveTranscription = async () => {
+  // Start recording (SIMPLIFIED FROM ORIGINAL)
+  const startRecording = async () => {
     try {
-      console.log('🚀 Starting live transcription...');
+      console.log('🚀 Starting recording...');
       setRecordingError('');
 
       if (!speechSupported) {
@@ -192,8 +193,9 @@ const EnhancedLiveTranscription = ({
         return;
       }
 
+      // Setup speech recognition for background processing
       const speechSetup = enhancedLiveTranscriptionService.setupSpeechRecognition(
-        handleSpeechResult,
+        handleBackgroundTranscription,
         handleSpeechError
       );
 
@@ -202,319 +204,271 @@ const EnhancedLiveTranscription = ({
         return;
       }
 
-      // Setup chunk callback for Whisper processing - FIXED
-      enhancedLiveTranscriptionService.setChunkCallback(handleAudioChunk);
+      // Setup chunk callback for background Whisper processing
+      enhancedLiveTranscriptionService.setChunkCallback(handleBackgroundAudioChunk);
 
       const recordingResult = await enhancedLiveTranscriptionService.startRecording();
       
       if (recordingResult.success) {
         setIsRecording(true);
-        console.log('✅ Live transcription started successfully');
+        setIsPaused(false);
+        setRecordingTime(0);
+        setRecordingStartTime(new Date());
+        console.log('✅ Recording started successfully');
       } else {
         setRecordingError(recordingResult.error);
       }
     } catch (error) {
-      console.error('❌ Live transcription start error:', error);
-      setRecordingError('Failed to start transcription: ' + error.message);
+      console.error('❌ Recording start error:', error);
+      setRecordingError('Failed to start recording: ' + error.message);
     }
   };
 
-  // FIXED: Handle speech recognition results
-  const handleSpeechResult = async (result) => {
-    const { transcript, confidence, isFinal, timestamp } = result;
-
-    if (!isFinal) {
-      setInterimTranscript(transcript);
-      return;
-    }
-
-    setInterimTranscript('');
-
-    if (!transcript.trim()) {
-      return;
-    }
-
+  // Pause recording
+  const pauseRecording = () => {
     try {
-      console.log('📤 Processing live transcript:', transcript.substring(0, 50) + '...');
-      
-      const apiResult = await enhancedLiveTranscriptionService.processLiveTranscription(
-        transcript.trim(),
-        confidence
-      );
-
-      if (apiResult.success) {
-        const transcription = apiResult.transcription;
-        
-        console.log('✅ Live transcription processed:', {
-          id: transcription.id,
-          text: transcription.text.substring(0, 50) + '...',
-          status: transcription.processing_status
-        });
-        
-        // Add to live panel immediately
-        setLiveTranscriptions(prev => [...prev, {
-          ...transcription,
-          panel: 'live',
-          original_confidence: confidence,
-          created_at: new Date().toISOString()
-        }]);
-        
-        // FIXED: Add to waiting queue for Whisper verification (DON'T save to database yet)
-        setWaitingForWhisper(prev => [...prev, {
-          ...transcription,
-          live_confidence: confidence,
-          created_at: new Date().toISOString(),
-          status: 'waiting_for_whisper'
-        }]);
-        
-        console.log('🕐 Added to Whisper waiting queue:', transcription.id);
-        
-        // Update session stats
-        if (apiResult.session_stats) {
-          setSessionStats(apiResult.session_stats);
-          onSessionStatsUpdate(apiResult.session_stats);
-        }
-
-        // DON'T call parent callback yet - wait for Whisper verification
-        console.log('⏳ Waiting for Whisper verification before saving...');
-      }
+      enhancedLiveTranscriptionService.pauseRecording();
+      setIsPaused(true);
+      console.log('⏸️ Recording paused');
     } catch (error) {
-      console.error('❌ Failed to process live transcription:', error);
+      console.error('❌ Error pausing recording:', error);
+      setRecordingError('Error pausing recording: ' + error.message);
     }
   };
 
-  // Handle speech recognition errors
-  const handleSpeechError = (error) => {
-    if (error === 'not-allowed') {
-      setRecordingError('Microfoon toegang geweigerd. Sta microfoon toegang toe.');
-    } else if (error !== 'no-speech' && error !== 'network') {
-      setRecordingError(`Speech recognition error: ${error}`);
-    }
-  };
-
-  // FIXED: Handle audio chunk for Whisper processing
-  const handleAudioChunk = async (audioBlob) => {
-    console.log('🎵 Audio chunk received:', {
-      size: audioBlob.size,
-      type: audioBlob.type,
-      waiting_count: waitingForWhisper.length,
-      timestamp: new Date().toLocaleTimeString()
-    });
-    
-    // Add chunk to queue with timestamp
-    setAudioChunkQueue(prev => [...prev, {
-      audioBlob,
-      received_at: new Date().toISOString(),
-      id: `chunk_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    }]);
-  };
-
-  // FIXED: Process Whisper verification from queue
-  const processNextWhisperVerification = async () => {
-    if (isProcessingWhisper || audioChunkQueue.length === 0 || waitingForWhisper.length === 0) {
-      return;
-    }
-
-    setIsProcessingWhisper(true);
-    setWhisperProgress('Preparing...');
-
+  // Resume recording
+  const resumeRecording = () => {
     try {
-      // Get the oldest audio chunk
-      const audioChunk = audioChunkQueue[0];
-      const chunkAudioBlob = audioChunk.audioBlob;
-      
-      // Get the oldest waiting transcription
-      const waitingTranscription = waitingForWhisper[0];
-
-      console.log('🤖 Processing Whisper verification:', {
-        chunk_id: audioChunk.id,
-        transcription_id: waitingTranscription.id,
-        text_preview: waitingTranscription.text.substring(0, 50) + '...',
-        chunk_size: chunkAudioBlob.size
-      });
-
-      setWhisperProgress(`Verifying: ${waitingTranscription.text.substring(0, 30)}...`);
-
-      const result = await enhancedLiveTranscriptionService.processWhisperVerification(
-        waitingTranscription.id,
-        chunkAudioBlob
-      );
-
-      console.log('🤖 Whisper result:', {
-        success: result.success,
-        has_transcription: !!result.transcription,
-        error: result.error
-      });
-
-      if (result.success && result.transcription) {
-        const whisperTranscription = result.transcription;
-        
-        console.log('✅ Whisper verification successful:', {
-          original: waitingTranscription.text.substring(0, 50),
-          whisper: whisperTranscription.text.substring(0, 50),
-          improved: waitingTranscription.text.trim() !== whisperTranscription.text.trim()
-        });
-
-        // Add to Whisper panel
-        setWhisperTranscriptions(prev => [...prev, {
-          ...whisperTranscription,
-          panel: 'whisper',
-          original_live_text: waitingTranscription.text,
-          original_live_id: waitingTranscription.id,
-          improved: waitingTranscription.text.trim() !== whisperTranscription.text.trim(),
-          chunk_processed_at: new Date().toISOString(),
-          live_confidence: waitingTranscription.live_confidence
-        }]);
-
-        // NOW call parent callback with final verified transcription
-        onTranscriptionUpdate({
-          ...whisperTranscription,
-          source: 'whisper_verified',
-          original_live_text: waitingTranscription.text,
-          live_confidence: waitingTranscription.live_confidence,
-          whisper_confidence: whisperTranscription.text_confidence || 1.0
-        });
-
-        setWhisperProgress('Verification complete!');
-      } else {
-        console.warn('⚠️ Whisper verification failed:', result.error);
-        
-        // Fall back to live transcription for database storage
-        console.log('💾 Falling back to live transcription for database...');
-        onTranscriptionUpdate({
-          ...waitingTranscription,
-          source: 'live_fallback',
-          confidence: waitingTranscription.live_confidence || 0.8
-        });
-
-        setWhisperProgress('Fallback to live transcription');
-      }
-
-      // Remove processed items from queues
-      setAudioChunkQueue(prev => prev.slice(1));
-      setWaitingForWhisper(prev => prev.slice(1));
-
+      enhancedLiveTranscriptionService.resumeRecording();
+      setIsPaused(false);
+      console.log('▶️ Recording resumed');
     } catch (error) {
-      console.error('❌ Whisper processing error:', error);
-      setWhisperProgress('Processing failed');
-      
-      // Remove failed items from queues
-      setAudioChunkQueue(prev => prev.slice(1));
-      setWaitingForWhisper(prev => prev.slice(1));
-    } finally {
-      setIsProcessingWhisper(false);
-      setTimeout(() => setWhisperProgress(''), 2000);
+      console.error('❌ Error resuming recording:', error);
+      setRecordingError('Error resuming recording: ' + error.message);
     }
   };
 
-  // Stop transcription
-  const stopTranscription = () => {
+  // Stop recording
+  const stopRecording = () => {
     try {
       enhancedLiveTranscriptionService.stopRecording();
-      setInterimTranscript('');
       setIsRecording(false);
-      setIsProcessingWhisper(false);
-      
-      // Clear all queues
-      setWaitingForWhisper([]);
-      setAudioChunkQueue([]);
-      setWhisperProgress('');
-      
-      console.log('✅ Transcription stopped and queues cleared');
+      setIsPaused(false);
+      setRecordingTime(0);
+      setRecordingStartTime(null);
+      console.log('⏹️ Recording stopped');
     } catch (error) {
       console.error('❌ Error stopping recording:', error);
       setRecordingError('Error stopping recording: ' + error.message);
     }
   };
 
-  // VERBETERDE Voice setup UI - Compacter en beter passend in het scherm
-  if (voiceSetupPhase && !voiceSetupComplete) {
+  // Background transcription processing (FROM ORIGINAL - not shown in UI)
+  const handleBackgroundTranscription = async (result) => {
+    const { transcript, confidence, isFinal } = result;
+
+    if (!isFinal || !transcript.trim()) {
+      return;
+    }
+
+    try {
+      setIsProcessingBackground(true);
+      
+      const apiResult = await enhancedLiveTranscriptionService.processLiveTranscription(
+        transcript.trim(),
+        confidence
+      );
+
+      if (apiResult.success && apiResult.transcription) {
+        // Send to parent callback for database storage
+        onTranscriptionUpdate({
+          ...apiResult.transcription,
+          source: 'background_live',
+          confidence: confidence
+        });
+
+        // Update session stats
+        if (apiResult.session_stats) {
+          onSessionStatsUpdate(apiResult.session_stats);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Background transcription error:', error);
+    } finally {
+      setIsProcessingBackground(false);
+    }
+  };
+
+  // Background audio chunk processing (FROM ORIGINAL - not shown in UI)
+  const handleBackgroundAudioChunk = async (audioBlob) => {
+    try {
+      // Process with Whisper in background
+      const result = await enhancedLiveTranscriptionService.processWhisperVerification(
+        `background_${Date.now()}`,
+        audioBlob
+      );
+
+      if (result.success && result.transcription) {
+        // Send improved transcription to parent
+        onTranscriptionUpdate({
+          ...result.transcription,
+          source: 'background_whisper',
+          confidence: result.transcription.text_confidence || 1.0
+        });
+      }
+    } catch (error) {
+      console.error('❌ Background Whisper processing error:', error);
+    }
+  };
+
+  // Handle speech recognition errors (FROM ORIGINAL)
+  const handleSpeechError = (error) => {
+    if (error === 'not-allowed') {
+      setRecordingError('Microfoon toegang geweigerd. Sta microfoon toegang toe.');
+    } else if (error !== 'no-speech' && error !== 'network') {
+      console.warn('Speech recognition error:', error);
+    }
+  };
+
+  // Debug: Add logging for button clicks
+  const debugVoiceSetupClick = (useVoiceSetup) => {
+    console.log('🔍 Voice setup button clicked:', { useVoiceSetup, meetingId, participants });
+    if (!isStartingSession) {
+      handleVoiceSetupChoice(useVoiceSetup);
+    }
+  };
+
+  // INITIAL SETUP PHASE: Choose voice setup or skip (WITH LOADING STATES)
+  if (setupPhase === 'initial' && !sessionActive) {
+    return (
+      <div className="bg-white rounded-lg border">
+        <div className="p-6 text-center">
+          
+          {/* Loading State */}
+          {isStartingSession ? (
+            <div className="space-y-4">
+              <div className="flex items-center justify-center space-x-3">
+                <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                <span className="text-blue-600 font-medium">Session wordt gestart...</span>
+              </div>
+              
+              {startupProgress && (
+                <div className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg">
+                  {startupProgress}
+                </div>
+              )}
+              
+              <p className="text-xs text-gray-500">
+                Dit kan even duren, de server wordt opgestart...
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4 max-w-md mx-auto">
+              <p className="text-sm text-gray-600 mb-6">
+                Kies of je stemherkenning wilt instellen voor betere spreker identificatie
+              </p>
+              
+              <button
+                onClick={() => debugVoiceSetupClick(true)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!speechSupported || participants.length === 0 || isStartingSession}
+              >
+                🎤 Start met Voice Setup
+              </button>
+              
+              <button
+                onClick={() => debugVoiceSetupClick(false)}
+                className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!speechSupported || isStartingSession}
+              >
+                ⏭️ Setup Overslaan
+              </button>
+              
+              {!speechSupported && (
+                <p className="text-xs text-red-600 mt-4">
+                  Speech recognition niet ondersteund. Gebruik Chrome of Edge.
+                </p>
+              )}
+              
+              {participants.length === 0 && (
+                <p className="text-xs text-orange-600 mt-2">
+                  Geen deelnemers gevonden. Voice setup niet mogelijk.
+                </p>
+              )}
+
+              {/* Debug info */}
+              <div className="text-xs text-gray-400 mt-4 p-2 bg-gray-50 rounded">
+                Debug: meetingId={meetingId}, participants={participants.length}, speech={speechSupported ? 'OK' : 'NO'}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // VOICE SETUP PHASE (FROM ORIGINAL - SIMPLIFIED)
+  if (setupPhase === 'voice_setup') {
     const currentSpeakerData = participants[currentSetupSpeaker];
     const isLastSpeaker = currentSetupSpeaker >= participants.length - 1;
     
     return (
-      <div className="bg-white rounded-lg border" style={{ maxHeight: '600px', overflow: 'hidden' }}>
-        {/* Compacte Header */}
-        <div style={{ 
-          padding: '12px 16px', 
-          borderBottom: '1px solid #e5e7eb',
-          backgroundColor: '#f0f9ff'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ fontSize: '1rem', fontWeight: '500', margin: 0, color: '#0c4a6e' }}>
-              🎤 Stem Setup - Stap {currentSetupSpeaker + 1} van {participants.length}
+      <div className="bg-white rounded-lg border">
+        {/* Header */}
+        <div className="p-4 border-b bg-blue-50">
+          <div className="flex justify-between items-center">
+            <h3 className="font-medium text-blue-800">
+              🎤 Voice Setup - {currentSetupSpeaker + 1} van {participants.length}
             </h3>
             
             <button
-              onClick={skipVoiceSetup}
-              className="btn-neutral"
-              style={{ fontSize: '0.75rem', padding: '4px 8px' }}
+              onClick={() => setSetupPhase('ready')}
+              className="text-sm bg-gray-300 hover:bg-gray-400 text-gray-700 py-1 px-3 rounded"
             >
-              ⏭️ Skip Setup
+              ⏭️ Setup Overslaan
             </button>
           </div>
         </div>
         
-        {/* Compacte Content */}
-        <div style={{ padding: '20px' }}>
+        {/* Content */}
+        <div className="p-6">
           {currentSpeakerData ? (
             <div>
-              {/* Speaker Info - Compacter */}
-              <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '20px' }}>
+              {/* Speaker Info */}
+              <div className="flex items-center space-x-4 mb-6">
                 <div 
-                  style={{
-                    width: '48px',
-                    height: '48px',
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    color: 'white',
-                    fontSize: '1.25rem',
-                    fontWeight: 'bold',
-                    backgroundColor: currentSpeakerData.color || '#6B7280'
-                  }}
+                  className="w-12 h-12 rounded-full flex items-center justify-center text-white text-lg font-bold"
+                  style={{ backgroundColor: currentSpeakerData.color || '#6B7280' }}
                 >
                   {currentSpeakerData.name.charAt(0).toUpperCase()}
                 </div>
                 
-                <div style={{ flex: 1 }}>
-                  <h4 style={{ fontSize: '1.125rem', fontWeight: '500', margin: 0, marginBottom: '4px' }}>
-                    {currentSpeakerData.name}
-                  </h4>
-                  <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
+                <div>
+                  <h4 className="text-lg font-medium">{currentSpeakerData.name}</h4>
+                  <p className="text-sm text-gray-600">
                     Spreek je naam en een korte zin voor stemherkenning
                   </p>
                 </div>
               </div>
               
-              {/* Recording Status en Controls - Compacter */}
-              <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+              {/* Recording Status */}
+              <div className="text-center mb-6">
                 {isRecordingVoice ? (
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ 
-                      display: 'inline-flex', 
-                      alignItems: 'center', 
-                      gap: '8px',
-                      padding: '12px 20px',
-                      backgroundColor: '#fef2f2',
-                      borderRadius: '8px',
-                      border: '1px solid #fecaca'
-                    }}>
-                      <div style={{ width: '12px', height: '12px', backgroundColor: '#ef4444', borderRadius: '50%', animation: 'pulse 1s infinite' }}></div>
-                      <span style={{ color: '#dc2626', fontWeight: '500', fontSize: '0.875rem' }}>
+                  <div>
+                    <div className="flex items-center justify-center space-x-2 mb-3">
+                      <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+                      <span className="text-red-600 font-medium">
                         Opname bezig... (5 seconden)
                       </span>
                     </div>
-                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '8px' }}>
+                    <p className="text-xs text-gray-500">
                       Spreek nu duidelijk in de microfoon
-                    </div>
+                    </p>
                   </div>
                 ) : (
                   <button
                     onClick={startVoiceSetup}
-                    className="btn-primary"
-                    style={{ marginBottom: '16px' }}
+                    className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg"
                     disabled={isRecordingVoice}
                   >
                     🎤 Start Stem Opname
@@ -522,32 +476,28 @@ const EnhancedLiveTranscription = ({
                 )}
               </div>
 
-              {/* Navigatie Controls - Verbeterd met mooiere knoppen */}
+              {/* Navigation */}
               {!isRecordingVoice && (
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginBottom: '16px' }}>
+                <div className="flex justify-center space-x-3 mb-4">
                   <button
                     onClick={previousSpeaker}
                     disabled={currentSetupSpeaker === 0}
-                    className={currentSetupSpeaker === 0 ? "btn-neutral" : "btn-secondary"}
-                    style={{ 
-                      opacity: currentSetupSpeaker === 0 ? 0.5 : 1,
-                      cursor: currentSetupSpeaker === 0 ? 'not-allowed' : 'pointer'
-                    }}
+                    className={`bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded ${currentSetupSpeaker === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     ← Vorige
                   </button>
                   
                   {isLastSpeaker ? (
                     <button
-                      onClick={completeVoiceSetup}
-                      className="btn-success"
+                      onClick={() => setSetupPhase('ready')}
+                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
                     >
                       ✅ Setup Voltooien
                     </button>
                   ) : (
                     <button
                       onClick={nextSpeaker}
-                      className="btn-primary"
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
                     >
                       Volgende →
                     </button>
@@ -556,36 +506,20 @@ const EnhancedLiveTranscription = ({
               )}
             </div>
           ) : (
-            <div style={{ textAlign: 'center', padding: '20px' }}>
-              <div style={{ fontSize: '2rem', marginBottom: '12px' }}>❌</div>
-              <p style={{ color: '#dc2626', fontSize: '0.875rem' }}>
-                Fout: Geen deelnemer gevonden
-              </p>
+            <div className="text-center">
+              <div className="text-4xl mb-3">❌</div>
+              <p className="text-red-600">Fout: Geen deelnemer gevonden</p>
             </div>
           )}
           
           {/* Error Display */}
           {voiceSetupError && (
-            <div style={{
-              backgroundColor: '#fef2f2',
-              border: '1px solid #fecaca',
-              color: '#dc2626',
-              padding: '12px',
-              borderRadius: '8px',
-              fontSize: '0.875rem',
-              marginBottom: '16px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded text-sm">
+              <div className="flex justify-between items-center">
                 <span>{voiceSetupError}</span>
                 <button 
                   onClick={() => setVoiceSetupError('')} 
-                  style={{ 
-                    background: 'none', 
-                    border: 'none', 
-                    color: '#dc2626', 
-                    cursor: 'pointer',
-                    fontSize: '0.875rem'
-                  }}
+                  className="text-red-500 hover:text-red-700"
                 >
                   ✕
                 </button>
@@ -593,21 +527,15 @@ const EnhancedLiveTranscription = ({
             </div>
           )}
           
-          {/* Progress Indicators - Compacter */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+          {/* Progress Indicators */}
+          <div className="flex justify-center space-x-2 mt-6">
             {participants.map((participant, index) => (
               <div
                 key={index}
-                style={{
-                  width: '10px',
-                  height: '10px',
-                  borderRadius: '50%',
-                  backgroundColor: 
-                    index < currentSetupSpeaker ? '#10b981' :
-                    index === currentSetupSpeaker ? '#3b82f6' : '#d1d5db',
-                  cursor: !isRecordingVoice ? 'pointer' : 'default',
-                  transition: 'all 0.2s'
-                }}
+                className={`w-3 h-3 rounded-full cursor-pointer transition-all ${
+                  index < currentSetupSpeaker ? 'bg-green-500' :
+                  index === currentSetupSpeaker ? 'bg-blue-500' : 'bg-gray-300'
+                }`}
                 onClick={() => !isRecordingVoice && setCurrentSetupSpeaker(index)}
                 title={participant.name}
               />
@@ -618,31 +546,32 @@ const EnhancedLiveTranscription = ({
     );
   }
 
-  // Main UI: Timeline-based transcription interface (rest blijft hetzelfde)
+  // RECORDING PHASE
   return (
     <div className="bg-white rounded-lg border">
-      {/* Header met status */}
+      {/* Header */}
       <div className="flex justify-between items-center p-4 border-b bg-gray-50">
         <div className="flex items-center space-x-3">
-          <h3 className="font-medium">🎯 Enhanced Live Transcriptie</h3>
           <div className="flex items-center space-x-2 text-sm">
             <div className={`w-2 h-2 rounded-full ${
-              isRecording ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
+              isRecording && !isPaused ? 'bg-red-500 animate-pulse' : 
+              isPaused ? 'bg-yellow-500' : 'bg-gray-300'
             }`}></div>
             <span className="text-gray-600">
-              {isRecording ? 'Live Recording' : 'Gestopt'}
+              {isRecording && !isPaused ? 'Recording' : 
+               isPaused ? 'Gepauzeerd' : 'Gestopt'}
             </span>
           </div>
         </div>
         
         <div className="flex items-center space-x-2 text-xs text-gray-500">
-          {isProcessingWhisper && (
-            <span className="text-blue-600 animate-pulse">🤖 Processing...</span>
+          {isProcessingBackground && (
+            <span className="text-blue-600">🤖 Processing...</span>
           )}
-          <span>Session: {sessionId ? sessionId.substring(0, 8) + '...' : 'None'}</span>
         </div>
       </div>
 
+      {/* Error Display */}
       {recordingError && (
         <div className="bg-red-50 border-l-4 border-red-400 text-red-700 p-3 text-sm">
           <div className="flex justify-between items-center">
@@ -657,54 +586,72 @@ const EnhancedLiveTranscription = ({
         </div>
       )}
 
-      {/* Controls */}
-      <div className="p-3 bg-gray-50 border-b">
-        {!sessionActive ? (
-          <button
-            onClick={startEnhancedSession}
-            className="btn-primary w-full text-sm py-2"
-            disabled={!speechSupported}
-          >
-            🚀 Start Enhanced Session
-          </button>
-        ) : !isRecording && voiceSetupComplete ? (
-          <button
-            onClick={startLiveTranscription}
-            className="btn-success w-full text-sm py-2"
-            disabled={!speechSupported}
-          >
-            🎤 Start Timeline Transcriptie
-          </button>
-        ) : isRecording ? (
-          <button
-            onClick={stopTranscription}
-            className="btn-danger w-full text-sm py-2"
-          >
-            ⏹️ Stop Transcriptie
-          </button>
-        ) : null}
+      {/* Recording Display */}
+      <div className="p-6">
+        {/* Timer Display */}
+        <div className="text-center mb-6">
+          <div className="text-4xl font-mono text-slate-800 mb-2">
+            {formatTime(recordingTime)}
+          </div>
+          <div className="text-sm text-slate-600">
+            {isRecording ? (
+              <span className="flex items-center justify-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${isPaused ? 'bg-yellow-500' : 'bg-red-500 animate-pulse'}`}></div>
+                <span>
+                  {isPaused ? 'Opname gepauzeerd' : 
+                   `Automatische opname actief sinds ${recordingStartTime ? recordingStartTime.toLocaleTimeString('nl-NL') : ''}`}
+                </span>
+              </span>
+            ) : (
+              'Opname gestopt'
+            )}
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex justify-center space-x-4">
+          {!isRecording ? (
+            <button
+              onClick={startRecording}
+              className="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-3 rounded-lg"
+              disabled={!speechSupported}
+            >
+              🎤 Start Opname
+            </button>
+          ) : (
+            <>
+              {!isPaused ? (
+                <button
+                  onClick={pauseRecording}
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white font-medium px-6 py-3 rounded-lg"
+                >
+                  ⏸️ Pauzeren
+                </button>
+              ) : (
+                <button
+                  onClick={resumeRecording}
+                  className="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-3 rounded-lg"
+                >
+                  ▶️ Hervatten
+                </button>
+              )}
+              
+              <button
+                onClick={stopRecording}
+                className="bg-red-600 hover:bg-red-700 text-white font-medium px-6 py-3 rounded-lg"
+              >
+                ⏹️ Stoppen
+              </button>
+            </>
+          )}
+        </div>
         
         {!speechSupported && (
-          <p className="text-xs text-red-600 mt-2 text-center">
+          <p className="text-xs text-red-600 mt-4 text-center">
             Speech recognition niet ondersteund. Gebruik Chrome of Edge.
           </p>
         )}
-
-        {whisperProgress && (
-          <div className="mt-2 text-xs text-blue-600 text-center">
-            🤖 {whisperProgress}
-          </div>
-        )}
       </div>
-
-      {/* Timeline Transcription Component */}
-      <TimelineTranscription
-        liveTranscriptions={liveTranscriptions}
-        whisperTranscriptions={whisperTranscriptions}
-        isRecording={isRecording}
-        meetingStartTime={sessionActive ? new Date() : null}
-        onTranscriptionUpdate={onTranscriptionUpdate}
-      />
     </div>
   );
 };
