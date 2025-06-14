@@ -11,90 +11,9 @@ use Illuminate\Support\Facades\Validator;
 
 class AgendaController extends Controller
 {
-    /**
-     * Update agenda item status
-     */
-    public function updateStatus(Request $request, $meetingId, $agendaItemId): JsonResponse
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'status' => 'required|string|in:pending,completed,in_progress',
-                'completed' => 'sometimes|boolean'
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validation failed',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            // Verify meeting belongs to user
-            $meeting = Meeting::where('id', $meetingId)
-                ->where('user_id', $request->user()->id)
-                ->first();
-
-            if (!$meeting) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Meeting niet gevonden'
-                ], 404);
-            }
-
-            // Find agenda item
-            $agendaItem = AgendaItem::where('id', $agendaItemId)
-                ->where('meeting_id', $meetingId)
-                ->first();
-
-            if (!$agendaItem) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Agenda item niet gevonden'
-                ], 404);
-            }
-
-            // Update status
-            $agendaItem->status = $request->status;
-            
-            // Update completed field if provided
-            if ($request->has('completed')) {
-                $agendaItem->completed = $request->completed;
-            } else {
-                // Auto-set completed based on status
-                $agendaItem->completed = ($request->status === 'completed');
-            }
-
-            $agendaItem->save();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Agenda item status bijgewerkt',
-                'data' => $agendaItem
-            ]);
-
-        } catch (\Exception $e) {
-            \Log::error('Error updating agenda item status: ' . $e->getMessage(), [
-                'meetingId' => $meetingId,
-                'agendaItemId' => $agendaItemId,
-                'user_id' => $request->user()->id ?? null,
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Fout bij bijwerken agenda item status: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get agenda items for a meeting
-     */
     public function index(Request $request, $meetingId): JsonResponse
     {
         try {
-            // Verify meeting belongs to user
             $meeting = Meeting::where('id', $meetingId)
                 ->where('user_id', $request->user()->id)
                 ->first();
@@ -116,22 +35,88 @@ class AgendaController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Error fetching agenda items: ' . $e->getMessage(), [
-                'meetingId' => $meetingId,
-                'user_id' => $request->user()->id ?? null,
-                'trace' => $e->getTraceAsString()
-            ]);
+            \Log::error('Error fetching agenda items: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij ophalen agenda items: ' . $e->getMessage()
+                'message' => 'Fout bij ophalen agenda items'
             ], 500);
         }
     }
 
-    /**
-     * Add agenda item to meeting
-     */
+    public function updateStatus(Request $request, $meetingId, $agendaItemId): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'status' => 'required|string|in:pending,active,completed,skipped',
+                'completed' => 'sometimes|boolean'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $meeting = Meeting::where('id', $meetingId)
+                ->where('user_id', $request->user()->id)
+                ->first();
+
+            if (!$meeting) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Meeting niet gevonden'
+                ], 404);
+            }
+
+            $agendaItem = AgendaItem::where('id', $agendaItemId)
+                ->where('meeting_id', $meetingId)
+                ->first();
+
+            if (!$agendaItem) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Agenda item niet gevonden'
+                ], 404);
+            }
+
+            $status = $request->status;
+            
+            if ($request->has('completed')) {
+                $status = $request->completed ? 'completed' : 'pending';
+            }
+
+            $agendaItem->status = $status;
+            
+            if ($status === 'completed') {
+                $agendaItem->completed_at = now();
+            } else {
+                $agendaItem->completed_at = null;
+            }
+
+            $agendaItem->save();
+
+            $responseData = $agendaItem->toArray();
+            $responseData['completed'] = ($agendaItem->status === 'completed');
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Agenda item status bijgewerkt',
+                'data' => $responseData
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Error updating agenda item status: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Fout bij bijwerken agenda item status'
+            ], 500);
+        }
+    }
+
     public function store(Request $request, $meetingId): JsonResponse
     {
         try {
@@ -149,7 +134,6 @@ class AgendaController extends Controller
                 ], 422);
             }
 
-            // Verify meeting belongs to user
             $meeting = Meeting::where('id', $meetingId)
                 ->where('user_id', $request->user()->id)
                 ->first();
@@ -161,7 +145,6 @@ class AgendaController extends Controller
                 ], 404);
             }
 
-            // Get next order number
             $nextOrder = AgendaItem::where('meeting_id', $meetingId)
                 ->max('order') + 1;
 
@@ -172,37 +155,30 @@ class AgendaController extends Controller
                 'estimated_duration' => $request->estimated_duration,
                 'order' => $nextOrder ?? 1,
                 'status' => 'pending',
-                'completed' => false
             ]);
+
+            $responseData = $agendaItem->toArray();
+            $responseData['completed'] = false;
 
             return response()->json([
                 'success' => true,
                 'message' => 'Agenda item toegevoegd',
-                'data' => $agendaItem
+                'data' => $responseData
             ], 201);
 
         } catch (\Exception $e) {
-            \Log::error('Error adding agenda item: ' . $e->getMessage(), [
-                'meetingId' => $meetingId,
-                'user_id' => $request->user()->id ?? null,
-                'request_data' => $request->all(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            \Log::error('Error adding agenda item: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij toevoegen agenda item: ' . $e->getMessage()
+                'message' => 'Fout bij toevoegen agenda item'
             ], 500);
         }
     }
 
-    /**
-     * Delete agenda item
-     */
     public function destroy(Request $request, $meetingId, $agendaItemId): JsonResponse
     {
         try {
-            // Verify meeting belongs to user
             $meeting = Meeting::where('id', $meetingId)
                 ->where('user_id', $request->user()->id)
                 ->first();
@@ -214,7 +190,6 @@ class AgendaController extends Controller
                 ], 404);
             }
 
-            // Find and delete agenda item
             $agendaItem = AgendaItem::where('id', $agendaItemId)
                 ->where('meeting_id', $meetingId)
                 ->first();
@@ -234,16 +209,11 @@ class AgendaController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Error deleting agenda item: ' . $e->getMessage(), [
-                'meetingId' => $meetingId,
-                'agendaItemId' => $agendaItemId,
-                'user_id' => $request->user()->id ?? null,
-                'trace' => $e->getTraceAsString()
-            ]);
+            \Log::error('Error deleting agenda item: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij verwijderen agenda item: ' . $e->getMessage()
+                'message' => 'Fout bij verwijderen agenda item'
             ], 500);
         }
     }

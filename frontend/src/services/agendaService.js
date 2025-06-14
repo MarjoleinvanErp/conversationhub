@@ -7,7 +7,13 @@ export const agendaService = {
       console.log('🔍 Fetching agenda items for meeting:', meetingId);
       const response = await api.get(`/meetings/${meetingId}/agenda`);
       console.log('✅ Agenda items fetched successfully:', response.data);
-      return response.data;
+      
+      // Return in consistent format with success property
+      return {
+        success: true,
+        data: response.data.data || response.data,
+        message: response.data.message || 'Agenda items opgehaald'
+      };
     } catch (error) {
       console.error('❌ Error fetching agenda items:', {
         status: error.response?.status,
@@ -16,7 +22,12 @@ export const agendaService = {
         message: error.message,
         meetingId
       });
-      throw error;
+      
+      return {
+        success: false,
+        data: [],
+        message: error.response?.data?.message || error.message || 'Fout bij ophalen agenda items'
+      };
     }
   },
 
@@ -80,6 +91,30 @@ export const agendaService = {
         console.error('Response config:', error.response.config);
       }
 
+      throw error;
+    }
+  },
+
+  // Delete agenda item
+  deleteAgendaItem: async (meetingId, agendaItemId) => {
+    try {
+      console.log('🗑️ Deleting agenda item:', {
+        meetingId,
+        agendaItemId
+      });
+
+      const response = await api.delete(`/meetings/${meetingId}/agenda/${agendaItemId}`);
+      console.log('✅ Agenda item deleted successfully:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error deleting agenda item:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message,
+        meetingId,
+        agendaItemId
+      });
       throw error;
     }
   }

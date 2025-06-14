@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService.js';
 import transcriptionService from '../../services/api/transcriptionService.js';
+import { agendaService } from '../../services/agendaService';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
 import { getSpeakerColor } from './utils/meetingUtils.js';
 
@@ -235,6 +236,38 @@ const MeetingRoom = () => {
     }
   };
 
+  // NEW: Agenda-specific refresh function (lightweight)
+  const refreshAgendaData = useCallback(async () => {
+    if (!meeting?.id) return;
+    
+    setRefreshingPanels(prev => ({ ...prev, agenda: true }));
+    
+    try {
+      console.log('🔄 Refreshing agenda data only...');
+      
+      // Fetch only agenda items instead of full meeting
+      const agendaResponse = await agendaService.getAgendaItems(meeting.id);
+      
+      if (agendaResponse && agendaResponse.success) {
+        // Update only the agenda_items in the meeting state
+        setMeeting(prevMeeting => ({
+          ...prevMeeting,
+          agenda_items: agendaResponse.data
+        }));
+        
+        console.log('✅ Agenda data refreshed successfully');
+      } else {
+        console.error('❌ Failed to refresh agenda data:', agendaResponse?.message || 'Unknown error');
+        setError(`Fout bij verversen agenda: ${agendaResponse?.message || 'Onbekende fout'}`);
+      }
+    } catch (error) {
+      console.error('❌ Error refreshing agenda data:', error);
+      setError(`Fout bij verversen agenda: ${error.message}`);
+    } finally {
+      setRefreshingPanels(prev => ({ ...prev, agenda: false }));
+    }
+  }, [meeting?.id, setMeeting, setRefreshingPanels]);
+
   // NEW: Main refresh function per panel
   const refreshPanelData = async (panelType) => {
     console.log(`🔄 Refreshing ${panelType} panel...`);
@@ -262,8 +295,8 @@ const MeetingRoom = () => {
           break;
           
         case 'agenda':
-          // Refresh meeting data (voor agenda)
-          await fetchMeetingData();
+          // Use dedicated agenda refresh instead of full meeting refresh
+          await refreshAgendaData();
           break;
           
         case 'report':
@@ -519,7 +552,7 @@ const MeetingRoom = () => {
 
   const calculateAgendaProgress = () => {
     if (!meeting?.agenda_items) return 0;
-    const completed = meeting.agenda_items.filter(item => item.completed).length;
+    const completed = meeting.agenda_items.filter(item => item.completed || item.status === 'completed').length;
     return Math.round((completed / meeting.agenda_items.length) * 100);
   };
 
@@ -636,17 +669,17 @@ const MeetingRoom = () => {
           {/* Right Column - Sidebar Panels (4 columns) */}
           <div className="col-span-4 space-y-6">
             
-            {/* 4. Agenda Panel */}
+            {/* 4. Agenda Panel - UPDATED WITH NEW PROPS */}
             <AgendaPanel
               key={meeting?.agendaItems?.length || meeting?.agenda_items?.length || 0}
               isExpanded={expandedPanels.agenda}
               onToggle={() => togglePanel('agenda')}
               meeting={meeting}
+              setMeeting={setMeeting}
               currentAgendaIndex={currentAgendaIndex}
               onToggleAgendaItem={toggleAgendaItem}
               calculateAgendaProgress={calculateAgendaProgress}
-              onMeetingUpdate={fetchMeetingData}
-              onRefresh={refreshPanelData}
+              onAgendaRefresh={refreshAgendaData}
               isRefreshing={refreshingPanels.agenda}
             />
 
