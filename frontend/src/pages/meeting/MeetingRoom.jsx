@@ -5,7 +5,7 @@ import transcriptionService from '../../services/api/transcriptionService.js';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
 import { getSpeakerColor } from './utils/meetingUtils.js';
 
-// Import alle nieuwe components
+// Import alle components
 import {
   MeetingHeader,
   RecordingPanel,
@@ -130,7 +130,7 @@ const MeetingRoom = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
-  // States
+  // Basic states
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [meeting, setMeeting] = useState(null);
@@ -141,54 +141,47 @@ const MeetingRoom = () => {
   // Panel states
   const [expandedPanels, setExpandedPanels] = useState({
     recording: true,
-    liveTranscription: true,
-    whisperTranscription: true,
-    agenda: true,
+    liveTranscription: false,
+    whisperTranscription: false,
+    agenda: false,
     report: false,
-    privacy: false
+    privacy: false,
+    speaker: false
   });
 
-  // Recording mode selection
-  const [recordingMode, setRecordingMode] = useState('none'); // 'none', 'manual', 'automatic'
+  // NEW: Refresh states per panel
+  const [refreshingPanels, setRefreshingPanels] = useState({
+    recording: false,
+    liveTranscription: false,
+    whisperTranscription: false,
+    agenda: false,
+    report: false,
+    privacy: false,
+    speaker: false
+  });
 
   // Recording states
+  const [recordingMode, setRecordingMode] = useState('manual');
   const [isRecording, setIsRecording] = useState(false);
-  const [isAutoTranscriptionActive, setIsAutoTranscriptionActive] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
+  const [isAutoTranscriptionActive, setIsAutoTranscriptionActive] = useState(false);
 
-  // Modal states
+  // Delete states
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Speaker management
-  const [currentSpeaker, setCurrentSpeaker] = useState(null);
+  // Speaker states
+  const [currentSpeaker, setCurrentSpeaker] = useState('');
   const [availableSpeakers, setAvailableSpeakers] = useState([]);
   const [speakerStats, setSpeakerStats] = useState({});
 
-  // Agenda management
+  // Agenda states
   const [currentAgendaIndex, setCurrentAgendaIndex] = useState(0);
   const [agendaStartTimes, setAgendaStartTimes] = useState({});
 
-  // Privacy data
-  const [privacyData, setPrivacyData] = useState({
-    totalFiltered: 8,
-    confidenceScore: 98.5,
-    recentEvents: [
-      { type: 'BSN', action: 'gefilterd', time: '2 min geleden', status: 'success' },
-      { type: 'Telefoonnummer', action: 'gedetecteerd', time: '5 min geleden', status: 'info' },
-      { type: 'Adres', action: 'gemarkeerd', time: '8 min geleden', status: 'warning' }
-    ],
-    filteredTypes: {
-      bsn: 3,
-      phone: 2,
-      email: 1,
-      address: 2
-    }
-  });
-
-  // Report data
+  // Report states
   const [reportData, setReportData] = useState({
     hasReport: false,
     summary: '',
@@ -204,7 +197,7 @@ const MeetingRoom = () => {
     currentAgendaIndex, setCurrentAgendaIndex, agendaStartTimes, setAgendaStartTimes, meeting
   });
 
-  // Load meeting data
+  // Load meeting data on mount
   useEffect(() => {
     loadMeetingData();
   }, [id]);
@@ -230,21 +223,143 @@ const MeetingRoom = () => {
     return () => clearInterval(interval);
   }, [isRecording, recordingStartTime]);
 
-
-// Function to refresh meeting data
-const fetchMeetingData = async () => {
-  try {
-    const response = await meetingService.getMeeting(id);
-    if (response.success) {
-      setMeeting(response.data);
+  // Function to refresh meeting data
+  const fetchMeetingData = async () => {
+    try {
+      const response = await meetingService.getMeeting(id);
+      if (response.success) {
+        setMeeting(response.data);
+      }
+    } catch (error) {
+      console.error('Error fetching meeting data:', error);
     }
-  } catch (error) {
-    console.error('Error fetching meeting data:', error);
-  }
-};
+  };
 
+  // NEW: Main refresh function per panel
+  const refreshPanelData = async (panelType) => {
+    console.log(`🔄 Refreshing ${panelType} panel...`);
+    
+    setRefreshingPanels(prev => ({
+      ...prev,
+      [panelType]: true
+    }));
 
+    try {
+      switch (panelType) {
+        case 'recording':
+          // Refresh meeting basis data
+          await fetchMeetingData();
+          break;
+          
+        case 'liveTranscription':
+          // Refresh alleen live transcripties
+          await refreshLiveTranscriptions();
+          break;
+          
+        case 'whisperTranscription':
+          // Refresh alleen whisper transcripties
+          await refreshWhisperTranscriptions();
+          break;
+          
+        case 'agenda':
+          // Refresh meeting data (voor agenda)
+          await fetchMeetingData();
+          break;
+          
+        case 'report':
+          // Refresh alle transcripties voor report
+          await refreshAllTranscriptions();
+          break;
+          
+        case 'privacy':
+          // Refresh privacy data
+          await refreshAllTranscriptions();
+          break;
+          
+        case 'speaker':
+          // Refresh speaker data
+          await refreshAllTranscriptions();
+          break;
+          
+        default:
+          console.warn(`Unknown panel type: ${panelType}`);
+      }
+      
+      console.log(`✅ ${panelType} panel refreshed successfully`);
+      
+    } catch (error) {
+      console.error(`❌ Error refreshing ${panelType} panel:`, error);
+      setError(`Fout bij verversen ${panelType} panel: ${error.message}`);
+      
+    } finally {
+      setRefreshingPanels(prev => ({
+        ...prev,
+        [panelType]: false
+      }));
+    }
+  };
 
+  // NEW: Specific refresh functions
+  const refreshLiveTranscriptions = async () => {
+    try {
+      const response = await transcriptionService.getTranscriptions(id, 'live');
+      if (response.success) {
+        setLiveTranscriptions(response.data || []);
+        // Update combined transcriptions
+        setTranscriptions(prev => [
+          ...prev.filter(t => t.source !== 'live'),
+          ...(response.data || [])
+        ]);
+      }
+    } catch (error) {
+      console.error('Error refreshing live transcriptions:', error);
+      throw error;
+    }
+  };
+
+  const refreshWhisperTranscriptions = async () => {
+    try {
+      const response = await transcriptionService.getTranscriptions(id, 'whisper');
+      if (response.success) {
+        setWhisperTranscriptions(response.data || []);
+        // Update combined transcriptions
+        setTranscriptions(prev => [
+          ...prev.filter(t => t.source !== 'whisper'),
+          ...(response.data || [])
+        ]);
+      }
+    } catch (error) {
+      console.error('Error refreshing whisper transcriptions:', error);
+      throw error;
+    }
+  };
+
+  const refreshAllTranscriptions = async () => {
+    try {
+      const [liveResponse, whisperResponse] = await Promise.all([
+        transcriptionService.getTranscriptions(id, 'live'),
+        transcriptionService.getTranscriptions(id, 'whisper')
+      ]);
+      
+      if (liveResponse.success) {
+        setLiveTranscriptions(liveResponse.data || []);
+      }
+      if (whisperResponse.success) {
+        setWhisperTranscriptions(whisperResponse.data || []);
+      }
+      
+      // Update combined transcriptions
+      const allTranscriptions = [
+        ...(liveResponse.data || []),
+        ...(whisperResponse.data || [])
+      ];
+      setTranscriptions(allTranscriptions);
+      
+    } catch (error) {
+      console.error('Error refreshing all transcriptions:', error);
+      throw error;
+    }
+  };
 
   // Load meeting and transcription data
   const loadMeetingData = async () => {
@@ -256,120 +371,50 @@ const fetchMeetingData = async () => {
 
       const meetingResult = await meetingService.getMeeting(id);
       if (!meetingResult.success) {
-        throw new Error(meetingResult.message || 'Failed to load meeting');
+        throw new Error(meetingResult.message || 'Fout bij ophalen meeting');
       }
+
       setMeeting(meetingResult.data);
+      console.log('✅ Meeting loaded:', meetingResult.data);
 
-      await loadTranscriptions();
-
-      if (meetingResult.data.agenda_items && meetingResult.data.agenda_items.length > 0) {
-        setAgendaStartTimes({ 0: new Date() });
+      // Load transcriptions
+      console.log('📥 Loading transcriptions...');
+      const transcriptionsResult = await transcriptionService.getTranscriptions(id);
+      
+      if (transcriptionsResult.success) {
+        const allTranscriptions = transcriptionsResult.data || [];
+        
+        // Separate transcriptions by source
+        const live = allTranscriptions.filter(t => t.source === 'live');
+        const whisper = allTranscriptions.filter(t => t.source === 'whisper');
+        
+        setTranscriptions(allTranscriptions);
+        setLiveTranscriptions(live);
+        setWhisperTranscriptions(whisper);
+        
+        console.log('✅ Transcriptions loaded:', {
+          total: allTranscriptions.length,
+          live: live.length,
+          whisper: whisper.length
+        });
+      } else {
+        console.warn('⚠️ Transcriptions not loaded:', transcriptionsResult.message);
       }
+
     } catch (error) {
-      console.error('Error loading meeting data:', error);
-      setError(error.message || 'Failed to load meeting data');
+      console.error('❌ Error loading meeting data:', error);
+      setError(error.message || 'Er ging iets mis bij het laden van de meeting');
     } finally {
       setLoading(false);
     }
   };
 
-  // Load transcriptions from database - FIXED VERSION
-  const loadTranscriptions = async () => {
-    try {
-      console.log('📥 Loading transcriptions from database...');
-      
-      const transcriptionsResult = await transcriptionService.getTranscriptions(id);
-      if (transcriptionsResult.success) {
-        const allTranscriptions = transcriptionsResult.data || [];
-        
-        console.log('✅ Loaded transcriptions:', {
-          total: allTranscriptions.length,
-          sources: [...new Set(allTranscriptions.map(t => t.source))],
-          bySource: allTranscriptions.reduce((acc, t) => {
-            acc[t.source] = (acc[t.source] || 0) + 1;
-            return acc;
-          }, {})
-        });
-
-        setTranscriptions(allTranscriptions);
-        
-        // FIXED: Separate live and whisper transcriptions met alle mogelijke source types
-        const liveData = allTranscriptions.filter(t => {
-          const source = t.source?.toLowerCase();
-          return source === 'live' || 
-                 source === 'speech' || 
-                 source === 'live_fallback' ||
-                 source === 'live_verified';  // ← Dit was missing!
-        });
-        
-        const whisperData = allTranscriptions.filter(t => {
-          const source = t.source?.toLowerCase();
-          return source === 'whisper' || 
-                 source === 'upload' ||      // ← Dit had je al, goed!
-                 source === 'whisper_verified';
-        });
-        
-        console.log('📊 Data distribution:', {
-          live: liveData.length,
-          whisper: whisperData.length,
-          liveIds: liveData.map(t => t.id),
-          whisperIds: whisperData.map(t => t.id)
-        });
-        
-        setLiveTranscriptions(liveData);
-        setWhisperTranscriptions(whisperData);
-        
-      } else {
-        console.warn('Failed to load transcriptions:', transcriptionsResult.message);
-      }
-    } catch (error) {
-      console.error('Error loading transcriptions:', error);
-    }
-  };
-
-  // Reload transcriptions from database
-  const reloadTranscriptions = async () => {
-    console.log('🔄 Reloading transcriptions from database...');
-    await loadTranscriptions();
-  };
-
-  // Setup available speakers from meeting participants
   const setupSpeakers = () => {
-    const speakers = [];
-    if (meeting.participants) {
-      meeting.participants.forEach((participant, index) => {
-        speakers.push({
-          id: `participant_${participant.id || index}`,
-          name: participant.name,
-          displayName: participant.name,
-          role: participant.role || 'participant',
-          color: getSpeakerColor(index),
-          isActive: false,
-          isParticipant: true
-        });
-      });
+    if (meeting?.participants) {
+      const speakers = meeting.participants.map(p => p.name || p.role || 'Onbekend');
+      setAvailableSpeakers(['Onbekend', ...speakers]);
+      setCurrentSpeaker(speakers[0] || 'Onbekend');
     }
-
-    speakers.push({
-      id: 'unknown_speaker',
-      name: 'Onbekende Spreker',
-      displayName: 'Onbekende Spreker',
-      role: 'unknown',
-      color: '#6B7280',
-      isActive: false,
-      isParticipant: false
-    });
-
-    setAvailableSpeakers(speakers);
-    if (speakers.length > 0) {
-      setCurrentSpeaker(speakers[0]);
-    }
-
-    const initialStats = {};
-    speakers.forEach(speaker => {
-      initialStats[speaker.id] = { totalTime: 0, segments: 0 };
-    });
-    setSpeakerStats(initialStats);
   };
 
   // Helper functions
@@ -385,272 +430,164 @@ const fetchMeetingData = async () => {
   };
 
   const togglePanel = (panelName) => {
-    setExpandedPanels(prev => ({...prev, [panelName]: !prev[panelName]}));
+    setExpandedPanels(prev => ({
+      ...prev,
+      [panelName]: !prev[panelName]
+    }));
   };
 
-  // Recording mode selection
+  // Recording functions
   const selectRecordingMode = (mode) => {
     setRecordingMode(mode);
-    if (mode === 'none') {
-      stopRecording();
-    }
+    console.log('Recording mode selected:', mode);
   };
 
-  // Recording management
   const startManualRecording = () => {
     setIsRecording(true);
     setRecordingStartTime(new Date());
-    setRecordingTime(0);
-    console.log('🎤 Manual recording started');
+    setExpandedPanels(prev => ({ ...prev, liveTranscription: true }));
+    console.log('Manual recording started');
   };
 
   const startAutoTranscription = () => {
     setIsAutoTranscriptionActive(true);
-    setIsRecording(true);
-    setRecordingStartTime(new Date());
-    setRecordingTime(0);
-    console.log('🤖 Auto transcription started');
+    setExpandedPanels(prev => ({ ...prev, liveTranscription: true }));
+    console.log('Auto transcription started');
+  };
+
+  const pauseRecording = () => {
+    setIsRecording(false);
+    console.log('Recording paused');
   };
 
   const stopRecording = () => {
     setIsRecording(false);
     setIsAutoTranscriptionActive(false);
+    setRecordingTime(0);
     setRecordingStartTime(null);
-    setRecordingMode('none');
-    console.log('⏹️ Recording stopped');
+    console.log('Recording stopped');
   };
 
-  const pauseRecording = () => {
-    setIsRecording(false);
-    console.log('⏸️ Recording paused');
+  // Transcription handlers
+  const handleLiveTranscriptionReceived = (transcription) => {
+    console.log('Live transcription received:', transcription);
+    setLiveTranscriptions(prev => [...prev, transcription]);
+    setTranscriptions(prev => [...prev, transcription]);
   };
 
-  // Delete transcriptions with confirmation - UPDATED VERSION
+  const handleWhisperTranscriptionReceived = (transcription) => {
+    console.log('Whisper transcription received:', transcription);
+    setWhisperTranscriptions(prev => [...prev, transcription]);
+    setTranscriptions(prev => [...prev, transcription]);
+  };
+
+  // Delete handlers
   const handleDeleteTranscriptions = (type) => {
     setDeleteTarget(type);
     setShowDeleteModal(true);
   };
 
-  // FIXED: Delete function that handles all source types
-  const confirmDelete = async () => {
+  const confirmDeleteTranscriptions = async () => {
     try {
       setIsDeleting(true);
-      console.log('🗑️ Starting delete process for:', deleteTarget);
       
       if (deleteTarget === 'live') {
-        // Delete live transcriptions from backend - ALL live types
-        const liveTypes = ['live', 'speech', 'live_fallback', 'live_verified'];
-        
-        // Delete each type
-        for (const type of liveTypes) {
-          try {
-            const result = await transcriptionService.deleteTranscriptionsByType(id, type);
-            if (result.success) {
-              console.log(`✅ Deleted ${type} transcriptions`);
-            }
-          } catch (error) {
-            console.warn(`⚠️ No ${type} transcriptions to delete or error:`, error.message);
-          }
-        }
-        
-        console.log('✅ All live transcriptions deleted from database');
-        await reloadTranscriptions();
-        
+        setLiveTranscriptions([]);
+        setTranscriptions(prev => prev.filter(t => t.source !== 'live'));
       } else if (deleteTarget === 'whisper') {
-        // Delete whisper transcriptions from backend - ALL whisper types
-        const whisperTypes = ['whisper', 'upload', 'whisper_verified'];
-        
-        // Delete each type
-        for (const type of whisperTypes) {
-          try {
-            const result = await transcriptionService.deleteTranscriptionsByType(id, type);
-            if (result.success) {
-              console.log(`✅ Deleted ${type} transcriptions`);
-            }
-          } catch (error) {
-            console.warn(`⚠️ No ${type} transcriptions to delete or error:`, error.message);
-          }
-        }
-        
-        console.log('✅ All whisper transcriptions deleted from database');
-        await reloadTranscriptions();
-        
-      } else if (deleteTarget === 'all') {
-        // Delete all transcriptions from backend
-        const result = await transcriptionService.deleteTranscriptionsByType(id); // No type = all
-        
-        if (result.success) {
-          console.log('✅ All transcriptions deleted from database');
-          // Clear all local state
-          setLiveTranscriptions([]);
-          setWhisperTranscriptions([]);
-          setTranscriptions([]);
-        } else {
-          console.error('Failed to delete all transcriptions:', result.message);
-          alert('Fout bij verwijderen van alle transcripties: ' + result.message);
-        }
+        setWhisperTranscriptions([]);
+        setTranscriptions(prev => prev.filter(t => t.source !== 'whisper'));
       }
       
+      console.log(`${deleteTarget} transcriptions deleted`);
+      
     } catch (error) {
-      console.error('Error during delete:', error);
-      alert('Er is een fout opgetreden bij het verwijderen: ' + error.message);
+      console.error('Error deleting transcriptions:', error);
+      setError('Fout bij verwijderen transcripties');
     } finally {
       setIsDeleting(false);
-      setDeleteTarget(null);
-    }
-  };
-
-  // Transcription handlers - UPDATED to handle real data
-  const handleLiveTranscriptionReceived = (transcriptionData) => {
-    console.log('📝 Live transcription received:', transcriptionData);
-    
-    // Add to live transcriptions immediately for real-time display
-    const newTranscription = {
-      ...transcriptionData,
-      id: transcriptionData.id || `live_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      source: transcriptionData.source || 'live',
-      timestamp: transcriptionData.timestamp || new Date(),
-      panel: 'live'
-    };
-
-    setLiveTranscriptions(prev => [...prev, newTranscription]);
-    
-    // Also add to main transcriptions array
-    setTranscriptions(prev => [...prev, newTranscription]);
-    
-    // Handle through meeting handlers for additional processing
-    if (handlers.handleTranscriptionReceived) {
-      handlers.handleTranscriptionReceived(newTranscription);
-    }
-  };
-
-  const handleWhisperTranscriptionReceived = (transcriptionData) => {
-    console.log('🤖 Whisper transcription received:', transcriptionData);
-    
-    // Add to whisper transcriptions immediately for real-time display
-    const newTranscription = {
-      ...transcriptionData,
-      id: transcriptionData.id || `whisper_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      source: transcriptionData.source || 'whisper',
-      timestamp: transcriptionData.timestamp || new Date(),
-      panel: 'whisper'
-    };
-
-    setWhisperTranscriptions(prev => [...prev, newTranscription]);
-    
-    // Also add to main transcriptions array
-    setTranscriptions(prev => [...prev, newTranscription]);
-    
-    // Handle through meeting handlers for additional processing
-    if (handlers.handleTranscriptionReceived) {
-      handlers.handleTranscriptionReceived(newTranscription);
+      setShowDeleteModal(false);
+      setDeleteTarget('');
     }
   };
 
   // Agenda functions
   const toggleAgendaItem = (index) => {
-    const updatedMeeting = { ...meeting };
-    if (updatedMeeting.agenda_items && updatedMeeting.agenda_items[index]) {
-      updatedMeeting.agenda_items[index].completed = !updatedMeeting.agenda_items[index].completed;
-      setMeeting(updatedMeeting);
-      
-      // TODO: Save agenda progress to backend
-      console.log('📋 Agenda item toggled:', index, updatedMeeting.agenda_items[index].completed);
-    }
+    console.log('Toggle agenda item:', index);
+    // Implementation depends on your agenda logic
   };
 
   const calculateAgendaProgress = () => {
-    if (!meeting?.agenda_items || meeting.agenda_items.length === 0) return 0;
+    if (!meeting?.agenda_items) return 0;
     const completed = meeting.agenda_items.filter(item => item.completed).length;
     return Math.round((completed / meeting.agenda_items.length) * 100);
   };
 
-  const navigateToMeetings = () => {
-    navigate('/dashboard');
-  };
-
-  // Show loading state
+  // Loading state
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Gesprek laden...</p>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-sm border border-gray-200">
+          <div className="flex items-center space-x-3">
+            <svg className="animate-spin w-6 h-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span className="text-lg text-gray-700">Meeting wordt geladen...</span>
+          </div>
         </div>
       </div>
     );
   }
 
-  // Show error state
+  // Error state
   if (error) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-red-500 text-6xl mb-4">⚠️</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Fout bij laden</h2>
-          <p className="text-gray-600 mb-4">{error}</p>
-          <button 
-            onClick={() => navigate('/dashboard')} 
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Terug naar Dashboard
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Show error if no meeting found
-  if (!meeting) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-gray-400 text-6xl mb-4">❓</div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Gesprek niet gevonden</h2>
-          <p className="text-gray-600 mb-4">Het gesprek met ID {id} kon niet worden gevonden.</p>
-          <button 
-            onClick={() => navigate('/dashboard')} 
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Terug naar Dashboard
-          </button>
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="bg-white p-8 rounded-lg shadow-sm border border-red-200 max-w-md">
+          <div className="text-center">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-6 h-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-semibold text-red-800 mb-2">Fout bij laden meeting</h2>
+            <p className="text-red-600 mb-4">{error}</p>
+            <div className="space-x-3">
+              <button 
+                onClick={() => loadMeetingData()}
+                className="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
+              >
+                Opnieuw proberen
+              </button>
+              <button 
+                onClick={() => navigate('/meetings')}
+                className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700"
+              >
+                Terug naar overzicht
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showDeleteModal}
-        onClose={() => !isDeleting && setShowDeleteModal(false)}
-        onConfirm={confirmDelete}
-        title="Transcripties verwijderen"
-        message={`Weet je zeker dat je ${
-          deleteTarget === 'live' ? 'live transcripties' : 
-          deleteTarget === 'whisper' ? 'whisper transcripties' : 
-          'alle transcripties'
-        } wilt verwijderen? Deze actie kan niet ongedaan gemaakt worden.`}
-        isLoading={isDeleting}
-      />
-
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <MeetingHeader
+      <MeetingHeader 
         meeting={meeting}
-        isRecording={isRecording}
-        recordingTime={recordingTime}
-        isAutoTranscriptionActive={isAutoTranscriptionActive}
-        onNavigateBack={navigateToMeetings}
-        formatTime={formatTime}
+        onNavigateBack={() => navigate('/meetings')}
       />
 
-      <div className="max-w-7xl mx-auto px-6 py-6">
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto p-6">
         <div className="grid grid-cols-12 gap-6">
-          {/* Main Content Area - 8 kolommen breed */}
+          {/* Left Column - Main Panels (8 columns) */}
           <div className="col-span-8 space-y-6">
             
-            {/* 1. Opname Meeting Panel */}
+            {/* 1. Recording Panel */}
             <RecordingPanel
               isExpanded={expandedPanels.recording}
               onToggle={() => togglePanel('recording')}
@@ -668,9 +605,11 @@ const fetchMeetingData = async () => {
               meetingId={id}
               meeting={meeting}
               formatTime={formatTime}
+              onRefresh={refreshPanelData}
+              isRefreshing={refreshingPanels.recording}
             />
 
-            {/* 2. Live Transcriptie Panel */}
+            {/* 2. Live Transcription Panel */}
             <LiveTranscriptionPanel
               isExpanded={expandedPanels.liveTranscription}
               onToggle={() => togglePanel('liveTranscription')}
@@ -678,37 +617,40 @@ const fetchMeetingData = async () => {
               isAutoTranscriptionActive={isAutoTranscriptionActive}
               onDeleteTranscriptions={handleDeleteTranscriptions}
               isDeleting={isDeleting && deleteTarget === 'live'}
+              onRefresh={refreshPanelData}
+              isRefreshing={refreshingPanels.liveTranscription}
             />
 
-            {/* 3. Whisper Transcriptie Panel */}
+            {/* 3. Whisper Transcription Panel */}
             <WhisperTranscriptionPanel
               isExpanded={expandedPanels.whisperTranscription}
               onToggle={() => togglePanel('whisperTranscription')}
               whisperTranscriptions={whisperTranscriptions}
               onDeleteTranscriptions={handleDeleteTranscriptions}
               isDeleting={isDeleting && deleteTarget === 'whisper'}
+              onRefresh={refreshPanelData}
+              isRefreshing={refreshingPanels.whisperTranscription}
             />
           </div>
 
-          {/* Sidebar - 4 kolommen breed */}
+          {/* Right Column - Sidebar Panels (4 columns) */}
           <div className="col-span-4 space-y-6">
             
+            {/* 4. Agenda Panel */}
+            <AgendaPanel
+              key={meeting?.agendaItems?.length || meeting?.agenda_items?.length || 0}
+              isExpanded={expandedPanels.agenda}
+              onToggle={() => togglePanel('agenda')}
+              meeting={meeting}
+              currentAgendaIndex={currentAgendaIndex}
+              onToggleAgendaItem={toggleAgendaItem}
+              calculateAgendaProgress={calculateAgendaProgress}
+              onMeetingUpdate={fetchMeetingData}
+              onRefresh={refreshPanelData}
+              isRefreshing={refreshingPanels.agenda}
+            />
 
-{/* 4. Agenda Panel */}
-<AgendaPanel
-  key={meeting?.agendaItems?.length || meeting?.agenda_items?.length || 0} // Force re-render when agenda changes
-  isExpanded={expandedPanels.agenda}
-  onToggle={() => togglePanel('agenda')}
-  meeting={meeting}
-  currentAgendaIndex={currentAgendaIndex}
-  onToggleAgendaItem={toggleAgendaItem}
-  calculateAgendaProgress={calculateAgendaProgress}
-  onMeetingUpdate={fetchMeetingData}
-/>
-
-
-
-            {/* 5. Verslag Panel */}
+            {/* 5. Report Panel */}
             <ReportPanel
               isExpanded={expandedPanels.report}
               onToggle={() => togglePanel('report')}
@@ -719,27 +661,53 @@ const fetchMeetingData = async () => {
               whisperTranscriptions={whisperTranscriptions}
               meeting={meeting}
               formatTime={formatTime}
+              onRefresh={refreshPanelData}
+              isRefreshing={refreshingPanels.report}
             />
 
             {/* 6. Privacy Panel */}
             <PrivacyPanel
               isExpanded={expandedPanels.privacy}
               onToggle={() => togglePanel('privacy')}
-              privacyData={privacyData}
+              transcriptions={transcriptions}
+              onRefresh={refreshPanelData}
+              isRefreshing={refreshingPanels.privacy}
             />
 
             {/* 7. Speaker Panel */}
             <SpeakerPanel
-              availableSpeakers={availableSpeakers}
+              isExpanded={expandedPanels.speaker}
+              onToggle={() => togglePanel('speaker')}
               currentSpeaker={currentSpeaker}
-              onSpeakerChange={handlers.handleSpeakerChange}
+              setCurrentSpeaker={setCurrentSpeaker}
+              availableSpeakers={availableSpeakers}
+              setAvailableSpeakers={setAvailableSpeakers}
+              speakerStats={speakerStats}
+              getSpeakerColor={getSpeakerColor}
+              onRefresh={refreshPanelData}
+              isRefreshing={refreshingPanels.speaker}
             />
           </div>
         </div>
       </div>
 
-      {/* Debug Panel - VERWIJDER DIT IN PRODUCTIE */}
-      <DebugPanel
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <ConfirmationModal
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+          onConfirm={confirmDeleteTranscriptions}
+          title="Transcripties verwijderen"
+          message={`Weet je zeker dat je alle ${deleteTarget === 'live' ? 'live' : 'Whisper'} transcripties wilt verwijderen? Deze actie kan niet ongedaan gemaakt worden.`}
+          confirmText="Verwijderen"
+          cancelText="Annuleren"
+          type="danger"
+          isLoading={isDeleting}
+        />
+      )}
+
+      {/* Debug Panel - Remove in production */}
+      <DebugPanel 
         transcriptions={transcriptions}
         liveTranscriptions={liveTranscriptions}
         whisperTranscriptions={whisperTranscriptions}

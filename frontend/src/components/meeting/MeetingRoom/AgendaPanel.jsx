@@ -9,7 +9,10 @@ const AgendaPanel = ({
   currentAgendaIndex, 
   onToggleAgendaItem, 
   calculateAgendaProgress,
-  onMeetingUpdate 
+  onMeetingUpdate,
+  // NEW: Refresh props
+  onRefresh,
+  isRefreshing = false
 }) => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -20,7 +23,7 @@ const AgendaPanel = ({
   });
 
   const handleToggleAgendaItem = async (index, agendaItem) => {
-    if (isUpdating) return;
+    if (isUpdating || isRefreshing) return;
     
     setIsUpdating(true);
     try {
@@ -49,7 +52,7 @@ const AgendaPanel = ({
 
   const handleAddAgendaItem = async (e) => {
     e.preventDefault();
-    if (!newAgendaItem.title.trim()) return;
+    if (!newAgendaItem.title.trim() || isRefreshing) return;
 
     setIsUpdating(true);
     try {
@@ -79,11 +82,12 @@ const AgendaPanel = ({
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-      <div 
-        className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100 cursor-pointer hover:from-green-100 hover:to-green-150 transition-all"
-        onClick={onToggle}
-      >
-        <div className="flex items-center space-x-3">
+      {/* Panel Header met Refresh Button */}
+      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-green-50 to-green-100">
+        <div 
+          className="flex items-center space-x-3 flex-1 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={onToggle}
+        >
           <Calendar className="w-5 h-5 text-green-600" />
           <div>
             <h3 className="font-bold text-green-900">📋 Agenda</h3>
@@ -97,6 +101,7 @@ const AgendaPanel = ({
         </div>
         
         <div className="flex items-center space-x-3">
+          {/* Progress Indicator */}
           {meeting?.agenda_items?.length > 0 && (
             <div className="text-right">
               <div className="text-sm font-medium text-green-800">
@@ -110,15 +115,65 @@ const AgendaPanel = ({
               </div>
             </div>
           )}
+
+          {/* Refresh Button */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onRefresh('agenda');
+            }}
+            disabled={isRefreshing || isUpdating}
+            className={`p-2 rounded-lg border transition-colors ${
+              isRefreshing || isUpdating
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                : 'bg-white text-green-600 hover:bg-green-50 border-green-200 shadow-sm'
+            }`}
+            title="Vernieuw agenda gegevens"
+          >
+            <svg 
+              className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+              />
+            </svg>
+          </button>
           
-          <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
-            ▼
-          </div>
+          {/* Expand/Collapse Button */}
+          <button
+            onClick={onToggle}
+            className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+          >
+            <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+          </button>
         </div>
       </div>
 
       {isExpanded && (
         <div className="p-4 space-y-4">
+          {/* Refresh Status Indicator */}
+          {isRefreshing && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+              <div className="flex items-center space-x-2">
+                <svg className="animate-spin w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-sm text-green-800">Agenda gegevens worden vernieuwd...</span>
+              </div>
+            </div>
+          )}
+
           {meeting?.agenda_items && meeting.agenda_items.length > 0 ? (
             <div className="space-y-4">
               {/* Agenda Items List */}
@@ -130,7 +185,7 @@ const AgendaPanel = ({
                       (item.completed || item.status === 'completed')
                         ? 'border-green-500 bg-green-50'
                         : 'border-gray-200 hover:border-gray-300'
-                    }`}
+                    } ${(isUpdating || isRefreshing) ? 'opacity-60 pointer-events-none' : ''}`}
                     onClick={() => handleToggleAgendaItem(index, item)}
                   >
                     <div className="flex items-center space-x-3">
@@ -139,8 +194,8 @@ const AgendaPanel = ({
                           (item.completed || item.status === 'completed')
                             ? 'bg-green-500 border-green-500 text-white'
                             : 'border-gray-300 hover:border-green-400'
-                        } ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        disabled={isUpdating}
+                        } ${(isUpdating || isRefreshing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        disabled={isUpdating || isRefreshing}
                       >
                         {(item.completed || item.status === 'completed') && <CheckCircle className="w-3 h-3" />}
                       </button>
@@ -208,7 +263,7 @@ const AgendaPanel = ({
               </div>
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
+            <div className={`text-center py-8 text-gray-500 ${isRefreshing ? 'opacity-50' : ''}`}>
               <Calendar className="w-12 h-12 mx-auto mb-4 text-gray-300" />
               <p>Geen agenda items</p>
               <p className="text-sm">Dit gesprek heeft geen agenda gedefinieerd</p>
@@ -219,11 +274,16 @@ const AgendaPanel = ({
           <div className="border-t pt-4">
             {!showAddForm ? (
               <button 
-                className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm flex items-center justify-center space-x-2"
+                className={`w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm flex items-center justify-center space-x-2 ${
+                  (isUpdating || isRefreshing) ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setShowAddForm(true);
+                  if (!isUpdating && !isRefreshing) {
+                    setShowAddForm(true);
+                  }
                 }}
+                disabled={isUpdating || isRefreshing}
               >
                 <span>➕</span>
                 <span>Voeg agenda item toe</span>
@@ -237,6 +297,7 @@ const AgendaPanel = ({
                   onChange={(e) => setNewAgendaItem(prev => ({ ...prev, title: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   required
+                  disabled={isUpdating || isRefreshing}
                 />
                 <textarea
                   placeholder="Beschrijving (optioneel)"
@@ -244,6 +305,7 @@ const AgendaPanel = ({
                   onChange={(e) => setNewAgendaItem(prev => ({ ...prev, description: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   rows="2"
+                  disabled={isUpdating || isRefreshing}
                 />
                 <input
                   type="number"
@@ -252,11 +314,12 @@ const AgendaPanel = ({
                   onChange={(e) => setNewAgendaItem(prev => ({ ...prev, estimated_duration: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   min="1"
+                  disabled={isUpdating || isRefreshing}
                 />
                 <div className="flex space-x-2">
                   <button
                     type="submit"
-                    disabled={isUpdating || !newAgendaItem.title.trim()}
+                    disabled={isUpdating || isRefreshing || !newAgendaItem.title.trim()}
                     className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isUpdating ? 'Toevoegen...' : 'Toevoegen'}
@@ -264,10 +327,13 @@ const AgendaPanel = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setShowAddForm(false);
-                      setNewAgendaItem({ title: '', description: '', estimated_duration: '' });
+                      if (!isUpdating && !isRefreshing) {
+                        setShowAddForm(false);
+                        setNewAgendaItem({ title: '', description: '', estimated_duration: '' });
+                      }
                     }}
-                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                    disabled={isUpdating || isRefreshing}
+                    className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Annuleren
                   </button>
@@ -275,6 +341,21 @@ const AgendaPanel = ({
               </form>
             )}
           </div>
+
+          {/* Loading Overlay for Critical Actions */}
+          {(isUpdating || isRefreshing) && (
+            <div className="absolute inset-0 bg-white bg-opacity-60 flex items-center justify-center rounded-xl">
+              <div className="flex items-center space-x-2 bg-white px-4 py-2 rounded-lg shadow-lg border">
+                <svg className="animate-spin w-4 h-4 text-green-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-sm text-green-800">
+                  {isRefreshing ? 'Vernieuwen...' : 'Bijwerken...'}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
