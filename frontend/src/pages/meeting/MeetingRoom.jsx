@@ -230,6 +230,22 @@ const MeetingRoom = () => {
     return () => clearInterval(interval);
   }, [isRecording, recordingStartTime]);
 
+
+// Function to refresh meeting data
+const fetchMeetingData = async () => {
+  try {
+    const response = await meetingService.getMeeting(id);
+    if (response.success) {
+      setMeeting(response.data);
+    }
+  } catch (error) {
+    console.error('Error fetching meeting data:', error);
+  }
+};
+
+
+
+
   // Load meeting and transcription data
   const loadMeetingData = async () => {
     try {
@@ -677,15 +693,19 @@ const MeetingRoom = () => {
           {/* Sidebar - 4 kolommen breed */}
           <div className="col-span-4 space-y-6">
             
-            {/* 4. Agenda Panel */}
-            <AgendaPanel
-              isExpanded={expandedPanels.agenda}
-              onToggle={() => togglePanel('agenda')}
-              meeting={meeting}
-              currentAgendaIndex={currentAgendaIndex}
-              onToggleAgendaItem={toggleAgendaItem}
-              calculateAgendaProgress={calculateAgendaProgress}
-            />
+
+{/* 4. Agenda Panel */}
+<AgendaPanel
+  isExpanded={expandedPanels.agenda}
+  onToggle={() => togglePanel('agenda')}
+  meeting={meeting}
+  currentAgendaIndex={currentAgendaIndex}
+  onToggleAgendaItem={toggleAgendaItem}
+  calculateAgendaProgress={calculateAgendaProgress}
+  onMeetingUpdate={fetchMeetingData} // Add this line
+/>
+
+
 
             {/* 5. Verslag Panel */}
             <ReportPanel

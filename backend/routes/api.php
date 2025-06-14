@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\AgendaController;
 
 /*
 |--------------------------------------------------------------------------
@@ -28,7 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/user', function (Request $request) {
         return $request->user();
     });
-    
+
     Route::post('/auth/logout', [\App\Http\Controllers\Api\AuthController::class, 'logout']);
 
     // Meeting routes
@@ -74,8 +75,15 @@ Route::middleware('auth:sanctum')->group(function () {
     // Privacy routes
     Route::get('/privacy/settings', [\App\Http\Controllers\Api\PrivacyController::class, 'settings']);
     Route::post('/privacy/consent', [\App\Http\Controllers\Api\PrivacyController::class, 'consent']);
-});
 
-// Delete transcriptions by type or ID
-Route::delete('/meetings/{meeting}/transcriptions/{type?}', [TranscriptionController::class, 'deleteTranscriptions']);
-Route::delete('/transcriptions/{transcription}', [TranscriptionController::class, 'deleteTranscription']);
+    // Agenda routes
+    Route::prefix('meetings/{meetingId}/agenda')->group(function () {
+        Route::get('/', [AgendaController::class, 'index']);
+        Route::post('/', [AgendaController::class, 'store']);
+        Route::put('{agendaItemId}/status', [AgendaController::class, 'updateStatus']);
+    });
+
+    // Delete transcriptions by type or ID
+    Route::delete('/meetings/{meeting}/transcriptions/{type?}', [\App\Http\Controllers\Api\TranscriptionController::class, 'deleteTranscriptions']);
+    Route::delete('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'deleteTranscription']);
+});
