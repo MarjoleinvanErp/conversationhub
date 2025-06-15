@@ -5,6 +5,7 @@ const EnhancedLiveTranscription = ({
   meetingId, 
   participants = [], 
   onTranscriptionUpdate = () => {},
+  onWhisperUpdate = () => {}, // NIEUWE PROP voor Whisper updates
   onSessionStatsUpdate = () => {}
 }) => {
   // Session state
@@ -87,7 +88,7 @@ const EnhancedLiveTranscription = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Start enhanced session with voice setup choice (WITH LOADING STATES)
+  // Start enhanced session with voice setup choice
   const handleVoiceSetupChoice = async (useVoiceSetup) => {
     try {
       setIsStartingSession(true);
@@ -138,7 +139,7 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Voice setup functions (FROM ORIGINAL)
+  // Voice setup functions
   const startVoiceSetup = async () => {
     const speaker = participants[currentSetupSpeaker];
     if (!speaker) return;
@@ -182,7 +183,7 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Start recording (SIMPLIFIED FROM ORIGINAL)
+  // Start recording
   const startRecording = async () => {
     try {
       console.log('🚀 Starting recording...');
@@ -263,7 +264,7 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Background transcription processing (FROM ORIGINAL - not shown in UI)
+  // Background transcription processing
   const handleBackgroundTranscription = async (result) => {
     const { transcript, confidence, isFinal } = result;
 
@@ -299,9 +300,14 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Background audio chunk processing (FROM ORIGINAL - not shown in UI)
+  // Background audio chunk processing - MET WHISPER CALLBACK EN STATUS
   const handleBackgroundAudioChunk = async (audioBlob) => {
     try {
+      console.log('🎵 Processing audio chunk with Whisper...', {
+        size: audioBlob.size,
+        timestamp: new Date().toLocaleTimeString()
+      });
+
       // Process with Whisper in background
       const result = await enhancedLiveTranscriptionService.processWhisperVerification(
         `background_${Date.now()}`,
@@ -309,19 +315,62 @@ const EnhancedLiveTranscription = ({
       );
 
       if (result.success && result.transcription) {
-        // Send improved transcription to parent
-        onTranscriptionUpdate({
+        const transcriptionData = {
           ...result.transcription,
           source: 'background_whisper',
-          confidence: result.transcription.text_confidence || 1.0
+          confidence: result.transcription.text_confidence || 1.0,
+          database_saved: result.transcription.database_saved || false
+        };
+
+        console.log('✅ Whisper transcription completed:', {
+          text_preview: transcriptionData.text.substring(0, 50) + '...',
+          database_saved: transcriptionData.database_saved,
+          processing_status: transcriptionData.processing_status
         });
+
+        // Send improved transcription to parent (voor algemene transcripties)
+        onTranscriptionUpdate(transcriptionData);
+
+        // Update het Whisper panel specifiek met real-time data
+        if (onWhisperUpdate) {
+          onWhisperUpdate({
+            type: 'transcription_completed',
+            transcription: transcriptionData,
+            message: transcriptionData.database_saved 
+              ? 'Whisper transcriptie opgeslagen in database' 
+              : 'Whisper transcriptie verwerkt',
+            timestamp: new Date().toISOString()
+          });
+        }
+      } else {
+        console.warn('⚠️ Whisper processing failed:', result.error);
+        
+        // Notify parent about failure
+        if (onWhisperUpdate) {
+          onWhisperUpdate({
+            type: 'processing_error',
+            error: result.error,
+            message: 'Whisper verwerking mislukt',
+            timestamp: new Date().toISOString()
+          });
+        }
       }
     } catch (error) {
       console.error('❌ Background Whisper processing error:', error);
+      
+      // Notify parent about error
+      if (onWhisperUpdate) {
+        onWhisperUpdate({
+          type: 'processing_error',
+          error: error.message,
+          message: 'Fout bij Whisper verwerking',
+          timestamp: new Date().toISOString()
+        });
+      }
     }
   };
 
-  // Handle speech recognition errors (FROM ORIGINAL)
+  // Handle speech recognition errors
   const handleSpeechError = (error) => {
     if (error === 'not-allowed') {
       setRecordingError('Microfoon toegang geweigerd. Sta microfoon toegang toe.');
@@ -338,7 +387,7 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // INITIAL SETUP PHASE: Choose voice setup or skip (WITH LOADING STATES)
+  // INITIAL SETUP PHASE: Choose voice setup or skip
   if (setupPhase === 'initial' && !sessionActive) {
     return (
       <div className="bg-white rounded-lg border">
@@ -407,7 +456,7 @@ const EnhancedLiveTranscription = ({
     );
   }
 
-  // VOICE SETUP PHASE (FROM ORIGINAL - SIMPLIFIED)
+  // VOICE SETUP PHASE
   if (setupPhase === 'voice_setup') {
     const currentSpeakerData = participants[currentSetupSpeaker];
     const isLastSpeaker = currentSetupSpeaker >= participants.length - 1;
@@ -558,7 +607,7 @@ const EnhancedLiveTranscription = ({
               isPaused ? 'bg-yellow-500' : 'bg-gray-300'
             }`}></div>
             <span className="text-gray-600">
-              {isRecording && !isPaused ? 'Recording' : 
+              {isRecording && !isPaused ? 'Recording (90s chunks)' : 
                isPaused ? 'Gepauzeerd' : 'Gestopt'}
             </span>
           </div>
@@ -599,7 +648,7 @@ const EnhancedLiveTranscription = ({
                 <div className={`w-2 h-2 rounded-full ${isPaused ? 'bg-yellow-500' : 'bg-red-500 animate-pulse'}`}></div>
                 <span>
                   {isPaused ? 'Opname gepauzeerd' : 
-                   `Automatische opname actief sinds ${recordingStartTime ? recordingStartTime.toLocaleTimeString('nl-NL') : ''}`}
+                   `90-seconden chunks actief sinds ${recordingStartTime ? recordingStartTime.toLocaleTimeString('nl-NL') : ''}`}
                 </span>
               </span>
             ) : (
@@ -616,7 +665,7 @@ const EnhancedLiveTranscription = ({
               className="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-3 rounded-lg"
               disabled={!speechSupported}
             >
-              🎤 Start Opname
+              🎤 Start 90s Opname
             </button>
           ) : (
             <>

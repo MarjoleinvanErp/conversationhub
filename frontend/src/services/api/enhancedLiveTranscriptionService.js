@@ -12,6 +12,7 @@ class EnhancedLiveTranscriptionService {
     this.chunkInterval = null;
     this.audioChunks = [];
     this.chunkCounter = 0;
+    this.whisperUpdateCallback = null;
   }
 
   /**
@@ -115,7 +116,7 @@ class EnhancedLiveTranscriptionService {
   }
 
   /**
-   * Process Whisper verification - FIXED
+   * Process Whisper verification with real-time updates
    */
   async processWhisperVerification(liveTranscriptionId, audioChunk) {
     if (!this.currentSession) {
@@ -128,6 +129,13 @@ class EnhancedLiveTranscriptionService {
         live_transcription_id: liveTranscriptionId,
         chunk_size: audioChunk.size,
         chunk_type: audioChunk.type
+      });
+
+      // Notify start of processing
+      this.notifyWhisperUpdate({
+        type: 'processing_start',
+        message: 'Whisper verwerking gestart...',
+        timestamp: new Date().toISOString()
       });
 
       const formData = new FormData();
@@ -155,20 +163,126 @@ class EnhancedLiveTranscriptionService {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ Whisper API error response:', errorText);
+        
+        // Notify error
+        this.notifyWhisperUpdate({
+          type: 'processing_error',
+          error: `HTTP ${response.status}: ${errorText}`,
+          message: 'Whisper API fout',
+          timestamp: new Date().toISOString()
+        });
+        
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       const result = await response.json();
-      console.log('✅ Whisper verification completed:', {
-        success: result.success,
-        original_id: liveTranscriptionId,
-        whisper_text: result.transcription?.text?.substring(0, 50) + '...'
-      });
+      
+      if (result.success) {
+        console.log('✅ Whisper verification completed:', {
+          success: result.success,
+          original_id: liveTranscriptionId,
+          whisper_text: result.transcription?.text?.substring(0, 50) + '...',
+          database_saved: result.transcription?.database_saved
+        });
+
+        // Notify successful completion
+        this.notifyWhisperUpdate({
+          type: 'transcription_completed',
+          transcription: {
+            ...result.transcription,
+            database_saved: result.transcription?.database_saved || false
+          },
+          message: result.transcription?.database_saved 
+            ? 'Whisper transcriptie opgeslagen in database' 
+            : 'Whisper transcriptie verwerkt',
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // Notify processing error
+        this.notifyWhisperUpdate({
+          type: 'processing_error',
+          error: result.error,
+          message: 'Whisper verwerking mislukt',
+          timestamp: new Date().toISOString()
+        });
+      }
       
       return result;
     } catch (error) {
       console.error('❌ Whisper verification failed:', error);
+      
+      // Notify error
+      this.notifyWhisperUpdate({
+        type: 'processing_error',
+        error: error.message,
+        message: 'Fout bij Whisper verwerking',
+        timestamp: new Date().toISOString()
+      });
+      
       return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Get Whisper transcriptions from database
+   */
+  async getWhisperTranscriptions(meetingId) {
+    try {
+      console.log('🤖 Fetching Whisper transcriptions for meeting:', meetingId);
+      
+      const response = await fetch(`${API_BASE_URL}/api/meetings/${meetingId}/whisper-transcriptions`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${authService.getToken()}`,
+          'Content-Type': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+      });
+
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('✅ Whisper transcriptions fetched:', {
+          count: data.meta.total_count,
+          meeting_id: meetingId
+        });
+        
+        return {
+          success: true,
+          transcriptions: data.data,
+          meta: data.meta
+        };
+      } else {
+        console.error('❌ Failed to fetch Whisper transcriptions:', data.error);
+        return {
+          success: false,
+          error: data.error,
+          transcriptions: []
+        };
+      }
+    } catch (error) {
+      console.error('❌ Whisper transcriptions fetch error:', error);
+      return {
+        success: false,
+        error: error.message,
+        transcriptions: []
+      };
+    }
+  }
+
+  /**
+   * Set callback for real-time Whisper updates
+   */
+  setWhisperUpdateCallback(callback) {
+    this.whisperUpdateCallback = callback;
+  }
+
+  /**
+   * Notify about Whisper processing status
+   */
+  notifyWhisperUpdate(data) {
+    if (this.whisperUpdateCallback) {
+      this.whisperUpdateCallback(data);
     }
   }
 
@@ -294,7 +408,7 @@ class EnhancedLiveTranscriptionService {
         if (this.audioChunks.length > 0) {
           const combinedBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
           
-          console.log('🎵 Created 30-second audio chunk:', {
+          console.log('🎵 Created 90-second audio chunk:', {
             size: combinedBlob.size,
             type: combinedBlob.type,
             chunk_number: this.chunkCounter,
@@ -316,13 +430,13 @@ class EnhancedLiveTranscriptionService {
       // Start recording for this chunk
       this.mediaRecorder.start();
 
-      // Stop after 30 seconds to create chunk
+      // Stop after 90 seconds to create chunk
       setTimeout(() => {
         if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-          console.log('⏰ 30 seconds reached, stopping chunk', this.chunkCounter);
+          console.log('⏰ 90 seconds reached, stopping chunk', this.chunkCounter);
           this.mediaRecorder.stop();
         }
-      }, 30000); // 30 seconds
+      }, 90000); // 90 seconds
     };
 
     // Start first cycle
@@ -335,6 +449,31 @@ class EnhancedLiveTranscriptionService {
   setChunkCallback(callback) {
     console.log('🔗 Setting chunk callback for Whisper processing');
     this.onChunkCallback = callback;
+  }
+
+  /**
+   * Pause recording
+   */
+  pauseRecording() {
+    if (this.speechRecognition) {
+      this.speechRecognition.stop();
+    }
+    // Note: MediaRecorder chunking continues in background
+    console.log('⏸️ Recording paused');
+  }
+
+  /**
+   * Resume recording
+   */
+  resumeRecording() {
+    if (this.speechRecognition && this.isRecording) {
+      try {
+        this.speechRecognition.start();
+        console.log('▶️ Recording resumed');
+      } catch (error) {
+        console.warn('Failed to resume speech recognition:', error);
+      }
+    }
   }
 
   /**

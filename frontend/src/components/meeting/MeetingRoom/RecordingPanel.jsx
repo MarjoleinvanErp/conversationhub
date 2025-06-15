@@ -218,6 +218,7 @@ const RecordingPanel = ({
                 meetingId={meetingId}
                 participants={meeting?.participants || []}
                 onTranscriptionUpdate={onLiveTranscriptionReceived}
+				onWhisperUpdate={onWhisperTranscriptionReceived}		
                 onSessionStatsUpdate={() => {}} // TODO: Add session stats handler
                 disabled={isRefreshing}
               />

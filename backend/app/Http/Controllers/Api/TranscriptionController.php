@@ -5,316 +5,355 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Meeting;
 use App\Models\Transcription;
+use App\Services\EnhancedLiveTranscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class TranscriptionController extends Controller
 {
+    private $enhancedLiveTranscriptionService;
+
+    public function __construct(EnhancedLiveTranscriptionService $enhancedLiveTranscriptionService)
+    {
+        $this->enhancedLiveTranscriptionService = $enhancedLiveTranscriptionService;
+    }
+
     /**
-     * Get all transcriptions for a meeting
+     * Display a listing of transcriptions for a meeting
      */
-    public function index(Request $request, $meetingId): JsonResponse
+    public function index(Meeting $meeting, Request $request): JsonResponse
     {
         try {
-            $meeting = Meeting::where('id', $meetingId)
-                ->where('user_id', $request->user()->id)
-                ->first();
+            $sourceFilter = $request->query('source');
+            $limit = $request->query('limit', 100);
 
-            if (!$meeting) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Meeting niet gevonden'
-                ], 404);
+            $query = Transcription::where('meeting_id', $meeting->id);
+
+            if ($sourceFilter) {
+                if ($sourceFilter === 'live') {
+                    $query->whereIn('source', ['live', 'live_fallback', 'background_live']);
+                } elseif ($sourceFilter === 'whisper') {
+                    $query->whereIn('source', ['whisper', 'whisper_verified', 'background_whisper']);
+                } else {
+                    $query->where('source', $sourceFilter);
+                }
             }
 
-            $transcriptions = Transcription::where('meeting_id', $meetingId)
-                ->orderBy('spoken_at', 'asc')
-                ->get();
+            $transcriptions = $query
+                ->orderBy('spoken_at', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->map(function ($transcription) {
+                    // Parse metadata if it exists
+                    $metadata = [];
+                    if ($transcription->metadata) {
+                        $metadata = is_string($transcription->metadata) 
+                            ? json_decode($transcription->metadata, true) 
+                            : $transcription->metadata;
+                    }
+
+                    return [
+                        'id' => $transcription->id,
+                        'text' => $transcription->text,
+                        'speaker_name' => $transcription->speaker_name,
+                        'speaker_color' => $transcription->speaker_color,
+                        'confidence' => $transcription->confidence,
+                        'source' => $transcription->source,
+                        'timestamp' => $transcription->spoken_at,
+                        'created_at' => $transcription->created_at,
+                        'is_final' => $transcription->is_final,
+                        'metadata' => $metadata
+                    ];
+                })
+                ->toArray();
 
             return response()->json([
                 'success' => true,
-                'data' => $transcriptions
+                'data' => $transcriptions,
+                'meta' => [
+                    'meeting_id' => $meeting->id,
+                    'total_count' => count($transcriptions),
+                    'source_filter' => $sourceFilter,
+                    'fetched_at' => now()->toISOString()
+                ]
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Failed to fetch transcriptions', [
+                'meeting_id' => $meeting->id,
+                'error' => $e->getMessage()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij ophalen transcripties: ' . $e->getMessage()
+                'error' => 'Failed to fetch transcriptions: ' . $e->getMessage(),
+                'data' => []
             ], 500);
         }
     }
 
-/**
- * Delete transcriptions by type
- */
-public function deleteTranscriptions(Request $request, Meeting $meeting, $type = null)
-{
-    try {
-        $query = $meeting->transcriptions();
-        
-        if ($type) {
-            $validTypes = ['live', 'whisper', 'speech', 'upload'];
-            if (!in_array($type, $validTypes)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Invalid transcription type'
-                ], 400);
-            }
-            
-            $query->where('source', $type);
-        }
-        
-        $deletedCount = $query->delete();
-        
-        return response()->json([
-            'success' => true,
-            'message' => "Deleted {$deletedCount} transcriptions",
-            'deleted_count' => $deletedCount
-        ]);
-        
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to delete transcriptions: ' . $e->getMessage()
-        ], 500);
-    }
-}
+    /**
+     * Get Whisper transcriptions for a meeting
+     */
+    public function getWhisperTranscriptions(Meeting $meeting): JsonResponse
+    {
+        try {
+            Log::info('Fetching Whisper transcriptions', [
+                'meeting_id' => $meeting->id,
+                'meeting_title' => $meeting->title
+            ]);
 
-/**
- * Delete single transcription
- */
-public function deleteTranscription(Transcription $transcription)
-{
-    try {
-        $transcription->delete();
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Transcription deleted successfully'
-        ]);
-        
-    } catch (\Exception $e) {
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to delete transcription: ' . $e->getMessage()
-        ], 500);
-    }
-}
+            // Get transcriptions with Whisper source
+            $transcriptions = Transcription::where('meeting_id', $meeting->id)
+                ->whereIn('source', ['whisper', 'whisper_verified', 'background_whisper'])
+                ->orderBy('spoken_at', 'desc')
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($transcription) {
+                    // Parse metadata if it exists
+                    $metadata = [];
+                    if ($transcription->metadata) {
+                        $metadata = is_string($transcription->metadata) 
+                            ? json_decode($transcription->metadata, true) 
+                            : $transcription->metadata;
+                    }
 
+                    return [
+                        'id' => $transcription->id,
+                        'text' => $transcription->text,
+                        'speaker_name' => $transcription->speaker_name,
+                        'speaker_color' => $transcription->speaker_color,
+                        'confidence' => $transcription->confidence,
+                        'source' => $transcription->source,
+                        'timestamp' => $transcription->spoken_at,
+                        'created_at' => $transcription->created_at,
+                        'is_final' => $transcription->is_final,
+                        'database_saved' => true, // All records from DB are saved
+                        'processing_status' => 'completed',
+                        'metadata' => $metadata
+                    ];
+                })
+                ->toArray();
 
-/**
- * Store a new transcription
- */
-public function store(Request $request): JsonResponse
-{
-    try {
-        Log::info('Transcription store request', [
-            'data' => $request->all(),
-        ]);
+            Log::info('Whisper transcriptions retrieved', [
+                'meeting_id' => $meeting->id,
+                'count' => count($transcriptions)
+            ]);
 
-        $validator = Validator::make($request->all(), [
-            'meeting_id' => 'required|integer|exists:meetings,id',
-            'speaker_name' => 'required|string|max:255',
-            'speaker_id' => 'nullable|string|max:255',
-            'speaker_color' => 'nullable|string|max:7',
-            'text' => 'required|string',
-            'confidence' => 'nullable|numeric|between:0,1',
-            'source' => 'nullable|in:live,upload,manual',
-            'is_final' => 'nullable|boolean',
-            'spoken_at' => 'nullable|date',
-        ]);
+            return response()->json([
+                'success' => true,
+                'data' => $transcriptions,
+                'meta' => [
+                    'meeting_id' => $meeting->id,
+                    'total_count' => count($transcriptions),
+                    'fetched_at' => now()->toISOString(),
+                    'source_filter' => ['whisper', 'whisper_verified', 'background_whisper']
+                ]
+            ]);
 
-        if ($validator->fails()) {
-            Log::error('Transcription validation failed', [
-                'errors' => $validator->errors()->toArray(),
-                'input' => $request->all(),
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch Whisper transcriptions', [
+                'meeting_id' => $meeting->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
+                'error' => 'Failed to fetch Whisper transcriptions: ' . $e->getMessage(),
+                'data' => []
+            ], 500);
         }
-
-        // Verify user owns the meeting
-        $meeting = Meeting::where('id', $request->meeting_id)
-            ->where('user_id', $request->user()->id)
-            ->first();
-
-        if (!$meeting) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Meeting niet gevonden'
-            ], 404);
-        }
-
-        $transcription = Transcription::create([
-            'meeting_id' => $request->meeting_id,
-            'speaker_name' => $request->speaker_name,
-            'speaker_id' => $request->speaker_id,
-            'speaker_color' => $request->speaker_color ?? '#6B7280',
-            'text' => $request->text,
-            'confidence' => $request->confidence ?? 0.8,
-            'source' => $request->source ?? 'upload', // Changed from 'live' to 'upload'
-            'is_final' => $request->is_final ?? true,
-            'spoken_at' => $request->spoken_at ?? now(),
-        ]);
-
-        Log::info('Transcription saved successfully', [
-            'transcription_id' => $transcription->id,
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Transcriptie opgeslagen',
-            'data' => $transcription
-        ], 201);
-
-    } catch (\Exception $e) {
-        Log::error('Transcription store exception', [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Fout bij opslaan transcriptie: ' . $e->getMessage()
-        ], 500);
     }
-}
+
     /**
-     * Get a specific transcription
+     * Store a newly created transcription
      */
-    public function show(Request $request, $id): JsonResponse
+    public function store(Request $request): JsonResponse
     {
         try {
-            $transcription = Transcription::with('meeting')
-                ->find($id);
+            $validator = Validator::make($request->all(), [
+                'meeting_id' => 'required|exists:meetings,id',
+                'text' => 'required|string',
+                'speaker_name' => 'sometimes|string|max:255',
+                'speaker_color' => 'sometimes|string|max:7',
+                'confidence' => 'sometimes|numeric|between:0,1',
+                'source' => 'sometimes|string|max:50',
+                'spoken_at' => 'sometimes|date',
+            ]);
 
-            if (!$transcription) {
+            if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Transcriptie niet gevonden'
-                ], 404);
+                    'errors' => $validator->errors()
+                ], 422);
             }
 
-            // Check if user owns the meeting
-            if ($transcription->meeting->user_id !== $request->user()->id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Geen toegang tot deze transcriptie'
-                ], 403);
-            }
+            $transcription = Transcription::create([
+                'meeting_id' => $request->meeting_id,
+                'text' => $request->text,
+                'speaker_name' => $request->speaker_name,
+                'speaker_color' => $request->speaker_color,
+                'confidence' => $request->confidence ?? 0.8,
+                'source' => $request->source ?? 'manual',
+                'is_final' => true,
+                'spoken_at' => $request->spoken_at ?? now(),
+            ]);
 
+            return response()->json([
+                'success' => true,
+                'data' => $transcription,
+                'message' => 'Transcription created successfully'
+            ], 201);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to create transcription', [
+                'error' => $e->getMessage(),
+                'request_data' => $request->all()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to create transcription: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Display the specified transcription
+     */
+    public function show(Transcription $transcription): JsonResponse
+    {
+        try {
             return response()->json([
                 'success' => true,
                 'data' => $transcription
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij ophalen transcriptie: ' . $e->getMessage()
+                'error' => 'Failed to fetch transcription: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Update transcription
+     * Update the specified transcription
      */
-    public function update(Request $request, $id): JsonResponse
+    public function update(Request $request, Transcription $transcription): JsonResponse
     {
         try {
-            $transcription = Transcription::with('meeting')->find($id);
-
-            if (!$transcription) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Transcriptie niet gevonden'
-                ], 404);
-            }
-
-            // Check if user owns the meeting
-            if ($transcription->meeting->user_id !== $request->user()->id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Geen toegang tot deze transcriptie'
-                ], 403);
-            }
-
             $validator = Validator::make($request->all(), [
-                'speaker_name' => 'sometimes|string|max:255',
-                'speaker_id' => 'sometimes|nullable|string|max:255',
-                'speaker_color' => 'sometimes|nullable|string|max:7',
                 'text' => 'sometimes|string',
+                'speaker_name' => 'sometimes|string|max:255',
+                'speaker_color' => 'sometimes|string|max:7',
                 'confidence' => 'sometimes|numeric|between:0,1',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 422);
             }
 
             $transcription->update($request->only([
-                'speaker_name', 'speaker_id', 'speaker_color', 'text', 'confidence'
+                'text', 'speaker_name', 'speaker_color', 'confidence'
             ]));
 
             return response()->json([
                 'success' => true,
-                'message' => 'Transcriptie bijgewerkt',
-                'data' => $transcription
+                'data' => $transcription,
+                'message' => 'Transcription updated successfully'
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Failed to update transcription', [
+                'transcription_id' => $transcription->id,
+                'error' => $e->getMessage()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij bijwerken transcriptie: ' . $e->getMessage()
+                'error' => 'Failed to update transcription: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Delete transcription
+     * Remove the specified transcription
      */
-    public function destroy(Request $request, $id): JsonResponse
+    public function destroy(Transcription $transcription): JsonResponse
     {
         try {
-            $transcription = Transcription::with('meeting')->find($id);
-
-            if (!$transcription) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Transcriptie niet gevonden'
-                ], 404);
-            }
-
-            // Check if user owns the meeting
-            if ($transcription->meeting->user_id !== $request->user()->id) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Geen toegang tot deze transcriptie'
-                ], 403);
-            }
-
             $transcription->delete();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Transcriptie verwijderd'
+                'message' => 'Transcription deleted successfully'
             ]);
 
         } catch (\Exception $e) {
+            Log::error('Failed to delete transcription', [
+                'transcription_id' => $transcription->id,
+                'error' => $e->getMessage()
+            ]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij verwijderen transcriptie: ' . $e->getMessage()
+                'error' => 'Failed to delete transcription: ' . $e->getMessage()
             ], 500);
         }
+    }
+
+    /**
+     * Delete multiple transcriptions by type
+     */
+    public function deleteTranscriptions(Meeting $meeting, Request $request, $type = null): JsonResponse
+    {
+        try {
+            $query = Transcription::where('meeting_id', $meeting->id);
+
+            if ($type) {
+                if ($type === 'live') {
+                    $query->whereIn('source', ['live', 'live_fallback', 'background_live']);
+                } elseif ($type === 'whisper') {
+                    $query->whereIn('source', ['whisper', 'whisper_verified', 'background_whisper']);
+                } else {
+                    $query->where('source', $type);
+                }
+            }
+
+            $deletedCount = $query->delete();
+
+            return response()->json([
+                'success' => true,
+                'deleted_count' => $deletedCount,
+                'message' => "Deleted {$deletedCount} transcriptions"
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to delete transcriptions', [
+                'meeting_id' => $meeting->id,
+                'type' => $type,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to delete transcriptions: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete single transcription
+     */
+    public function deleteTranscription(Transcription $transcription): JsonResponse
+    {
+        return $this->destroy($transcription);
     }
 }

@@ -68,6 +68,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'update']);
     Route::delete('/transcriptions/{transcription}', [\App\Http\Controllers\Api\TranscriptionController::class, 'destroy']);
 
+    // Whisper transcriptions - NIEUWE ROUTE
+    Route::get('/meetings/{meeting}/whisper-transcriptions', [\App\Http\Controllers\Api\TranscriptionController::class, 'getWhisperTranscriptions']);
+
     // Export routes
     Route::post('/meetings/{meeting}/export', [\App\Http\Controllers\Api\ExportController::class, 'export']);
     Route::get('/exports/{export}/download', [\App\Http\Controllers\Api\ExportController::class, 'download']);

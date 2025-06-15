@@ -8,7 +8,7 @@ return [
         'model' => env('AZURE_WHISPER_MODEL', 'Whisper'),
         'region' => env('AZURE_WHISPER_REGION', 'westeurope'),
         'language' => env('AZURE_WHISPER_LANGUAGE', 'nl'),
-        'timeout' => env('AZURE_WHISPER_TIMEOUT', 30),
+        'timeout' => env('AZURE_WHISPER_TIMEOUT', 90),
         'api_version' => '2024-06-01', // Fixed version voor Azure OpenAI
         'response_format' => 'verbose_json',
         'temperature' => 0,
@@ -49,7 +49,7 @@ return [
     'audio' => [
         'max_file_size' => env('AUDIO_MAX_FILE_SIZE', 25), // MB
         'allowed_formats' => ['wav', 'mp3', 'webm', 'm4a', 'ogg', 'flac'],
-        'chunk_duration' => env('AUDIO_CHUNK_DURATION', 30),
+        'chunk_duration' => env('AUDIO_CHUNK_DURATION', 90),
         'quality' => env('AUDIO_QUALITY', 'high'),
         'sample_rate' => env('AUDIO_SAMPLE_RATE', 44100),
         'channels' => env('AUDIO_CHANNELS', 1),
@@ -64,7 +64,7 @@ return [
     // Live Transcription Settings
     'live_transcription' => [
         'enabled' => env('LIVE_TRANSCRIPTION_ENABLED', true),
-        'chunk_duration' => env('LIVE_TRANSCRIPTION_CHUNK_DURATION', 30),
+        'chunk_duration' => env('LIVE_TRANSCRIPTION_CHUNK_DURATION', 90),
         'max_session_duration' => env('LIVE_TRANSCRIPTION_MAX_SESSION', 7200),
         'auto_save_chunks' => env('LIVE_TRANSCRIPTION_AUTO_SAVE', true),
         'combine_live_and_whisper' => env('LIVE_TRANSCRIPTION_COMBINE', true),
