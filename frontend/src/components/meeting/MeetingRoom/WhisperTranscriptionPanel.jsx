@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, Trash2, ChevronUp, ChevronDown } from './Icons.jsx';
 import { formatTimestamp } from './utils/meetingUtils.js';
-import enhancedLiveTranscriptionService from '../../services/api/enhancedLiveTranscriptionService';
+import enhancedLiveTranscriptionService from '../../../services/api/enhancedLiveTranscriptionService.js';
 
 const WhisperTranscriptionPanel = ({
   isExpanded,

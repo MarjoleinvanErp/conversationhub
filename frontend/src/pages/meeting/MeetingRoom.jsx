@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService.js';
 import transcriptionService from '../../services/api/transcriptionService.js';
+import enhancedLiveTranscriptionService from '../../services/api/enhancedLiveTranscriptionService.js';
 import { agendaService } from '../../services/agendaService';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
 import { getSpeakerColor } from './utils/meetingUtils.js';
@@ -268,8 +269,25 @@ const MeetingRoom = () => {
     }
   }, [meeting?.id, setMeeting, setRefreshingPanels]);
 
+  // Handle Whisper updates from EnhancedLiveTranscription
+  const handleWhisperUpdate = (updateData) => {
+    console.log('🤖 Meeting room received Whisper update:', updateData);
+    
+    if (updateData.type === 'transcription_completed' && updateData.transcription) {
+      // Add to local state for immediate display
+      setWhisperTranscriptions(prev => {
+        // Check if already exists
+        const exists = prev.some(t => t.id === updateData.transcription.id);
+        if (!exists) {
+          return [updateData.transcription, ...prev].slice(0, 50); // Keep latest 50
+        }
+        return prev;
+      });
+    }
+  };
+
   // NEW: Main refresh function per panel
-  const refreshPanelData = async (panelType) => {
+  const refreshPanelData = async (panelType, freshData = null) => {
     console.log(`🔄 Refreshing ${panelType} panel...`);
     
     setRefreshingPanels(prev => ({
@@ -290,8 +308,18 @@ const MeetingRoom = () => {
           break;
           
         case 'whisperTranscription':
-          // Refresh alleen whisper transcripties
-          await refreshWhisperTranscriptions();
+          if (freshData) {
+            // Use provided fresh data
+            setWhisperTranscriptions(freshData);
+            // Update combined transcriptions
+            setTranscriptions(prev => [
+              ...prev.filter(t => !['whisper', 'whisper_verified', 'background_whisper'].includes(t.source)),
+              ...freshData
+            ]);
+          } else {
+            // Fetch from API
+            await refreshWhisperTranscriptions();
+          }
           break;
           
         case 'agenda':
@@ -352,17 +380,24 @@ const MeetingRoom = () => {
 
   const refreshWhisperTranscriptions = async () => {
     try {
-      const response = await transcriptionService.getTranscriptions(id, 'whisper');
-      if (response.success) {
-        setWhisperTranscriptions(response.data || []);
+      console.log('🔄 Refreshing Whisper transcriptions...');
+      
+      const result = await enhancedLiveTranscriptionService.getWhisperTranscriptions(id);
+      
+      if (result.success) {
+        setWhisperTranscriptions(result.transcriptions);
         // Update combined transcriptions
         setTranscriptions(prev => [
-          ...prev.filter(t => t.source !== 'whisper'),
-          ...(response.data || [])
+          ...prev.filter(t => !['whisper', 'whisper_verified', 'background_whisper'].includes(t.source)),
+          ...result.transcriptions
         ]);
+        
+        console.log('✅ Whisper transcriptions refreshed:', result.transcriptions.length);
+      } else {
+        console.error('❌ Failed to refresh Whisper transcriptions:', result.error);
       }
     } catch (error) {
-      console.error('Error refreshing whisper transcriptions:', error);
+      console.error('❌ Whisper refresh error:', error);
       throw error;
     }
   };
@@ -371,20 +406,20 @@ const MeetingRoom = () => {
     try {
       const [liveResponse, whisperResponse] = await Promise.all([
         transcriptionService.getTranscriptions(id, 'live'),
-        transcriptionService.getTranscriptions(id, 'whisper')
+        enhancedLiveTranscriptionService.getWhisperTranscriptions(id)
       ]);
       
       if (liveResponse.success) {
         setLiveTranscriptions(liveResponse.data || []);
       }
       if (whisperResponse.success) {
-        setWhisperTranscriptions(whisperResponse.data || []);
+        setWhisperTranscriptions(whisperResponse.transcriptions || []);
       }
       
       // Update combined transcriptions
       const allTranscriptions = [
         ...(liveResponse.data || []),
-        ...(whisperResponse.data || [])
+        ...(whisperResponse.transcriptions || [])
       ];
       setTranscriptions(allTranscriptions);
       
@@ -419,7 +454,7 @@ const MeetingRoom = () => {
         
         // Separate transcriptions by source
         const live = allTranscriptions.filter(t => t.source === 'live');
-        const whisper = allTranscriptions.filter(t => t.source === 'whisper');
+        const whisper = allTranscriptions.filter(t => ['whisper', 'whisper_verified', 'background_whisper'].includes(t.source));
         
         setTranscriptions(allTranscriptions);
         setLiveTranscriptions(live);
@@ -433,6 +468,9 @@ const MeetingRoom = () => {
       } else {
         console.warn('⚠️ Transcriptions not loaded:', transcriptionsResult.message);
       }
+
+      // Load initial Whisper transcriptions
+      await refreshWhisperTranscriptions().catch(console.error);
 
     } catch (error) {
       console.error('❌ Error loading meeting data:', error);
@@ -529,7 +567,7 @@ const MeetingRoom = () => {
         setTranscriptions(prev => prev.filter(t => t.source !== 'live'));
       } else if (deleteTarget === 'whisper') {
         setWhisperTranscriptions([]);
-        setTranscriptions(prev => prev.filter(t => t.source !== 'whisper'));
+        setTranscriptions(prev => prev.filter(t => !['whisper', 'whisper_verified', 'background_whisper'].includes(t.source)));
       }
       
       console.log(`${deleteTarget} transcriptions deleted`);
@@ -634,7 +672,7 @@ const MeetingRoom = () => {
               onPauseRecording={pauseRecording}
               onStopRecording={stopRecording}
               onLiveTranscriptionReceived={handleLiveTranscriptionReceived}
-              onWhisperTranscriptionReceived={handleWhisperTranscriptionReceived}
+              onWhisperTranscriptionReceived={handleWhisperUpdate} // UPDATED
               meetingId={id}
               meeting={meeting}
               formatTime={formatTime}
@@ -661,6 +699,7 @@ const MeetingRoom = () => {
               whisperTranscriptions={whisperTranscriptions}
               onDeleteTranscriptions={handleDeleteTranscriptions}
               isDeleting={isDeleting && deleteTarget === 'whisper'}
+              meetingId={id} // ADDED
               onRefresh={refreshPanelData}
               isRefreshing={refreshingPanels.whisperTranscription}
             />
