@@ -6,145 +6,85 @@ use App\Http\Controllers\Controller;
 use App\Services\EnhancedLiveTranscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
 
 class LiveTranscriptionController extends Controller
 {
-    private $enhancedLiveTranscriptionService;
+    private $liveTranscriptionService;
 
-    public function __construct(EnhancedLiveTranscriptionService $enhancedLiveTranscriptionService)
+    public function __construct(EnhancedLiveTranscriptionService $liveTranscriptionService)
     {
-        $this->enhancedLiveTranscriptionService = $enhancedLiveTranscriptionService;
+        $this->liveTranscriptionService = $liveTranscriptionService;
     }
 
     /**
-     * Start enhanced transcription session
+     * Start enhanced session
      */
     public function startEnhancedSession(Request $request): JsonResponse
     {
-        try {
-            $validator = Validator::make($request->all(), [
-                'meeting_id' => 'required|integer|exists:meetings,id',
-                'participants' => 'required|array',
-                'participants.*.id' => 'required|string',
-                'participants.*.name' => 'required|string',
-                'participants.*.color' => 'sometimes|string',
-            ]);
+        $validator = Validator::make($request->all(), [
+            'meeting_id' => 'required|integer|exists:meetings,id',
+            'participants' => 'array',
+            'participants.*.id' => 'required|string',
+            'participants.*.name' => 'required|string',
+            'participants.*.color' => 'nullable|string',
+        ]);
 
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'Validation failed',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $meetingId = $request->input('meeting_id');
-            $participants = $request->input('participants');
-
-            Log::info('Starting enhanced transcription session', [
-                'meeting_id' => $meetingId,
-                'participants_count' => count($participants),
-                'user_id' => $request->user()->id
-            ]);
-
-            $result = $this->enhancedLiveTranscriptionService->startEnhancedSession(
-                $meetingId,
-                $participants
-            );
-
-            if ($result['success']) {
-                Log::info('Enhanced session started successfully', [
-                    'session_id' => $result['session_id'],
-                    'meeting_id' => $meetingId
-                ]);
-
-                return response()->json([
-                    'success' => true,
-                    'session_id' => $result['session_id'],
-                    'participants' => $result['participants'],
-                    'message' => 'Enhanced transcription session started'
-                ]);
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'error' => $result['error']
-                ], 422);
-            }
-
-        } catch (\Exception $e) {
-            Log::error('Enhanced session start failed', [
-                'meeting_id' => $request->input('meeting_id'),
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
+        if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to start enhanced session: ' . $e->getMessage()
-            ], 500);
+                'errors' => $validator->errors()
+            ], 422);
         }
+
+        $result = $this->liveTranscriptionService->startEnhancedSession(
+            $request->meeting_id,
+            $request->participants ?? []
+        );
+
+        return response()->json($result);
     }
 
     /**
-     * Setup voice profile for speaker
+     * Setup voice profile
      */
     public function setupVoiceProfile(Request $request): JsonResponse
     {
         try {
+            Log::info('Voice profile setup request received', [
+                'session_id' => $request->input('session_id'),
+                'speaker_id' => $request->input('speaker_id'),
+                'has_voice_sample' => $request->hasFile('voice_sample'),
+            ]);
+
             $validator = Validator::make($request->all(), [
                 'session_id' => 'required|string',
                 'speaker_id' => 'required|string',
-                'voice_sample' => 'required|file|mimes:webm,wav,mp3,m4a|max:5120', // 5MB max
+                'voice_sample' => 'required|file|mimes:webm,wav,mp3,m4a|max:10240',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 422);
             }
 
-            $sessionId = $request->input('session_id');
-            $speakerId = $request->input('speaker_id');
-            $voiceSample = $request->file('voice_sample');
+            $audioContent = file_get_contents($request->file('voice_sample')->getPathname());
 
-            Log::info('Voice profile setup request', [
-                'session_id' => $sessionId,
-                'speaker_id' => $speakerId,
-                'sample_size' => $voiceSample->getSize()
-            ]);
-
-            // Get voice sample content
-            $voiceContent = file_get_contents($voiceSample->getPathname());
-
-            $result = $this->enhancedLiveTranscriptionService->setupVoiceProfile(
-                $sessionId,
-                $speakerId,
-                $voiceContent
+            $result = $this->liveTranscriptionService->setupVoiceProfile(
+                $request->session_id,
+                $request->speaker_id,
+                $audioContent
             );
 
-            if ($result['success']) {
-                return response()->json([
-                    'success' => true,
-                    'speaker_id' => $speakerId,
-                    'voice_profile' => $result['voice_profile'],
-                    'message' => 'Voice profile setup successful'
-                ]);
-            } else {
-                return response()->json([
-                    'success' => false,
-                    'error' => $result['error']
-                ], 422);
-            }
+            return response()->json($result);
 
         } catch (\Exception $e) {
-            Log::error('Voice profile setup failed', [
-                'session_id' => $request->input('session_id'),
-                'speaker_id' => $request->input('speaker_id'),
-                'error' => $e->getMessage()
+            Log::error('Voice profile setup exception', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
@@ -155,63 +95,68 @@ class LiveTranscriptionController extends Controller
     }
 
     /**
-     * Process live transcription
+     * Process live transcription - FIXED SESSION HANDLING
      */
     public function processLive(Request $request): JsonResponse
     {
         try {
             $validator = Validator::make($request->all(), [
                 'session_id' => 'required|string',
-                'live_text' => 'required|string|max:1000',
+                'live_text' => 'required|string',
                 'confidence' => 'sometimes|numeric|between:0,1',
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 422);
             }
 
-            $sessionId = $request->input('session_id');
-            $liveText = $request->input('live_text');
-            $confidence = $request->input('confidence', 0.8);
+            Log::info('Processing live transcription', [
+                'session_id' => $request->session_id,
+                'text_length' => strlen($request->live_text),
+                'confidence' => $request->confidence
+            ]);
 
-            $result = $this->enhancedLiveTranscriptionService->processLiveTranscription(
-                $liveText,
-                $confidence
+            // FIXED: Pass session_id to the service
+            $result = $this->liveTranscriptionService->processLiveTranscription(
+                $request->session_id,  // Add session_id parameter
+                $request->live_text,
+                null, // audioSample
+                $request->confidence ?? 0.8
             );
 
             if ($result['success']) {
-                return response()->json([
-                    'success' => true,
-                    'transcription' => $result['transcription'],
-                    'speaker_detection' => $result['speaker_detection'],
-                    'session_stats' => $result['session_stats']
+                Log::info('Live transcription processed successfully', [
+                    'session_id' => $request->session_id,
+                    'transcription_id' => $result['transcription']['id']
                 ]);
             } else {
-                return response()->json([
-                    'success' => false,
+                Log::warning('Live transcription processing failed', [
+                    'session_id' => $request->session_id,
                     'error' => $result['error']
-                ], 422);
+                ]);
             }
 
+            return response()->json($result);
+
         } catch (\Exception $e) {
-            Log::error('Live transcription processing failed', [
+            Log::error('Live transcription exception', [
                 'session_id' => $request->input('session_id'),
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'error' => 'Live transcription processing failed: ' . $e->getMessage()
+                'error' => 'Live transcription failed: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Verify transcription with Whisper and save to database
+     * Process Whisper verification - FIXED SESSION HANDLING
      */
     public function verifyWithWhisper(Request $request): JsonResponse
     {
@@ -219,66 +164,44 @@ class LiveTranscriptionController extends Controller
             $validator = Validator::make($request->all(), [
                 'session_id' => 'required|string',
                 'live_transcription_id' => 'required|string',
-                'audio_chunk' => 'required|file|mimes:webm,wav,mp3,m4a|max:10240', // 10MB max
+                'audio_chunk' => 'required|file|mimes:webm,wav,mp3,m4a|max:25600', // 25MB max
             ]);
 
             if ($validator->fails()) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'Validation failed',
                     'errors' => $validator->errors()
                 ], 422);
             }
 
-            $sessionId = $request->input('session_id');
-            $liveTranscriptionId = $request->input('live_transcription_id');
-            $audioChunk = $request->file('audio_chunk');
-
             Log::info('Whisper verification request', [
-                'session_id' => $sessionId,
-                'live_transcription_id' => $liveTranscriptionId,
-                'chunk_size' => $audioChunk->getSize(),
-                'chunk_type' => $audioChunk->getMimeType()
+                'session_id' => $request->session_id,
+                'live_transcription_id' => $request->live_transcription_id,
+                'chunk_size' => $request->file('audio_chunk')->getSize()
             ]);
 
-            // Get audio chunk content
-            $audioContent = file_get_contents($audioChunk->getPathname());
+            $audioContent = file_get_contents($request->file('audio_chunk')->getPathname());
 
-            // Process with enhanced service
-            $result = $this->enhancedLiveTranscriptionService->processWhisperVerification(
-                $liveTranscriptionId,
+            // FIXED: Pass session_id to the service
+            $result = $this->liveTranscriptionService->processWhisperVerification(
+                $request->session_id,    // Add session_id parameter
+                $request->live_transcription_id,
                 $audioContent
             );
 
             if ($result['success']) {
-                Log::info('Whisper verification successful', [
-                    'transcription_id' => $result['transcription']['id'],
-                    'text_preview' => substr($result['transcription']['text'], 0, 50) . '...',
-                    'database_saved' => $result['transcription']['database_saved'] ?? false
-                ]);
-
-                return response()->json([
-                    'success' => true,
-                    'transcription' => $result['transcription'],
-                    'whisper_result' => $result['whisper_result'] ?? null,
-                    'meta' => [
-                        'processed_at' => now()->toISOString(),
-                        'processing_method' => 'whisper_verification'
-                    ]
+                Log::info('Whisper verification completed', [
+                    'session_id' => $request->session_id,
+                    'transcription_id' => $result['transcription']['id']
                 ]);
             } else {
                 Log::warning('Whisper verification failed', [
-                    'session_id' => $sessionId,
-                    'live_transcription_id' => $liveTranscriptionId,
+                    'session_id' => $request->session_id,
                     'error' => $result['error']
                 ]);
-
-                return response()->json([
-                    'success' => false,
-                    'error' => $result['error'],
-                    'fallback_available' => true
-                ], 422);
             }
+
+            return response()->json($result);
 
         } catch (\Exception $e) {
             Log::error('Whisper verification exception', [

@@ -30,8 +30,8 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
 const menuItems = [
   {
-    title: "Dashboard",
-    icon: DashboardIcon,
+    title: "Alle Gesprekken",
+    icon: HistoryIcon,
     href: "/dashboard",
   },
   {
@@ -40,19 +40,9 @@ const menuItems = [
     href: "/meetings/create",
   },
   {
-    title: "Alle Gesprekken",
+    title: "Gesprek",
     icon: HistoryIcon,
     href: "/meetings",
-  },
-  {
-    title: "Deelnemers",
-    icon: GroupIcon,
-    href: "/participants",
-  },
-  {
-    title: "Sjablonen",
-    icon: DescriptionIcon,
-    href: "/templates",
   },
 ];
 
