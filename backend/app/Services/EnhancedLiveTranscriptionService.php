@@ -213,17 +213,48 @@ class EnhancedLiveTranscriptionService
     }
 
     /**
-     * Process Whisper verification
+     * Process Whisper verification - ENHANCED WITH DEBUG
      */
     public function processWhisperVerification(
         string $sessionId,
         string $liveTranscriptionId,
         $audioChunk
     ): array {
+        // Debug session data first
+        Log::info('🔍 Debug Whisper verification start', [
+            'session_id' => $sessionId,
+            'live_transcription_id' => $liveTranscriptionId,
+            'audio_chunk_size' => strlen($audioChunk)
+        ]);
+
         $sessionData = $this->getSession($sessionId);
         if (!$sessionData) {
+            Log::error('❌ Session not found', ['session_id' => $sessionId]);
             return ['success' => false, 'error' => 'Invalid session'];
         }
+
+        // Debug session contents
+        Log::info('🔍 Session data found', [
+            'session_id' => $sessionId,
+            'transcriptions_count' => count($sessionData['transcriptions'] ?? []),
+            'session_keys' => array_keys($sessionData)
+        ]);
+
+        // Debug all transcription IDs in session
+        $transcriptionIds = [];
+        foreach ($sessionData['transcriptions'] as $index => $transcription) {
+            $transcriptionIds[] = [
+                'index' => $index,
+                'id' => $transcription['id'],
+                'text_preview' => substr($transcription['text'] ?? '', 0, 30),
+                'status' => $transcription['processing_status'] ?? 'unknown'
+            ];
+        }
+        
+        Log::info('🔍 All transcriptions in session', [
+            'looking_for_id' => $liveTranscriptionId,
+            'available_transcriptions' => $transcriptionIds
+        ]);
         
         $transcriptionIndex = null;
         foreach ($sessionData['transcriptions'] as $index => $transcription) {
@@ -234,8 +265,20 @@ class EnhancedLiveTranscriptionService
         }
 
         if ($transcriptionIndex === null) {
+            Log::error('❌ Live transcription not found in session', [
+                'session_id' => $sessionId,
+                'looking_for_id' => $liveTranscriptionId,
+                'available_ids' => array_column($sessionData['transcriptions'], 'id'),
+                'total_transcriptions' => count($sessionData['transcriptions'])
+            ]);
             return ['success' => false, 'error' => 'Live transcription not found'];
         }
+
+        Log::info('✅ Found transcription for Whisper verification', [
+            'transcription_index' => $transcriptionIndex,
+            'transcription_id' => $liveTranscriptionId,
+            'current_status' => $sessionData['transcriptions'][$transcriptionIndex]['processing_status']
+        ]);
 
         $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'processing';
         $this->saveSession($sessionId, $sessionData);
@@ -252,7 +295,18 @@ class EnhancedLiveTranscriptionService
                 true
             );
 
+            Log::info('🤖 Calling Whisper API', [
+                'temp_file_size' => filesize($tempFile),
+                'transcription_id' => $liveTranscriptionId
+            ]);
+
             $whisperResult = $this->whisperService->transcribeAudio($uploadedFile);
+
+            Log::info('🤖 Whisper API result', [
+                'success' => $whisperResult['success'],
+                'error' => $whisperResult['error'] ?? null,
+                'text_length' => isset($whisperResult['text']) ? strlen($whisperResult['text']) : 0
+            ]);
 
             if ($whisperResult['success']) {
                 $speakerInfo = $this->voiceService->identifySpeaker($audioChunk);
@@ -277,9 +331,19 @@ class EnhancedLiveTranscriptionService
                 );
 
                 $this->saveVerifiedTranscription($sessionData['meeting_id'], $sessionData['transcriptions'][$transcriptionIndex]);
+
+                Log::info('✅ Whisper verification completed successfully', [
+                    'transcription_id' => $liveTranscriptionId,
+                    'whisper_text' => substr($whisperResult['text'], 0, 50) . '...'
+                ]);
             } else {
                 $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'error';
                 $sessionData['transcriptions'][$transcriptionIndex]['whisper_error'] = $whisperResult['error'];
+                
+                Log::error('❌ Whisper API failed', [
+                    'transcription_id' => $liveTranscriptionId,
+                    'error' => $whisperResult['error']
+                ]);
             }
 
             $this->saveSession($sessionId, $sessionData);
@@ -291,6 +355,12 @@ class EnhancedLiveTranscriptionService
             ];
 
         } catch (\Exception $e) {
+            Log::error('❌ Whisper verification exception', [
+                'transcription_id' => $liveTranscriptionId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'error';
             $sessionData['transcriptions'][$transcriptionIndex]['whisper_error'] = $e->getMessage();
             $this->saveSession($sessionId, $sessionData);
@@ -308,29 +378,104 @@ class EnhancedLiveTranscriptionService
     }
 
     /**
-     * Save verified transcription to database
+     * Save verified transcription to database - FIXED WITH DYNAMIC SOURCE
      */
     private function saveVerifiedTranscription(int $meetingId, array $transcription): void
     {
         try {
+            // Determine correct source based on transcription type and origin
+            $source = $this->determineTranscriptionSource($transcription);
+            
+            Log::info('Saving verified transcription to database', [
+                'meeting_id' => $meetingId,
+                'transcription_id' => $transcription['id'] ?? 'unknown',
+                'source' => $source,
+                'type' => $transcription['type'] ?? 'unknown',
+                'processing_status' => $transcription['processing_status'] ?? 'unknown',
+                'text_preview' => substr($transcription['text'] ?? '', 0, 50) . '...'
+            ]);
+            
             Transcription::create([
                 'meeting_id' => $meetingId,
-                'speaker_name' => $transcription['speaker_name'],
-                'speaker_id' => $transcription['speaker_id'],
-                'speaker_color' => $transcription['speaker_color'],
-                'text' => $transcription['text'],
-                'confidence' => $transcription['text_confidence'],
-                'source' => 'live_verified',
+                'speaker_name' => $transcription['speaker_name'] ?? 'Onbekende Spreker',
+                'speaker_id' => $transcription['speaker_id'] ?? 'unknown_speaker',
+                'speaker_color' => $transcription['speaker_color'] ?? '#6B7280',
+                'text' => $transcription['text'] ?? '',
+                'confidence' => $transcription['text_confidence'] ?? 0.8,
+                'source' => $source, // FIXED: Now uses dynamic source determination
                 'is_final' => true,
-                'spoken_at' => $transcription['timestamp'],
+                'spoken_at' => $transcription['timestamp'] ?? now()->toISOString(),
+                'metadata' => json_encode([
+                    'whisper_language' => $transcription['whisper_language'] ?? null,
+                    'whisper_duration' => $transcription['whisper_duration'] ?? null,
+                    'processing_status' => $transcription['processing_status'] ?? null,
+                    'verified_at' => $transcription['verified_at'] ?? null,
+                    'whisper_processed' => $transcription['whisper_processed'] ?? false,
+                    'chunk_number' => $transcription['chunk_number'] ?? null,
+                    'speaker_confidence' => $transcription['speaker_confidence'] ?? 0.0,
+                ])
             ]);
+            
+            Log::info('Verified transcription saved successfully', [
+                'meeting_id' => $meetingId,
+                'source' => $source,
+                'transcription_id' => $transcription['id'] ?? 'unknown'
+            ]);
+            
         } catch (\Exception $e) {
             Log::error('Failed to save verified transcription', [
                 'meeting_id' => $meetingId,
-                'transcription_id' => $transcription['id'],
+                'transcription_id' => $transcription['id'] ?? 'unknown',
                 'error' => $e->getMessage(),
+                'transcription_data' => $transcription
             ]);
         }
+    }
+
+    /**
+     * Determine the correct source for a transcription based on its properties
+     */
+    private function determineTranscriptionSource(array $transcription): string
+    {
+        // Check if this transcription has been processed by Whisper
+        if (isset($transcription['whisper_processed']) && $transcription['whisper_processed'] === true) {
+            return 'whisper_verified';
+        }
+
+        // Check if this is a verified transcription (processed by Whisper)
+        if (isset($transcription['type']) && $transcription['type'] === 'verified') {
+            return 'whisper_verified';
+        }
+
+        // Check processing status
+        if (isset($transcription['processing_status']) && $transcription['processing_status'] === 'verified') {
+            return 'whisper_verified';
+        }
+
+        // Check if it has Whisper metadata
+        if (isset($transcription['whisper_language']) || isset($transcription['whisper_duration'])) {
+            return 'whisper_verified';
+        }
+
+        // Check original type
+        if (isset($transcription['type'])) {
+            switch ($transcription['type']) {
+                case 'live':
+                    return 'background_live';
+                case 'whisper':
+                case 'background_whisper':
+                    return 'background_whisper';
+                case 'verified':
+                    return 'whisper_verified';
+                default:
+                    // Fallback based on confidence and processing
+                    return $transcription['text_confidence'] >= 0.9 ? 'whisper_verified' : 'background_live';
+            }
+        }
+
+        // Final fallback - if confidence is high, assume it's Whisper
+        $confidence = $transcription['text_confidence'] ?? 0.8;
+        return $confidence >= 0.9 ? 'whisper_verified' : 'background_live';
     }
 
     /**
@@ -364,16 +509,18 @@ class EnhancedLiveTranscriptionService
         ];
 
         foreach ($sessionData['transcriptions'] as $transcription) {
-            $status = $transcription['processing_status'];
-            $statusCounts[$status]++;
+            $status = $transcription['processing_status'] ?? 'unknown';
+            if (isset($statusCounts[$status])) {
+                $statusCounts[$status]++;
+            }
         }
 
         return [
             'total_transcriptions' => count($sessionData['transcriptions']),
             'status_breakdown' => $statusCounts,
             'verification_rate' => $statusCounts['verified'] / max(1, count($sessionData['transcriptions'])),
-            'voice_setup_complete' => $sessionData['voice_setup_complete'],
-            'duration_minutes' => now()->diffInMinutes($sessionData['started_at']),
+            'voice_setup_complete' => $sessionData['voice_setup_complete'] ?? false,
+            'duration_minutes' => now()->diffInMinutes($sessionData['started_at'] ?? now()),
         ];
     }
 }

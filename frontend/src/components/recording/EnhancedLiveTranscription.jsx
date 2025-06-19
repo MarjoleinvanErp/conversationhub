@@ -349,7 +349,8 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Background transcription processing (WebSpeech)
+
+// Background transcription processing (WebSpeech) - FIXED ID USAGE
   const handleBackgroundTranscription = async (result) => {
     // Skip if WebSpeech is disabled
     if (!transcriptionConfig.live_webspeech_enabled) {
@@ -367,15 +368,27 @@ const EnhancedLiveTranscription = ({
       setIsProcessingBackground(true);
       console.log('🎤 Processing WebSpeech transcription:', transcript.substring(0, 50) + '...');
       
+      console.log('📤 Calling API with transcript...');
       const apiResult = await enhancedLiveTranscriptionService.processLiveTranscription(
         transcript.trim(),
         confidence
       );
 
+      console.log('📥 API Response:', {
+        success: apiResult.success,
+        transcription_id: apiResult.transcription?.id,
+        error: apiResult.error
+      });
+
       if (apiResult.success && apiResult.transcription) {
+        // CRITICAL: Use the ID from API response, not a generated one
+        const transcriptionFromAPI = apiResult.transcription;
+        
+        console.log('✅ Transcription created with ID:', transcriptionFromAPI.id);
+        
         // Send to parent callback for database storage
         onTranscriptionUpdate({
-          ...apiResult.transcription,
+          ...transcriptionFromAPI,
           source: 'background_live',
           confidence: confidence
         });
@@ -384,6 +397,23 @@ const EnhancedLiveTranscription = ({
         if (apiResult.session_stats) {
           onSessionStatsUpdate(apiResult.session_stats);
         }
+
+        // FIXED: Store transcription in waiting queue for Whisper with CORRECT ID
+        console.log('🕐 Adding to Whisper waiting queue with correct ID:', transcriptionFromAPI.id);
+        
+        // This should trigger the Whisper processing with the correct ID
+        if (transcriptionConfig.whisper_enabled) {
+          // Store the transcription ID for Whisper verification
+          window.lastTranscriptionForWhisper = {
+            id: transcriptionFromAPI.id,
+            text: transcriptionFromAPI.text,
+            timestamp: new Date().toISOString()
+          };
+          
+          console.log('📝 Stored for Whisper verification:', window.lastTranscriptionForWhisper);
+        }
+      } else {
+        console.error('❌ API call failed:', apiResult.error);
       }
     } catch (error) {
       console.error('❌ Background transcription error:', error);
@@ -392,7 +422,9 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Background audio chunk processing - MET CONFIG EN STATUS
+
+
+// Background audio chunk processing - FIXED WITH CORRECT ID
   const handleBackgroundAudioChunk = async (audioBlob) => {
     // Skip if Whisper is disabled
     if (!transcriptionConfig.whisper_enabled) {
@@ -407,9 +439,39 @@ const EnhancedLiveTranscription = ({
         chunkDuration: transcriptionConfig.whisper_chunk_duration + 's'
       });
 
-      // Process with Whisper in background
+      // FIXED: Use the last transcription ID if available
+      let transcriptionId = `background_${Date.now()}`; // fallback
+      
+      // Check if we have a recent transcription to verify
+      if (window.lastTranscriptionForWhisper && window.lastTranscriptionForWhisper.id) {
+        transcriptionId = window.lastTranscriptionForWhisper.id;
+        console.log('✅ Using real transcription ID for Whisper:', transcriptionId);
+        
+        // Clear it after use to prevent reuse
+        delete window.lastTranscriptionForWhisper;
+      } else {
+        console.log('⚠️ No recent transcription found, using fallback ID:', transcriptionId);
+        
+        // ALTERNATIVE: Create a dummy transcription for this audio chunk
+        try {
+          console.log('📝 Creating transcription entry for audio chunk...');
+          const dummyTranscription = await enhancedLiveTranscriptionService.processLiveTranscription(
+            'Audio chunk transcriptie wordt verwerkt...',
+            0.5
+          );
+          
+          if (dummyTranscription.success && dummyTranscription.transcription) {
+            transcriptionId = dummyTranscription.transcription.id;
+            console.log('✅ Created transcription entry with ID:', transcriptionId);
+          }
+        } catch (error) {
+          console.warn('❌ Failed to create transcription entry:', error.message);
+        }
+      }
+
+      // Process with Whisper using the correct ID
       const result = await enhancedLiveTranscriptionService.processWhisperVerification(
-        `background_${Date.now()}`,
+        transcriptionId,
         audioBlob
       );
 
@@ -425,6 +487,7 @@ const EnhancedLiveTranscription = ({
           text_preview: transcriptionData.text.substring(0, 50) + '...',
           database_saved: transcriptionData.database_saved,
           processing_status: transcriptionData.processing_status,
+          transcription_id: transcriptionId,
           chunk_duration: transcriptionConfig.whisper_chunk_duration + 's'
         });
 
@@ -469,6 +532,9 @@ const EnhancedLiveTranscription = ({
       }
     }
   };
+
+
+
 
   // Handle speech recognition errors
   const handleSpeechError = (error) => {
