@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import enhancedLiveTranscriptionService from '../../services/api/enhancedLiveTranscriptionService';
+import configService from '../../services/configService';
 
 const EnhancedLiveTranscription = ({ 
   meetingId, 
@@ -8,6 +9,14 @@ const EnhancedLiveTranscription = ({
   onWhisperUpdate = () => {}, // NIEUWE PROP voor Whisper updates
   onSessionStatsUpdate = () => {}
 }) => {
+  // Config state
+  const [transcriptionConfig, setTranscriptionConfig] = useState({
+    live_webspeech_enabled: false,
+    whisper_enabled: true,
+    whisper_chunk_duration: 90
+  });
+  const [configLoaded, setConfigLoaded] = useState(false);
+
   // Session state
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionId, setSessionId] = useState(null);
@@ -35,6 +44,25 @@ const EnhancedLiveTranscription = ({
 
   // Timer ref
   const timerRef = useRef(null);
+  const chunkTimerRef = useRef(null);
+
+  // Config laden bij component mount
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const config = await configService.getTranscriptionConfig();
+        setTranscriptionConfig(config);
+        setConfigLoaded(true);
+        console.log('📋 Transcriptie config geladen:', config);
+      } catch (error) {
+        console.error('❌ Fout bij laden transcriptie config:', error);
+        // Gebruik defaults bij fout
+        setConfigLoaded(true);
+      }
+    };
+    
+    loadConfig();
+  }, []);
 
   // Check speech recognition support
   useEffect(() => {
@@ -70,6 +98,9 @@ const EnhancedLiveTranscription = ({
         if (timerRef.current) {
           clearInterval(timerRef.current);
         }
+        if (chunkTimerRef.current) {
+          clearInterval(chunkTimerRef.current);
+        }
       } catch (error) {
         console.error('Cleanup error:', error);
       }
@@ -96,6 +127,7 @@ const EnhancedLiveTranscription = ({
       setStartupProgress('Initialiseren...');
       
       console.log('🚀 Starting enhanced session for meeting:', meetingId);
+      console.log('📋 Using config:', transcriptionConfig);
       
       setStartupProgress('Deelnemers verwerken...');
       const processedParticipants = participants.map((p, index) => {
@@ -183,30 +215,46 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Start recording
+  // Start recording with config-based behavior
   const startRecording = async () => {
     try {
-      console.log('🚀 Starting recording...');
+      console.log('🚀 Starting recording with config:', transcriptionConfig);
       setRecordingError('');
 
-      if (!speechSupported) {
-        setRecordingError('Speech recognition not supported in this browser');
+      // Check if any transcription method is enabled
+      if (!transcriptionConfig.live_webspeech_enabled && !transcriptionConfig.whisper_enabled) {
+        setRecordingError('Geen transcriptie methoden ingeschakeld. Controleer de configuratie.');
         return;
       }
 
-      // Setup speech recognition for background processing
-      const speechSetup = enhancedLiveTranscriptionService.setupSpeechRecognition(
-        handleBackgroundTranscription,
-        handleSpeechError
-      );
+      // Setup WebSpeech if enabled
+      if (transcriptionConfig.live_webspeech_enabled) {
+        if (!speechSupported) {
+          setRecordingError('Speech recognition not supported in this browser');
+          return;
+        }
 
-      if (!speechSetup) {
-        setRecordingError('Failed to setup speech recognition');
-        return;
+        console.log('🎤 Setting up WebSpeech recognition...');
+        const speechSetup = enhancedLiveTranscriptionService.setupSpeechRecognition(
+          handleBackgroundTranscription,
+          handleSpeechError
+        );
+
+        if (!speechSetup) {
+          setRecordingError('Failed to setup speech recognition');
+          return;
+        }
+      } else {
+        console.log('🔇 WebSpeech uitgeschakeld via configuratie');
       }
 
-      // Setup chunk callback for background Whisper processing
-      enhancedLiveTranscriptionService.setChunkCallback(handleBackgroundAudioChunk);
+      // Setup Whisper chunks if enabled
+      if (transcriptionConfig.whisper_enabled) {
+        console.log(`🤖 Setting up Whisper chunks (${transcriptionConfig.whisper_chunk_duration}s intervals)...`);
+        enhancedLiveTranscriptionService.setChunkCallback(handleBackgroundAudioChunk);
+      } else {
+        console.log('🔇 Whisper transcriptie uitgeschakeld via configuratie');
+      }
 
       const recordingResult = await enhancedLiveTranscriptionService.startRecording();
       
@@ -215,7 +263,15 @@ const EnhancedLiveTranscription = ({
         setIsPaused(false);
         setRecordingTime(0);
         setRecordingStartTime(new Date());
+        
+        // Start Whisper chunk timer if enabled
+        if (transcriptionConfig.whisper_enabled) {
+          startWhisperChunkTimer();
+        }
+        
         console.log('✅ Recording started successfully');
+        console.log(`📋 WebSpeech: ${transcriptionConfig.live_webspeech_enabled ? 'Enabled' : 'Disabled'}`);
+        console.log(`📋 Whisper: ${transcriptionConfig.whisper_enabled ? 'Enabled' : 'Disabled'} (${transcriptionConfig.whisper_chunk_duration}s chunks)`);
       } else {
         setRecordingError(recordingResult.error);
       }
@@ -225,11 +281,36 @@ const EnhancedLiveTranscription = ({
     }
   };
 
+  // Start Whisper chunk processing timer
+  const startWhisperChunkTimer = () => {
+    if (chunkTimerRef.current) {
+      clearInterval(chunkTimerRef.current);
+    }
+
+    const chunkDuration = transcriptionConfig.whisper_chunk_duration * 1000; // Convert to milliseconds
+    
+    chunkTimerRef.current = setInterval(() => {
+      if (isRecording && !isPaused && transcriptionConfig.whisper_enabled) {
+        console.log(`⏰ Whisper chunk timer triggered (${transcriptionConfig.whisper_chunk_duration}s interval)`);
+        // Timer triggers chunk processing - the actual chunk is handled by the service
+      }
+    }, chunkDuration);
+  };
+
+  // Stop Whisper chunk timer
+  const stopWhisperChunkTimer = () => {
+    if (chunkTimerRef.current) {
+      clearInterval(chunkTimerRef.current);
+      chunkTimerRef.current = null;
+    }
+  };
+
   // Pause recording
   const pauseRecording = () => {
     try {
       enhancedLiveTranscriptionService.pauseRecording();
       setIsPaused(true);
+      stopWhisperChunkTimer();
       console.log('⏸️ Recording paused');
     } catch (error) {
       console.error('❌ Error pausing recording:', error);
@@ -242,6 +323,9 @@ const EnhancedLiveTranscription = ({
     try {
       enhancedLiveTranscriptionService.resumeRecording();
       setIsPaused(false);
+      if (transcriptionConfig.whisper_enabled) {
+        startWhisperChunkTimer();
+      }
       console.log('▶️ Recording resumed');
     } catch (error) {
       console.error('❌ Error resuming recording:', error);
@@ -257,6 +341,7 @@ const EnhancedLiveTranscription = ({
       setIsPaused(false);
       setRecordingTime(0);
       setRecordingStartTime(null);
+      stopWhisperChunkTimer();
       console.log('⏹️ Recording stopped');
     } catch (error) {
       console.error('❌ Error stopping recording:', error);
@@ -264,8 +349,14 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Background transcription processing
+  // Background transcription processing (WebSpeech)
   const handleBackgroundTranscription = async (result) => {
+    // Skip if WebSpeech is disabled
+    if (!transcriptionConfig.live_webspeech_enabled) {
+      console.log('🔇 WebSpeech transcription skipped (disabled in config)');
+      return;
+    }
+
     const { transcript, confidence, isFinal } = result;
 
     if (!isFinal || !transcript.trim()) {
@@ -274,6 +365,7 @@ const EnhancedLiveTranscription = ({
 
     try {
       setIsProcessingBackground(true);
+      console.log('🎤 Processing WebSpeech transcription:', transcript.substring(0, 50) + '...');
       
       const apiResult = await enhancedLiveTranscriptionService.processLiveTranscription(
         transcript.trim(),
@@ -300,12 +392,19 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Background audio chunk processing - MET WHISPER CALLBACK EN STATUS
+  // Background audio chunk processing - MET CONFIG EN STATUS
   const handleBackgroundAudioChunk = async (audioBlob) => {
+    // Skip if Whisper is disabled
+    if (!transcriptionConfig.whisper_enabled) {
+      console.log('🔇 Whisper chunk processing skipped (disabled in config)');
+      return;
+    }
+
     try {
       console.log('🎵 Processing audio chunk with Whisper...', {
         size: audioBlob.size,
-        timestamp: new Date().toLocaleTimeString()
+        timestamp: new Date().toLocaleTimeString(),
+        chunkDuration: transcriptionConfig.whisper_chunk_duration + 's'
       });
 
       // Process with Whisper in background
@@ -325,7 +424,8 @@ const EnhancedLiveTranscription = ({
         console.log('✅ Whisper transcription completed:', {
           text_preview: transcriptionData.text.substring(0, 50) + '...',
           database_saved: transcriptionData.database_saved,
-          processing_status: transcriptionData.processing_status
+          processing_status: transcriptionData.processing_status,
+          chunk_duration: transcriptionConfig.whisper_chunk_duration + 's'
         });
 
         // Send improved transcription to parent (voor algemene transcripties)
@@ -387,11 +487,42 @@ const EnhancedLiveTranscription = ({
     }
   };
 
+  // Show loading state while config is being loaded
+  if (!configLoaded) {
+    return (
+      <div className="bg-white rounded-lg border">
+        <div className="p-6 text-center">
+          <div className="flex items-center justify-center space-x-3">
+            <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            <span className="text-blue-600 font-medium">Configuratie laden...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // INITIAL SETUP PHASE: Choose voice setup or skip
   if (setupPhase === 'initial' && !sessionActive) {
     return (
       <div className="bg-white rounded-lg border">
         <div className="p-6 text-center">
+          
+          {/* Config Status Display */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <div className="text-sm text-gray-700 mb-2">
+              <strong>Transcriptie Configuratie:</strong>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+              <div className={`flex items-center space-x-2 ${transcriptionConfig.live_webspeech_enabled ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`w-2 h-2 rounded-full ${transcriptionConfig.live_webspeech_enabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span>WebSpeech: {transcriptionConfig.live_webspeech_enabled ? 'Aan' : 'Uit'}</span>
+              </div>
+              <div className={`flex items-center space-x-2 ${transcriptionConfig.whisper_enabled ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`w-2 h-2 rounded-full ${transcriptionConfig.whisper_enabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                <span>Whisper: {transcriptionConfig.whisper_enabled ? `Aan (${transcriptionConfig.whisper_chunk_duration}s)` : 'Uit'}</span>
+              </div>
+            </div>
+          </div>
           
           {/* Loading State */}
           {isStartingSession ? (
@@ -443,6 +574,13 @@ const EnhancedLiveTranscription = ({
                 <p className="text-xs text-orange-600 mt-2">
                   Geen deelnemers gevonden. Voice setup niet mogelijk.
                 </p>
+              )}
+
+              {/* Config warning */}
+              {!transcriptionConfig.live_webspeech_enabled && !transcriptionConfig.whisper_enabled && (
+                <div className="text-xs text-red-600 mt-4 p-3 bg-red-50 rounded">
+                  ⚠️ Waarschuwing: Beide transcriptie methoden zijn uitgeschakeld in de configuratie.
+                </div>
               )}
 
               {/* Debug info */}
@@ -607,15 +745,31 @@ const EnhancedLiveTranscription = ({
               isPaused ? 'bg-yellow-500' : 'bg-gray-300'
             }`}></div>
             <span className="text-gray-600">
-              {isRecording && !isPaused ? 'Recording (90s chunks)' : 
+              {isRecording && !isPaused ? `Recording (${transcriptionConfig.whisper_chunk_duration}s chunks)` : 
                isPaused ? 'Gepauzeerd' : 'Gestopt'}
             </span>
           </div>
         </div>
         
         <div className="flex items-center space-x-2 text-xs text-gray-500">
+          {/* Active transcription methods indicator */}
+          {transcriptionConfig.live_webspeech_enabled && (
+            <span className="text-blue-600 flex items-center space-x-1">
+              <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+              <span>WebSpeech</span>
+            </span>
+          )}
+          {transcriptionConfig.whisper_enabled && (
+            <span className="text-purple-600 flex items-center space-x-1">
+              <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+              <span>Whisper</span>
+            </span>
+          )}
           {isProcessingBackground && (
-            <span className="text-blue-600">🤖 Processing...</span>
+            <span className="text-green-600 flex items-center space-x-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+              <span>Processing...</span>
+            </span>
           )}
         </div>
       </div>
@@ -635,6 +789,16 @@ const EnhancedLiveTranscription = ({
         </div>
       )}
 
+      {/* Config status warning */}
+      {!transcriptionConfig.live_webspeech_enabled && !transcriptionConfig.whisper_enabled && (
+        <div className="bg-orange-50 border-l-4 border-orange-400 text-orange-700 p-3 text-sm">
+          <div className="flex items-center space-x-2">
+            <span>⚠️</span>
+            <span>Alle transcriptie methoden zijn uitgeschakeld in de configuratie.</span>
+          </div>
+        </div>
+      )}
+
       {/* Recording Display */}
       <div className="p-6">
         {/* Timer Display */}
@@ -648,7 +812,7 @@ const EnhancedLiveTranscription = ({
                 <div className={`w-2 h-2 rounded-full ${isPaused ? 'bg-yellow-500' : 'bg-red-500 animate-pulse'}`}></div>
                 <span>
                   {isPaused ? 'Opname gepauzeerd' : 
-                   `90-seconden chunks actief sinds ${recordingStartTime ? recordingStartTime.toLocaleTimeString('nl-NL') : ''}`}
+                   `${transcriptionConfig.whisper_chunk_duration}s chunks actief sinds ${recordingStartTime ? recordingStartTime.toLocaleTimeString('nl-NL') : ''}`}
                 </span>
               </span>
             ) : (
@@ -657,15 +821,50 @@ const EnhancedLiveTranscription = ({
           </div>
         </div>
 
+        {/* Active Methods Display */}
+        {isRecording && (
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <div className="text-sm font-medium text-gray-700 mb-2">Actieve Transcriptie Methoden:</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div className={`flex items-center space-x-2 p-2 rounded ${
+                transcriptionConfig.live_webspeech_enabled ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                <div className={`w-3 h-3 rounded-full ${
+                  transcriptionConfig.live_webspeech_enabled ? 'bg-blue-500' : 'bg-gray-400'
+                }`}></div>
+                <span>🎤 Live WebSpeech</span>
+                <span className="text-xs">
+                  {transcriptionConfig.live_webspeech_enabled ? 'Actief' : 'Uit'}
+                </span>
+              </div>
+              
+              <div className={`flex items-center space-x-2 p-2 rounded ${
+                transcriptionConfig.whisper_enabled ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                <div className={`w-3 h-3 rounded-full ${
+                  transcriptionConfig.whisper_enabled ? 'bg-purple-500' : 'bg-gray-400'
+                }`}></div>
+                <span>🤖 Whisper AI</span>
+                <span className="text-xs">
+                  {transcriptionConfig.whisper_enabled ? `${transcriptionConfig.whisper_chunk_duration}s` : 'Uit'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Controls */}
         <div className="flex justify-center space-x-4">
           {!isRecording ? (
             <button
               onClick={startRecording}
-              className="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-3 rounded-lg"
-              disabled={!speechSupported}
+              className="bg-green-600 hover:bg-green-700 text-white font-medium px-6 py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={
+                (!speechSupported && transcriptionConfig.live_webspeech_enabled) ||
+                (!transcriptionConfig.live_webspeech_enabled && !transcriptionConfig.whisper_enabled)
+              }
             >
-              🎤 Start 90s Opname
+              🎤 Start {transcriptionConfig.whisper_chunk_duration}s Opname
             </button>
           ) : (
             <>
@@ -695,11 +894,32 @@ const EnhancedLiveTranscription = ({
           )}
         </div>
         
-        {!speechSupported && (
-          <p className="text-xs text-red-600 mt-4 text-center">
-            Speech recognition niet ondersteund. Gebruik Chrome of Edge.
-          </p>
-        )}
+        {/* Status messages */}
+        <div className="mt-4 text-center">
+          {!speechSupported && transcriptionConfig.live_webspeech_enabled && (
+            <p className="text-xs text-red-600 mb-2">
+              Speech recognition niet ondersteund. Gebruik Chrome of Edge.
+            </p>
+          )}
+          
+          {transcriptionConfig.live_webspeech_enabled && transcriptionConfig.whisper_enabled && (
+            <p className="text-xs text-green-600">
+              ✅ Dual transcriptie actief: WebSpeech (real-time) + Whisper AI ({transcriptionConfig.whisper_chunk_duration}s chunks)
+            </p>
+          )}
+          
+          {transcriptionConfig.live_webspeech_enabled && !transcriptionConfig.whisper_enabled && (
+            <p className="text-xs text-blue-600">
+              🎤 Alleen WebSpeech transcriptie actief (real-time)
+            </p>
+          )}
+          
+          {!transcriptionConfig.live_webspeech_enabled && transcriptionConfig.whisper_enabled && (
+            <p className="text-xs text-purple-600">
+              🤖 Alleen Whisper AI transcriptie actief ({transcriptionConfig.whisper_chunk_duration}s chunks)
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );
