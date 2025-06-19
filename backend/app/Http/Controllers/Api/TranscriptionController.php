@@ -33,7 +33,7 @@ class TranscriptionController extends Controller
 
             if ($sourceFilter) {
                 if ($sourceFilter === 'live') {
-                    $query->whereIn('source', ['live', 'live_fallback', 'background_live']);
+                    $query->whereIn('source', ['live', 'live_fallback', 'background_live', 'live_verified']);
                 } elseif ($sourceFilter === 'whisper') {
                     $query->whereIn('source', ['whisper', 'whisper_verified', 'background_whisper']);
                 } else {
@@ -319,7 +319,7 @@ class TranscriptionController extends Controller
 
             if ($type) {
                 if ($type === 'live') {
-                    $query->whereIn('source', ['live', 'live_fallback', 'background_live']);
+                    $query->whereIn('source', ['live', 'live_fallback', 'background_live', 'live_verified']);
                 } elseif ($type === 'whisper') {
                     $query->whereIn('source', ['whisper', 'whisper_verified', 'background_whisper']);
                 } else {

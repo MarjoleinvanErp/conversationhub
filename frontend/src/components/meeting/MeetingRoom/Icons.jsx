@@ -19,3 +19,8 @@ export const Play = ({ className }) => <Icon className={className}>▶️</Icon>
 export const Pause = ({ className }) => <Icon className={className}>⏸️</Icon>;
 export const CheckCircle = ({ className }) => <Icon className={className}>✅</Icon>;
 export const Calendar = ({ className }) => <Icon className={className}>📅</Icon>;
+export const AlertCircle = ({ className }) => <Icon className={className}>⚠️</Icon>;
+export const Clock = ({ className }) => <Icon className={className}>🕐</Icon>;
+export const Loader2 = ({ className }) => <Icon className={className}>⏳</Icon>;
+export const RefreshCw = ({ className }) => <Icon className={className}>🔄</Icon>;
+export const List = ({ className }) => <Icon className={className}>📋</Icon>;

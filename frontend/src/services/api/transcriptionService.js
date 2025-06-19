@@ -29,10 +29,16 @@ class TranscriptionService {
   }
 
   /**
-   * Delete transcriptions by type (live, whisper, etc.)
+   * Delete transcriptions by type (live, whisper, etc.) - ENHANCED WITH LOGGING
    */
   async deleteTranscriptionsByType(meetingId, type = null) {
     try {
+      console.log(`🗑️ DELETE API call starting:`, {
+        meetingId,
+        type,
+        url: type ? `/api/meetings/${meetingId}/transcriptions/${type}` : `/api/meetings/${meetingId}/transcriptions`
+      });
+
       // If no type specified, delete all transcriptions for the meeting
       const url = type 
         ? `${API_BASE_URL}/api/meetings/${meetingId}/transcriptions/${type}`
@@ -48,13 +54,22 @@ class TranscriptionService {
 
       const result = await response.json();
       
+      console.log('📥 DELETE API response:', {
+        status: response.status,
+        ok: response.ok,
+        success: result.success,
+        deleted_count: result.deleted_count,
+        message: result.message,
+        full_result: result
+      });
+      
       if (!response.ok) {
         throw new Error(result.message || 'Failed to delete transcriptions');
       }
 
       return { success: true, data: result };
     } catch (error) {
-      console.error('Delete transcriptions by type error:', error);
+      console.error('❌ Delete transcriptions by type error:', error);
       return { success: false, message: error.message || 'Verbindingsfout' };
     }
   }

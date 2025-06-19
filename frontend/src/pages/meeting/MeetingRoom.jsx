@@ -163,7 +163,7 @@ const MeetingRoom = () => {
   });
 
   // Recording states
-  const [recordingMode, setRecordingMode] = useState('manual');
+  const [recordingMode, setRecordingMode] = useState('automatic');
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
@@ -472,6 +472,17 @@ const MeetingRoom = () => {
       // Load initial Whisper transcriptions
       await refreshWhisperTranscriptions().catch(console.error);
 
+      // Auto-refresh transcriptions after page load
+      console.log('🔄 Auto-refreshing transcriptions after page load...');
+      setTimeout(async () => {
+        try {
+          await refreshAllTranscriptions();
+          console.log('✅ Auto-refresh transcriptions completed');
+        } catch (error) {
+          console.error('❌ Auto-refresh transcriptions failed:', error);
+        }
+      }, 1000); // Wait 1 second after initial load
+
     } catch (error) {
       console.error('❌ Error loading meeting data:', error);
       setError(error.message || 'Er ging iets mis bij het laden van de meeting');
@@ -552,8 +563,9 @@ const MeetingRoom = () => {
     setTranscriptions(prev => [...prev, transcription]);
   };
 
-  // Delete handlers
+// FIXED Delete handlers - WITH API CALL
   const handleDeleteTranscriptions = (type) => {
+    console.log(`🗑️ Delete requested for type: ${type}`);
     setDeleteTarget(type);
     setShowDeleteModal(true);
   };
@@ -562,23 +574,48 @@ const MeetingRoom = () => {
     try {
       setIsDeleting(true);
       
-      if (deleteTarget === 'live') {
-        setLiveTranscriptions([]);
-        setTranscriptions(prev => prev.filter(t => t.source !== 'live'));
-      } else if (deleteTarget === 'whisper') {
-        setWhisperTranscriptions([]);
-        setTranscriptions(prev => prev.filter(t => !['whisper', 'whisper_verified', 'background_whisper'].includes(t.source)));
+      console.log(`🗑️ Starting delete process for ${deleteTarget} transcriptions (meeting ${id})...`);
+      
+      // Call the API to delete from database
+      const deleteResult = await transcriptionService.deleteTranscriptionsByType(id, deleteTarget);
+      
+      if (!deleteResult.success) {
+        throw new Error(deleteResult.message || 'Failed to delete transcriptions from database');
       }
       
-      console.log(`${deleteTarget} transcriptions deleted`);
+      console.log(`✅ Successfully deleted ${deleteResult.data?.deleted_count || 0} ${deleteTarget} transcriptions from database`);
       
-    } catch (error) {
-      console.error('Error deleting transcriptions:', error);
-      setError('Fout bij verwijderen transcripties');
-    } finally {
-      setIsDeleting(false);
+      // Update UI state ONLY after successful API call
+      if (deleteTarget === 'live') {
+        setLiveTranscriptions([]);
+        setTranscriptions(prev => prev.filter(t => 
+          !['live', 'live_fallback', 'background_live'].includes(t.source)
+        ));
+        console.log('🔄 UI updated: Live transcriptions cleared');
+      } else if (deleteTarget === 'whisper') {
+        setWhisperTranscriptions([]);
+        setTranscriptions(prev => prev.filter(t => 
+          !['whisper', 'whisper_verified', 'background_whisper'].includes(t.source)
+        ));
+        console.log('🔄 UI updated: Whisper transcriptions cleared');
+      }
+      
+      // Clear any error messages
+      setError('');
+      
+      // Close modal
       setShowDeleteModal(false);
       setDeleteTarget('');
+      
+      console.log(`✅ Delete process completed successfully for ${deleteTarget} type`);
+      
+    } catch (error) {
+      console.error(`❌ Error deleting ${deleteTarget} transcriptions:`, error);
+      setError(`Fout bij verwijderen ${deleteTarget} transcripties: ${error.message}`);
+      
+      // Keep modal open so user can try again or cancel
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -680,7 +717,22 @@ const MeetingRoom = () => {
               isRefreshing={refreshingPanels.recording}
             />
 
-            {/* 2. Live Transcription Panel */}
+            {/* 2. Report Panel - MOVED FROM SIDEBAR TO MAIN COLUMN */}
+            <ReportPanel
+              isExpanded={expandedPanels.report}
+              onToggle={() => togglePanel('report')}
+              reportData={reportData}
+              setReportData={setReportData}
+              recordingTime={recordingTime}
+              liveTranscriptions={liveTranscriptions}
+              whisperTranscriptions={whisperTranscriptions}
+              meeting={meeting}
+              formatTime={formatTime}
+              onRefresh={refreshPanelData}
+              isRefreshing={refreshingPanels.report}
+            />
+
+            {/* 3. Live Transcription Panel */}
             <LiveTranscriptionPanel
               isExpanded={expandedPanels.liveTranscription}
               onToggle={() => togglePanel('liveTranscription')}
@@ -692,7 +744,7 @@ const MeetingRoom = () => {
               isRefreshing={refreshingPanels.liveTranscription}
             />
 
-            {/* 3. Whisper Transcription Panel */}
+            {/* 4. Whisper Transcription Panel */}
             <WhisperTranscriptionPanel
               isExpanded={expandedPanels.whisperTranscription}
               onToggle={() => togglePanel('whisperTranscription')}
@@ -708,7 +760,7 @@ const MeetingRoom = () => {
           {/* Right Column - Sidebar Panels (4 columns) */}
           <div className="col-span-4 space-y-6">
             
-            {/* 4. Agenda Panel - UPDATED WITH NEW PROPS */}
+            {/* 1. Agenda Panel - UPDATED WITH NEW PROPS */}
             <AgendaPanel
               key={meeting?.agendaItems?.length || meeting?.agenda_items?.length || 0}
               isExpanded={expandedPanels.agenda}
@@ -722,22 +774,7 @@ const MeetingRoom = () => {
               isRefreshing={refreshingPanels.agenda}
             />
 
-            {/* 5. Report Panel */}
-            <ReportPanel
-              isExpanded={expandedPanels.report}
-              onToggle={() => togglePanel('report')}
-              reportData={reportData}
-              setReportData={setReportData}
-              recordingTime={recordingTime}
-              liveTranscriptions={liveTranscriptions}
-              whisperTranscriptions={whisperTranscriptions}
-              meeting={meeting}
-              formatTime={formatTime}
-              onRefresh={refreshPanelData}
-              isRefreshing={refreshingPanels.report}
-            />
-
-            {/* 6. Privacy Panel */}
+            {/* 2. Privacy Panel */}
             <PrivacyPanel
               isExpanded={expandedPanels.privacy}
               onToggle={() => togglePanel('privacy')}
@@ -746,7 +783,7 @@ const MeetingRoom = () => {
               isRefreshing={refreshingPanels.privacy}
             />
 
-            {/* 7. Speaker Panel */}
+            {/* 3. Speaker Panel */}
             <SpeakerPanel
               isExpanded={expandedPanels.speaker}
               onToggle={() => togglePanel('speaker')}
