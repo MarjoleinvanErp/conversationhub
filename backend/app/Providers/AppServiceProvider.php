@@ -17,7 +17,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\AzureWhisperService::class);
         $this->app->singleton(\App\Services\PrivacyFilterService::class);
         $this->app->singleton(\App\Services\N8nIntegrationService::class);
-        
+        $this->app->singleton(\App\Services\N8NService::class);
+
         // Enhanced services
         $this->app->singleton(\App\Services\VoiceFingerprintService::class);
         $this->app->singleton(\App\Services\EnhancedLiveTranscriptionService::class);

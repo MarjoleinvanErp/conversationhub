@@ -1,416 +1,308 @@
 <?php
-// File: backend/app/Services/N8NService.php
 
 namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Cache;
 
 class N8NService
 {
-    protected $webhookUrl;
-    protected $apiKey;
-    protected $baseUrl;
-    protected $timeout;
+    private string $baseUrl;
+    private string $username;
+    private string $password;
+    private string $webhookBaseUrl;
 
     public function __construct()
     {
-        $this->webhookUrl = env('N8N_WEBHOOK_URL');
-        $this->apiKey = env('N8N_API_KEY');
-        $this->baseUrl = env('N8N_BASE_URL', 'http://n8n:5678');
-        $this->timeout = 30;
+        $this->baseUrl = rtrim(env('N8N_URL', 'http://n8n:5678'), '/');
+        $this->username = env('N8N_API_USER', 'admin');
+        $this->password = env('N8N_API_PASSWORD', 'conversationhub123');
+        $this->webhookBaseUrl = rtrim(env('N8N_WEBHOOK_BASE_URL', 'http://n8n:5678/webhook'), '/');
     }
 
     /**
-     * Export meeting data to N8N workflow
+     * Get authentication token from N8N
      */
-    public function exportToN8N(array $data): array
+    private function getAuthToken(): ?string
     {
+        $cacheKey = 'n8n_auth_token';
+        
+        // Check cache first (token geldig voor 1 uur)
+        if (Cache::has($cacheKey)) {
+            return Cache::get($cacheKey);
+        }
+
         try {
-            if (!$this->webhookUrl) {
-                throw new \Exception('N8N webhook URL niet geconfigureerd');
+            Log::info('N8N: Requesting authentication token', [
+                'url' => $this->baseUrl . '/rest/login',
+                'username' => $this->username
+            ]);
+
+            $response = Http::timeout(10)->post($this->baseUrl . '/rest/login', [
+                'email' => $this->username,
+                'password' => $this->password
+            ]);
+
+            if (!$response->successful()) {
+                Log::error('N8N: Authentication failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+                return null;
             }
 
-            $exportId = Str::uuid()->toString();
+            $data = $response->json();
+            $token = $data['data']['token'] ?? null;
+
+            if ($token) {
+                // Cache token for 50 minutes (expires in 1 hour)
+                Cache::put($cacheKey, $token, now()->addMinutes(50));
+                Log::info('N8N: Authentication successful, token cached');
+            }
+
+            return $token;
+
+        } catch (\Exception $e) {
+            Log::error('N8N: Authentication error', [
+                'error' => $e->getMessage(),
+                'url' => $this->baseUrl
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Check if N8N is available and accessible
+     */
+    public function checkConnection(): array
+    {
+        try {
+            // Test basic connectivity
+            $response = Http::timeout(5)->get($this->baseUrl . '/healthz');
             
-            $payload = [
-                'export_id' => $exportId,
-                'type' => 'meeting_export',
-                'timestamp' => now()->toISOString(),
-                'data' => $data
+            if (!$response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'N8N not reachable',
+                    'status' => $response->status()
+                ];
+            }
+
+            // Test authentication
+            $token = $this->getAuthToken();
+            if (!$token) {
+                return [
+                    'success' => false,
+                    'message' => 'N8N authentication failed',
+                    'status' => 401
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'N8N connection successful',
+                'url' => $this->baseUrl,
+                'webhook_url' => $this->webhookBaseUrl
             ];
 
-            Log::info('N8N Export payload', ['export_id' => $exportId, 'meeting_id' => $data['meeting']['id']]);
+        } catch (\Exception $e) {
+            Log::error('N8N: Connection check failed', [
+                'error' => $e->getMessage(),
+                'url' => $this->baseUrl
+            ]);
 
-            $response = Http::timeout($this->timeout)
-                ->withHeaders($this->getHeaders())
-                ->post($this->webhookUrl, $payload);
+            return [
+                'success' => false,
+                'message' => 'N8N connection error: ' . $e->getMessage(),
+                'status' => 500
+            ];
+        }
+    }
 
-            if ($response->successful()) {
-                $responseData = $response->json();
+    /**
+     * Get list of available workflows
+     */
+    public function getWorkflows(): array
+    {
+        $token = $this->getAuthToken();
+        if (!$token) {
+            return [
+                'success' => false,
+                'message' => 'Authentication failed',
+                'data' => []
+            ];
+        }
+
+        try {
+            $response = Http::timeout(10)
+                ->withHeaders([
+                    'Authorization' => 'Bearer ' . $token,
+                    'Content-Type' => 'application/json'
+                ])
+                ->get($this->baseUrl . '/rest/workflows');
+
+            if (!$response->successful()) {
+                Log::error('N8N: Failed to get workflows', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
                 
-                Log::info('N8N Export successful', [
-                    'export_id' => $exportId,
-                    'response' => $responseData
+                return [
+                    'success' => false,
+                    'message' => 'Failed to retrieve workflows',
+                    'data' => []
+                ];
+            }
+
+            $workflows = $response->json('data', []);
+
+            return [
+                'success' => true,
+                'message' => 'Workflows retrieved successfully',
+                'data' => $workflows
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('N8N: Get workflows error', [
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'message' => 'Error retrieving workflows: ' . $e->getMessage(),
+                'data' => []
+            ];
+        }
+    }
+
+    /**
+     * Send meeting summary to N8N webhook
+     */
+    public function sendMeetingSummary(array $meetingData): array
+    {
+        try {
+            // Prepare data for N8N webhook
+            $webhookData = [
+                'meeting_id' => $meetingData['id'] ?? null,
+                'title' => $meetingData['title'] ?? 'Onbekende vergadering',
+                'date' => $meetingData['date'] ?? now()->toISOString(),
+                'participants' => $meetingData['participants'] ?? [],
+                'summary' => $meetingData['summary'] ?? '',
+                'action_items' => $meetingData['action_items'] ?? [],
+                'transcript' => $meetingData['transcript'] ?? '',
+                'duration_minutes' => $meetingData['duration_minutes'] ?? 0,
+                'timestamp' => now()->toISOString(),
+                'source' => 'ConversationHub'
+            ];
+
+            Log::info('N8N: Sending meeting summary', [
+                'meeting_id' => $webhookData['meeting_id'],
+                'webhook_url' => $this->webhookBaseUrl . '/conversationhub-meeting'
+            ]);
+
+            // Send to N8N webhook
+            $response = Http::timeout(30)
+                ->post($this->webhookBaseUrl . '/conversationhub-meeting', $webhookData);
+
+            if (!$response->successful()) {
+                Log::error('N8N: Webhook call failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'meeting_id' => $webhookData['meeting_id']
                 ]);
 
                 return [
-                    'success' => true,
-                    'export_id' => $exportId,
-                    'webhook_triggered' => true,
-                    'data' => $responseData,
-                    'message' => 'Data succesvol naar N8N verzonden'
+                    'success' => false,
+                    'message' => 'Failed to send meeting summary to N8N',
+                    'status' => $response->status()
                 ];
-            } else {
-                throw new \Exception('N8N webhook response error: ' . $response->status() . ' - ' . $response->body());
             }
 
+            $responseData = $response->json();
+
+            Log::info('N8N: Meeting summary sent successfully', [
+                'meeting_id' => $webhookData['meeting_id'],
+                'response' => $responseData
+            ]);
+
+            return [
+                'success' => true,
+                'message' => 'Meeting summary sent to N8N successfully',
+                'data' => $responseData
+            ];
+
         } catch (\Exception $e) {
-            Log::error('N8N Export error: ' . $e->getMessage(), [
-                'webhook_url' => $this->webhookUrl,
-                'data_keys' => array_keys($data)
+            Log::error('N8N: Send meeting summary error', [
+                'error' => $e->getMessage(),
+                'meeting_id' => $meetingData['id'] ?? 'unknown'
             ]);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage(),
-                'export_id' => $exportId ?? null
+                'message' => 'Error sending meeting summary: ' . $e->getMessage(),
+                'status' => 500
             ];
         }
     }
 
     /**
-     * Generate report via N8N
+     * Test webhook connectivity
      */
-    public function generateReport(array $reportData): array
+    public function testWebhook(): array
     {
         try {
-            if (!$this->webhookUrl) {
-                throw new \Exception('N8N webhook URL niet geconfigureerd');
-            }
-
-            $reportId = Str::uuid()->toString();
-            
-            $payload = [
-                'report_id' => $reportId,
-                'type' => 'report_generation',
-                'timestamp' => now()->toISOString(),
-                'data' => $reportData
+            $testData = [
+                'test' => true,
+                'message' => 'ConversationHub webhook test',
+                'timestamp' => now()->toISOString()
             ];
 
-            Log::info('N8N Report generation request', [
-                'report_id' => $reportId, 
-                'meeting_id' => $reportData['meeting_id']
+            $response = Http::timeout(10)
+                ->post($this->webhookBaseUrl . '/conversationhub-test', $testData);
+
+            if (!$response->successful()) {
+                return [
+                    'success' => false,
+                    'message' => 'Webhook test failed',
+                    'status' => $response->status(),
+                    'url' => $this->webhookBaseUrl . '/conversationhub-test'
+                ];
+            }
+
+            return [
+                'success' => true,
+                'message' => 'Webhook test successful',
+                'data' => $response->json(),
+                'url' => $this->webhookBaseUrl . '/conversationhub-test'
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('N8N: Webhook test error', [
+                'error' => $e->getMessage(),
+                'url' => $this->webhookBaseUrl
             ]);
 
-            $response = Http::timeout($this->timeout)
-                ->withHeaders($this->getHeaders())
-                ->post($this->webhookUrl . '/report', $payload);
-
-            if ($response->successful()) {
-                $responseData = $response->json();
-                
-                return [
-                    'success' => true,
-                    'report_id' => $reportId,
-                    'estimated_completion' => now()->addMinutes(5)->toISOString(),
-                    'data' => $responseData,
-                    'message' => 'Verslag generatie gestart'
-                ];
-            } else {
-                throw new \Exception('N8N report webhook error: ' . $response->status());
-            }
-
-        } catch (\Exception $e) {
-            Log::error('N8N Report generation error: ' . $e->getMessage());
-
             return [
                 'success' => false,
-                'error' => $e->getMessage(),
-                'report_id' => $reportId ?? null
+                'message' => 'Webhook test error: ' . $e->getMessage(),
+                'status' => 500
             ];
         }
     }
 
     /**
-     * Check export status
+     * Get N8N configuration for frontend
      */
-    public function checkExportStatus(string $exportId): array
-    {
-        try {
-            if (!$this->baseUrl) {
-                // Fallback: assume completed if no API endpoint
-                return [
-                    'success' => true,
-                    'status' => 'completed',
-                    'message' => 'Export status check niet beschikbaar'
-                ];
-            }
-
-            $response = Http::timeout($this->timeout)
-                ->withHeaders($this->getHeaders())
-                ->get("{$this->baseUrl}/api/export/{$exportId}/status");
-
-            if ($response->successful()) {
-                $data = $response->json();
-                
-                return [
-                    'success' => true,
-                    'status' => $data['status'] ?? 'unknown',
-                    'data' => $data
-                ];
-            }
-
-            return [
-                'success' => false,
-                'error' => 'Status check mislukt: ' . $response->status()
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('N8N Export status check error: ' . $e->getMessage());
-
-            return [
-                'success' => false,
-                'error' => $e->getMessage()
-            ];
-        }
-    }
-
-    /**
-     * Get report status
-     */
-    public function getReportStatus(string $reportId): array
-    {
-        try {
-            if (!$this->baseUrl) {
-                // Fallback: assume generating
-                return [
-                    'success' => true,
-                    'status' => 'generating',
-                    'message' => 'Report status check niet beschikbaar'
-                ];
-            }
-
-            $response = Http::timeout($this->timeout)
-                ->withHeaders($this->getHeaders())
-                ->get("{$this->baseUrl}/api/report/{$reportId}/status");
-
-            if ($response->successful()) {
-                $data = $response->json();
-                
-                return [
-                    'success' => true,
-                    'status' => $data['status'] ?? 'unknown',
-                    'data' => $data
-                ];
-            }
-
-            return [
-                'success' => false,
-                'error' => 'Report status check mislukt'
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('N8N Report status check error: ' . $e->getMessage());
-
-            return [
-                'success' => false,
-                'error' => $e->getMessage()
-            ];
-        }
-    }
-
-    /**
-     * Download completed report
-     */
-    public function downloadReport(string $reportId): array
-    {
-        try {
-            if (!$this->baseUrl) {
-                return [
-                    'success' => false,
-                    'error' => 'N8N base URL niet geconfigureerd'
-                ];
-            }
-
-            $response = Http::timeout($this->timeout)
-                ->withHeaders($this->getHeaders())
-                ->get("{$this->baseUrl}/api/report/{$reportId}/download");
-
-            if ($response->successful()) {
-                $data = $response->json();
-                
-                return [
-                    'success' => true,
-                    'content' => $data['content'] ?? $data,
-                    'format' => $data['format'] ?? 'markdown',
-                    'data' => $data
-                ];
-            }
-
-            return [
-                'success' => false,
-                'error' => 'Report download mislukt'
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('N8N Report download error: ' . $e->getMessage());
-
-            return [
-                'success' => false,
-                'error' => $e->getMessage()
-            ];
-        }
-    }
-
-    /**
-     * Send live update to N8N
-     */
-    public function sendLiveUpdate(string $meetingId, array $liveData): array
-    {
-        try {
-            if (!$this->webhookUrl) {
-                // Silent fail for live updates if no webhook configured
-                return [
-                    'success' => true,
-                    'message' => 'Live updates niet geconfigureerd'
-                ];
-            }
-
-            $payload = [
-                'type' => 'live_update',
-                'meeting_id' => $meetingId,
-                'timestamp' => now()->toISOString(),
-                'data' => $liveData
-            ];
-
-            $response = Http::timeout(10) // Shorter timeout for live updates
-                ->withHeaders($this->getHeaders())
-                ->post($this->webhookUrl . '/live', $payload);
-
-            return [
-                'success' => $response->successful(),
-                'message' => $response->successful() ? 'Live update verzonden' : 'Live update mislukt',
-                'data' => $response->json()
-            ];
-
-        } catch (\Exception $e) {
-            Log::warning('N8N Live update error: ' . $e->getMessage());
-
-            return [
-                'success' => false,
-                'error' => $e->getMessage()
-            ];
-        }
-    }
-
-    /**
-     * Test N8N connection
-     */
-    public function testConnection(): array
-    {
-        try {
-            if (!$this->webhookUrl && !$this->baseUrl) {
-                return [
-                    'success' => false,
-                    'error' => 'Geen N8N URLs geconfigureerd'
-                ];
-            }
-
-            $testPayload = [
-                'type' => 'connection_test',
-                'timestamp' => now()->toISOString(),
-                'test_id' => Str::uuid()->toString()
-            ];
-
-            // Test webhook if available
-            if ($this->webhookUrl) {
-                $response = Http::timeout(10)
-                    ->withHeaders($this->getHeaders())
-                    ->post($this->webhookUrl . '/test', $testPayload);
-
-                if ($response->successful()) {
-                    return [
-                        'success' => true,
-                        'message' => 'N8N webhook verbinding succesvol',
-                        'data' => [
-                            'webhook_status' => 'connected',
-                            'response_time' => $response->handlerStats()['total_time'] ?? null
-                        ]
-                    ];
-                }
-            }
-
-            // Test API if available
-            if ($this->baseUrl) {
-                $response = Http::timeout(10)
-                    ->withHeaders($this->getHeaders())
-                    ->get("{$this->baseUrl}/healthz");
-
-                if ($response->successful()) {
-                    return [
-                        'success' => true,
-                        'message' => 'N8N API verbinding succesvol',
-                        'data' => [
-                            'api_status' => 'connected',
-                            'response_time' => $response->handlerStats()['total_time'] ?? null
-                        ]
-                    ];
-                }
-            }
-
-            return [
-                'success' => false,
-                'error' => 'Geen succesvolle N8N verbinding'
-            ];
-
-        } catch (\Exception $e) {
-            Log::error('N8N Connection test error: ' . $e->getMessage());
-
-            return [
-                'success' => false,
-                'error' => $e->getMessage()
-            ];
-        }
-    }
-
-    /**
-     * Get request headers for N8N API calls
-     */
-    private function getHeaders(): array
-    {
-        $headers = [
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-            'User-Agent' => 'ConversationHub/1.0'
-        ];
-
-        if ($this->apiKey) {
-            $headers['Authorization'] = 'Bearer ' . $this->apiKey;
-        }
-
-        return $headers;
-    }
-
-    /**
-     * Check if N8N is configured
-     */
-    public function isConfigured(): bool
-    {
-        return !empty($this->webhookUrl) || !empty($this->baseUrl);
-    }
-
-    /**
-     * Get configuration status
-     */
-    public function getConfigStatus(): array
+    public function getConfig(): array
     {
         return [
-            'webhook_configured' => !empty($this->webhookUrl),
-            'api_configured' => !empty($this->baseUrl),
-            'auth_configured' => !empty($this->apiKey),
-            'fully_configured' => $this->isConfigured() && !empty($this->apiKey)
+            'enabled' => !empty($this->baseUrl),
+            'url' => $this->baseUrl,
+            'webhook_base_url' => $this->webhookBaseUrl,
+            'auto_export_enabled' => env('N8N_AUTO_EXPORT_ENABLED', false),
+            'auto_export_interval' => env('N8N_AUTO_EXPORT_INTERVAL', 10),
+            'connected' => $this->checkConnection()['success']
         ];
     }
 }

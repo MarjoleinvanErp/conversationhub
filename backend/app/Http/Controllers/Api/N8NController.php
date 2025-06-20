@@ -1,398 +1,67 @@
 <?php
-// File: backend/app/Http/Controllers/Api/N8NController.php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Services\N8NService;
-use App\Models\Meeting;
-use App\Models\Transcription;
-use App\Models\N8NExport;
-use App\Models\N8NReport;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class N8NController extends Controller
 {
-    protected $n8nService;
+    private string $webhookBaseUrl;
 
-    public function __construct(N8NService $n8nService)
+    public function __construct()
     {
-        $this->n8nService = $n8nService;
+        $this->webhookBaseUrl = rtrim(env('N8N_WEBHOOK_BASE_URL', 'http://n8n:5678/webhook'), '/');
     }
 
     /**
-     * Export meeting data to N8N workflow
+     * Get N8N status and configuration
      */
-    public function exportMeeting(Request $request): JsonResponse
+    public function status(): JsonResponse
     {
         try {
-            $validator = Validator::make($request->all(), [
-                'meeting_id' => 'required|exists:meetings,id',
-                'export_options' => 'sometimes|array',
-                'export_options.include_transcriptions' => 'sometimes|boolean',
-                'export_options.include_agenda' => 'sometimes|boolean',
-                'export_options.include_participants' => 'sometimes|boolean',
-                'export_options.include_metadata' => 'sometimes|boolean',
-                'export_options.format' => 'sometimes|string|in:complete,summary,minimal'
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validatie fout',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $meetingId = $request->input('meeting_id');
-            $exportOptions = $request->input('export_options', []);
+            // Test basic N8N connectivity
+            $n8nUrl = env('N8N_URL', 'http://n8n:5678');
             
-            Log::info('N8N Export requested', [
-                'meeting_id' => $meetingId,
-                'user_id' => auth()->id(),
-                'options' => $exportOptions
-            ]);
-
-            // Load meeting with all related data
-            $meeting = Meeting::with([
-                'participants',
-                'agenda_items',
-                'transcriptions' => function ($query) use ($exportOptions) {
-                    if (!($exportOptions['include_transcriptions'] ?? true)) {
-                        $query->whereRaw('1=0'); // Exclude transcriptions
-                    }
-                }
-            ])->findOrFail($meetingId);
-
-            // Check authorization
-            if (!$this->canAccessMeeting($meeting)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Geen toegang tot deze meeting'
-                ], 403);
-            }
-
-            // Prepare export data
-            $exportData = $this->prepareExportData($meeting, $exportOptions);
+            $response = Http::timeout(5)->get($n8nUrl . '/');
             
-            // Send to N8N
-            $result = $this->n8nService->exportToN8N($exportData);
-            
-            if (!$result['success']) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'N8N export mislukt',
-                    'error' => $result['error']
-                ], 500);
-            }
+            $connectionStatus = [
+                'connected' => $response->successful(),
+                'url' => $n8nUrl,
+                'webhook_base_url' => $this->webhookBaseUrl,
+                'status_code' => $response->status(),
+                'tested_at' => now()->toISOString()
+            ];
 
-            // Store export record
-            $export = N8NExport::create([
-                'meeting_id' => $meetingId,
-                'user_id' => auth()->id(),
-                'export_id' => $result['export_id'],
-                'status' => 'sent',
-                'export_options' => $exportOptions,
-                'n8n_response' => $result['data']
-            ]);
+            if (!$response->successful()) {
+                $connectionStatus['error'] = 'N8N not reachable';
+                $connectionStatus['response_body'] = substr($response->body(), 0, 200);
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Meeting succesvol geëxporteerd naar N8N',
+                'message' => 'N8N status checked',
                 'data' => [
-                    'export_id' => $export->export_id,
-                    'webhook_triggered' => $result['webhook_triggered'],
-                    'status' => $export->status,
-                    'created_at' => $export->created_at
+                    'connection' => $connectionStatus,
+                    'config' => [
+                        'trigger_enabled' => true,
+                        'data_endpoints_enabled' => true,
+                        'webhook_endpoints_enabled' => true
+                    ]
                 ]
             ]);
 
         } catch (\Exception $e) {
-            Log::error('N8N export error: ' . $e->getMessage(), [
-                'meeting_id' => $request->input('meeting_id'),
-                'user_id' => auth()->id(),
-                'trace' => $e->getTraceAsString()
-            ]);
+            Log::error('N8N status error: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'Fout bij exporteren naar N8N',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get export status
-     */
-    public function getExportStatus(string $exportId): JsonResponse
-    {
-        try {
-            $export = N8NExport::where('export_id', $exportId)
-                ->where('user_id', auth()->id())
-                ->firstOrFail();
-
-            // Check status with N8N if still pending
-            if (in_array($export->status, ['sent', 'processing'])) {
-                $statusResult = $this->n8nService->checkExportStatus($exportId);
-                
-                if ($statusResult['success']) {
-                    $export->update([
-                        'status' => $statusResult['status'],
-                        'updated_at' => now()
-                    ]);
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'export_id' => $export->export_id,
-                    'status' => $export->status,
-                    'created_at' => $export->created_at,
-                    'updated_at' => $export->updated_at,
-                    'meeting_id' => $export->meeting_id
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Export status error: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Fout bij ophalen export status',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Request report generation
-     */
-    public function generateReport(Request $request): JsonResponse
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'meeting_id' => 'required|exists:meetings,id',
-                'report_options' => 'sometimes|array',
-                'report_options.type' => 'sometimes|string|in:standard,summary,detailed',
-                'report_options.language' => 'sometimes|string|in:nl,en',
-                'report_options.format' => 'sometimes|string|in:markdown,html,pdf,docx'
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validatie fout',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $meetingId = $request->input('meeting_id');
-            $reportOptions = $request->input('report_options', []);
-
-            $meeting = Meeting::with(['transcriptions', 'participants', 'agenda_items'])
-                ->findOrFail($meetingId);
-
-            if (!$this->canAccessMeeting($meeting)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Geen toegang tot deze meeting'
-                ], 403);
-            }
-
-            // Prepare data for report generation
-            $reportData = $this->prepareReportData($meeting, $reportOptions);
-            
-            // Request report from N8N
-            $result = $this->n8nService->generateReport($reportData);
-            
-            if (!$result['success']) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Verslag generatie mislukt',
-                    'error' => $result['error']
-                ], 500);
-            }
-
-            // Store report request
-            $report = N8NReport::create([
-                'meeting_id' => $meetingId,
-                'user_id' => auth()->id(),
-                'report_id' => $result['report_id'],
-                'status' => 'requested',
-                'report_options' => $reportOptions,
-                'estimated_completion' => $result['estimated_completion'] ?? now()->addMinutes(5)
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Verslag generatie gestart',
-                'data' => [
-                    'report_id' => $report->report_id,
-                    'status' => $report->status,
-                    'estimated_completion' => $report->estimated_completion,
-                    'created_at' => $report->created_at
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Report generation error: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Fout bij aanvragen verslag generatie',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get generated report
-     */
-    public function getReport(string $reportId): JsonResponse
-    {
-        try {
-            $report = N8NReport::where('report_id', $reportId)
-                ->where('user_id', auth()->id())
-                ->with('meeting')
-                ->firstOrFail();
-
-            // Check if report is ready
-            if ($report->status === 'requested' || $report->status === 'generating') {
-                $statusResult = $this->n8nService->getReportStatus($reportId);
-                
-                if ($statusResult['success'] && $statusResult['status'] === 'completed') {
-                    $reportContent = $this->n8nService->downloadReport($reportId);
-                    
-                    if ($reportContent['success']) {
-                        $report->update([
-                            'status' => 'completed',
-                            'content' => $reportContent['content'],
-                            'completed_at' => now()
-                        ]);
-                    }
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'report_id' => $report->report_id,
-                    'meeting_id' => $report->meeting_id,
-                    'status' => $report->status,
-                    'content' => $report->content,
-                    'report_options' => $report->report_options,
-                    'created_at' => $report->created_at,
-                    'completed_at' => $report->completed_at
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Get report error: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Fout bij ophalen verslag',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get all reports for a meeting
-     */
-    public function getMeetingReports(string $meetingId): JsonResponse
-    {
-        try {
-            $meeting = Meeting::findOrFail($meetingId);
-            
-            if (!$this->canAccessMeeting($meeting)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Geen toegang tot deze meeting'
-                ], 403);
-            }
-
-            $reports = N8NReport::where('meeting_id', $meetingId)
-                ->where('user_id', auth()->id())
-                ->orderBy('created_at', 'desc')
-                ->get();
-
-            return response()->json([
-                'success' => true,
-                'data' => $reports->map(function ($report) {
-                    return [
-                        'report_id' => $report->report_id,
-                        'status' => $report->status,
-                        'report_options' => $report->report_options,
-                        'has_content' => !empty($report->content),
-                        'created_at' => $report->created_at,
-                        'completed_at' => $report->completed_at
-                    ];
-                })
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Get meeting reports error: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Fout bij ophalen meeting verslagen',
-                'error' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Send live update to N8N
-     */
-    public function sendLiveUpdate(Request $request): JsonResponse
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'meeting_id' => 'required|exists:meetings,id',
-                'live_data' => 'required|array'
-            ]);
-
-            if ($validator->fails()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Validatie fout',
-                    'errors' => $validator->errors()
-                ], 422);
-            }
-
-            $meetingId = $request->input('meeting_id');
-            $liveData = $request->input('live_data');
-
-            $meeting = Meeting::findOrFail($meetingId);
-            
-            if (!$this->canAccessMeeting($meeting)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Geen toegang tot deze meeting'
-                ], 403);
-            }
-
-            // Send live update to N8N
-            $result = $this->n8nService->sendLiveUpdate($meetingId, $liveData);
-
-            return response()->json([
-                'success' => $result['success'],
-                'message' => $result['message'],
-                'data' => $result['data'] ?? null
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Live update error: ' . $e->getMessage());
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Fout bij versturen live update',
+                'message' => 'Failed to get N8N status',
                 'error' => $e->getMessage()
             ], 500);
         }
@@ -404,121 +73,344 @@ class N8NController extends Controller
     public function testConnection(): JsonResponse
     {
         try {
-            $result = $this->n8nService->testConnection();
-
-            return response()->json([
-                'success' => $result['success'],
-                'message' => $result['message'],
-                'data' => $result['data'] ?? null
-            ]);
+            $n8nUrl = env('N8N_URL', 'http://n8n:5678');
+            
+            Log::info('N8N: Testing connection', ['url' => $n8nUrl]);
+            
+            $response = Http::timeout(10)->get($n8nUrl . '/');
+            
+            if ($response->successful()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'N8N connection successful',
+                    'data' => [
+                        'url' => $n8nUrl,
+                        'status_code' => $response->status(),
+                        'response_time' => 'under 10s'
+                    ]
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'N8N connection failed',
+                    'data' => [
+                        'url' => $n8nUrl,
+                        'status_code' => $response->status(),
+                        'error' => substr($response->body(), 0, 200)
+                    ]
+                ], 500);
+            }
 
         } catch (\Exception $e) {
             Log::error('N8N connection test error: ' . $e->getMessage());
 
             return response()->json([
                 'success' => false,
-                'message' => 'N8N verbinding test mislukt',
+                'message' => 'N8N connection test failed',
                 'error' => $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Prepare export data for N8N
+     * Trigger N8N workflow for meeting processing
+     * Sends only meeting_id, N8N fetches data itself via /api/n8n-data endpoints
      */
-    private function prepareExportData(Meeting $meeting, array $options): array
+    public function triggerMeeting(Request $request, $meetingId): JsonResponse
     {
-        $data = [
-            'meeting' => [
-                'id' => $meeting->id,
-                'title' => $meeting->title,
-                'description' => $meeting->description,
-                'status' => $meeting->status,
-                'scheduled_start' => $meeting->scheduled_start,
-                'scheduled_end' => $meeting->scheduled_end,
-                'actual_start' => $meeting->actual_start,
-                'actual_end' => $meeting->actual_end,
-                'created_at' => $meeting->created_at,
-                'updated_at' => $meeting->updated_at
-            ]
-        ];
+        try {
+            $validator = Validator::make($request->all(), [
+                'event_type' => 'sometimes|string|in:started,completed,updated,transcription_updated'
+            ]);
 
-        if ($options['include_participants'] ?? true) {
-            $data['participants'] = $meeting->participants->map(function ($participant) {
-                return [
-                    'id' => $participant->id,
-                    'name' => $participant->name,
-                    'role' => $participant->role,
-                    'email' => $participant->email
-                ];
-            });
-        }
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
 
-        if ($options['include_agenda'] ?? true) {
-            $data['agenda_items'] = $meeting->agenda_items->map(function ($item) {
-                return [
-                    'id' => $item->id,
-                    'title' => $item->title,
-                    'description' => $item->description,
-                    'order_index' => $item->order_index,
-                    'status' => $item->status,
-                    'estimated_duration' => $item->estimated_duration
-                ];
-            });
-        }
+            $eventType = $request->event_type ?? 'meeting_updated';
 
-        if ($options['include_transcriptions'] ?? true) {
-            $data['transcriptions'] = $meeting->transcriptions->map(function ($transcription) {
-                return [
-                    'id' => $transcription->id,
-                    'text' => $transcription->text,
-                    'speaker' => $transcription->speaker,
-                    'speaker_name' => $transcription->speaker_name,
-                    'source' => $transcription->source,
-                    'confidence' => $transcription->confidence,
-                    'start_time' => $transcription->start_time,
-                    'end_time' => $transcription->end_time,
-                    'created_at' => $transcription->created_at
-                ];
-            });
-        }
-
-        if ($options['include_metadata'] ?? true) {
-            $data['metadata'] = [
-                'total_transcriptions' => $meeting->transcriptions->count(),
-                'total_participants' => $meeting->participants->count(),
-                'total_agenda_items' => $meeting->agenda_items->count(),
-                'export_timestamp' => now()->toISOString(),
-                'export_user_id' => auth()->id()
+            // Prepare trigger data for N8N
+            $triggerData = [
+                'meeting_id' => (int) $meetingId,
+                'event_type' => $eventType,
+                'triggered_at' => now()->toISOString(),
+                'source' => 'ConversationHub',
+                'api_base_url' => env('APP_URL', 'http://backend:8000') . '/api/n8n-data',
+                'webhook_id' => 'trigger_' . time()
             ];
+
+            // Use configured webhook URL or fallback to default
+            $legacyWebhookUrl = env('N8N_WEBHOOK_URL');
+            if ($legacyWebhookUrl) {
+                $webhookUrl = $legacyWebhookUrl;
+            } else {
+                $webhookUrl = $this->webhookBaseUrl . '/gespreksverslag';
+            }
+
+            Log::info('N8N: Triggering workflow', [
+                'meeting_id' => $meetingId,
+                'event_type' => $eventType,
+                'webhook_url' => $webhookUrl
+            ]);
+
+            $response = Http::timeout(10)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'User-Agent' => 'ConversationHub-Trigger/1.0'
+                ])
+                ->post($webhookUrl, $triggerData);
+
+            if (!$response->successful()) {
+                Log::error('N8N: Trigger failed', [
+                    'status' => $response->status(),
+                    'body' => substr($response->body(), 0, 500),
+                    'meeting_id' => $meetingId,
+                    'webhook_url' => $webhookUrl
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to trigger N8N workflow',
+                    'data' => [
+                        'meeting_id' => $meetingId,
+                        'status_code' => $response->status(),
+                        'webhook_url' => $webhookUrl
+                    ]
+                ], 500);
+            }
+
+            Log::info('N8N: Workflow triggered successfully', [
+                'meeting_id' => $meetingId,
+                'response' => $response->json()
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'N8N workflow triggered successfully',
+                'data' => [
+                    'meeting_id' => $meetingId,
+                    'event_type' => $eventType,
+                    'trigger_data' => $triggerData,
+                    'n8n_response' => $response->json(),
+                    'webhook_url' => $webhookUrl
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('N8N trigger meeting error: ' . $e->getMessage(), [
+                'meeting_id' => $meetingId,
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to trigger N8N workflow',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        return $data;
     }
 
     /**
-     * Prepare data for report generation
+     * Trigger when meeting is completed
      */
-    private function prepareReportData(Meeting $meeting, array $options): array
+    public function triggerMeetingCompleted($meetingId): JsonResponse
     {
-        return [
-            'meeting_id' => $meeting->id,
-            'meeting_title' => $meeting->title,
-            'meeting_date' => $meeting->scheduled_start,
-            'transcriptions' => $meeting->transcriptions->pluck('text')->toArray(),
-            'participants' => $meeting->participants->pluck('name')->toArray(),
-            'agenda_items' => $meeting->agenda_items->pluck('title')->toArray(),
-            'report_options' => $options
-        ];
+        $request = new Request(['event_type' => 'completed']);
+        return $this->triggerMeeting($request, $meetingId);
     }
 
     /**
-     * Check if user can access meeting
+     * Trigger when meeting is started
      */
-    private function canAccessMeeting(Meeting $meeting): bool
+    public function triggerMeetingStarted($meetingId): JsonResponse
     {
-        // For now, check if user is owner or participant
-        return $meeting->created_by === auth()->id() || 
-               $meeting->participants()->where('user_id', auth()->id())->exists();
+        $request = new Request(['event_type' => 'started']);
+        return $this->triggerMeeting($request, $meetingId);
+    }
+
+    /**
+     * Test trigger functionality
+     */
+    public function testTrigger(): JsonResponse
+    {
+        try {
+            $testData = [
+                'meeting_id' => 999,
+                'event_type' => 'test_trigger',
+                'triggered_at' => now()->toISOString(),
+                'source' => 'ConversationHub-Test',
+                'api_base_url' => env('APP_URL', 'http://backend:8000') . '/api/n8n-data',
+                'test_data' => [
+                    'message' => 'This is a test trigger from ConversationHub',
+                    'timestamp' => now()->toISOString(),
+                    'environment' => env('APP_ENV', 'local')
+                ]
+            ];
+
+            $webhookUrl = $this->webhookBaseUrl . '/gespreksverslag-test';
+
+            Log::info('N8N: Sending test trigger', [
+                'webhook_url' => $webhookUrl,
+                'test_data' => $testData
+            ]);
+
+            $response = Http::timeout(10)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'User-Agent' => 'ConversationHub-Test/1.0'
+                ])
+                ->post($webhookUrl, $testData);
+
+            if (!$response->successful()) {
+                Log::warning('N8N: Test trigger failed', [
+                    'status' => $response->status(),
+                    'body' => substr($response->body(), 0, 200),
+                    'webhook_url' => $webhookUrl
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Test trigger failed',
+                    'data' => [
+                        'webhook_url' => $webhookUrl,
+                        'status_code' => $response->status(),
+                        'error_body' => substr($response->body(), 0, 200)
+                    ]
+                ], 500);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Test trigger sent successfully',
+                'data' => [
+                    'test_data' => $testData,
+                    'webhook_url' => $webhookUrl,
+                    'n8n_response' => $response->json()
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('N8N test trigger error: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to send test trigger',
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Save AI-generated meeting report from N8N
+     */
+    public function saveReport(Request $request, $meetingId): JsonResponse
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'report_content' => 'required|string',
+                'report_type' => 'sometimes|string|in:summary,detailed,ai_generated',
+                'generated_by' => 'sometimes|string',
+                'metadata' => 'sometimes|array'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            $reportData = [
+                'meeting_id' => (int) $meetingId,
+                'title' => 'AI Gespreksverslag',
+                'content' => $request->report_content,
+                'type' => $request->report_type ?? 'ai_generated',
+                'format' => 'markdown',
+                'generated_by' => $request->generated_by ?? 'N8N_AI_Agent',
+                'generated_at' => now(),
+                'status' => 'completed',
+                'metadata' => json_encode($request->metadata ?? [
+                    'source' => 'N8N',
+                    'ai_model' => 'GPT',
+                    'version' => '1.0'
+                ]),
+                'created_at' => now(),
+                'updated_at' => now()
+            ];
+
+            // Try to insert into reports table
+            try {
+                $reportId = DB::table('reports')->insertGetId($reportData);
+                
+                Log::info('N8N: Report saved successfully', [
+                    'meeting_id' => $meetingId,
+                    'report_id' => $reportId,
+                    'content_length' => strlen($request->report_content)
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Gespreksverslag succesvol opgeslagen',
+                    'data' => [
+                        'report_id' => $reportId,
+                        'meeting_id' => $meetingId,
+                        'saved_at' => now()->toISOString(),
+                        'content_length' => strlen($request->report_content),
+                        'type' => $reportData['type']
+                    ]
+                ]);
+
+            } catch (\Exception $dbError) {
+                // If reports table doesn't exist, save to meeting_reports table
+                Log::warning('N8N: Reports table not found, trying meeting_reports', [
+                    'error' => $dbError->getMessage()
+                ]);
+
+                $meetingReportData = [
+                    'meeting_id' => (int) $meetingId,
+                    'report_title' => 'AI Gespreksverslag',
+                    'report_content' => $request->report_content,
+                    'report_type' => $request->report_type ?? 'ai_generated',
+                    'generated_by' => $request->generated_by ?? 'N8N_AI_Agent',
+                    'created_at' => now(),
+                    'updated_at' => now()
+                ];
+
+                $reportId = DB::table('meeting_reports')->insertGetId($meetingReportData);
+
+                Log::info('N8N: Report saved to meeting_reports', [
+                    'meeting_id' => $meetingId,
+                    'report_id' => $reportId
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Gespreksverslag opgeslagen in meeting_reports',
+                    'data' => [
+                        'report_id' => $reportId,
+                        'meeting_id' => $meetingId,
+                        'table' => 'meeting_reports'
+                    ]
+                ]);
+            }
+
+        } catch (\Exception $e) {
+            Log::error('N8N: Save report error', [
+                'meeting_id' => $meetingId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Fout bij opslaan gespreksverslag',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 }

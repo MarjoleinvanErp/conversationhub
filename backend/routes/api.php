@@ -37,9 +37,59 @@ Route::prefix('auth')->group(function () {
     Route::post('/forgot-password', [\App\Http\Controllers\Api\AuthController::class, 'forgotPassword']);
 });
 
-// N8N Health check (no auth required) 
-Route::get('/webhook/n8n/health', [App\Http\Controllers\Api\N8NWebhookController::class, 'health']); 
+/*
+|--------------------------------------------------------------------------
+| N8N Routes (GEEN AUTHENTICATIE - Public voor N8N toegang)
+|--------------------------------------------------------------------------
+*/
 
+// N8N Data Endpoints - Voor N8N om meeting data op te halen
+Route::prefix('n8n-data')->group(function () {
+    // Health check specifically for N8N
+    Route::get('/health', [\App\Http\Controllers\Api\N8NDataController::class, 'health']);
+    
+    // Meeting basis info
+    Route::get('/meeting/{meetingId}', [\App\Http\Controllers\Api\N8NDataController::class, 'getMeeting']);
+    
+    // Meeting componenten
+    Route::get('/meeting/{meetingId}/participants', [\App\Http\Controllers\Api\N8NDataController::class, 'getParticipants']);
+    Route::get('/meeting/{meetingId}/agenda', [\App\Http\Controllers\Api\N8NDataController::class, 'getAgenda']);
+    Route::get('/meeting/{meetingId}/transcriptions', [\App\Http\Controllers\Api\N8NDataController::class, 'getTranscriptions']);
+    Route::get('/meeting/{meetingId}/privacy', [\App\Http\Controllers\Api\N8NDataController::class, 'getPrivacyData']);
+    
+    // Complete meeting package (alle data in één call)
+    Route::get('/meeting/{meetingId}/complete', [\App\Http\Controllers\Api\N8NDataController::class, 'getCompleteMeeting']);
+});
+
+// N8N Trigger Endpoints - Voor ConversationHub om N8N te triggeren
+Route::prefix('n8n')->group(function () {
+    // Trigger N8N workflows met alleen meeting ID
+    Route::post('/trigger-meeting/{meetingId}', [App\Http\Controllers\Api\N8NController::class, 'triggerMeeting']);
+    Route::post('/trigger-meeting-completed/{meetingId}', [App\Http\Controllers\Api\N8NController::class, 'triggerMeetingCompleted']);
+    Route::post('/trigger-meeting-started/{meetingId}', [App\Http\Controllers\Api\N8NController::class, 'triggerMeetingStarted']);
+    
+    // Test triggers
+    Route::post('/test-trigger', [App\Http\Controllers\Api\N8NController::class, 'testTrigger']);
+    
+    // Connection testing
+    Route::get('/status', [App\Http\Controllers\Api\N8NController::class, 'status']);
+    Route::post('/test-connection', [App\Http\Controllers\Api\N8NController::class, 'testConnection']);
+
+   // Gespreksverslag opslaan
+    Route::post('/save-report/{meetingId}', [App\Http\Controllers\Api\N8NController::class, 'saveReport']);
+
+
+
+
+});
+
+// N8N Webhook Endpoints - Voor N8N om data terug te sturen
+Route::prefix('webhook/n8n')->group(function () {
+    Route::get('/health', [App\Http\Controllers\Api\N8NWebhookController::class, 'health']);
+    Route::post('/report-completed', [App\Http\Controllers\Api\N8NWebhookController::class, 'reportCompleted']);
+    Route::post('/export-completed', [App\Http\Controllers\Api\N8NWebhookController::class, 'exportCompleted']);
+    Route::post('/custom', [App\Http\Controllers\Api\N8NWebhookController::class, 'customWebhook']);
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -182,32 +232,3 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/privacy/settings', [\App\Http\Controllers\Api\PrivacyController::class, 'settings']);
     Route::post('/privacy/consent', [\App\Http\Controllers\Api\PrivacyController::class, 'consent']);
 });
-
-
-
-// N8N Integration Routes
-Route::middleware(['auth:sanctum'])->prefix('n8n')->group(function () {
-    
-    // Export functionality
-    Route::post('/export-meeting', [App\Http\Controllers\Api\N8NController::class, 'exportMeeting']);
-    Route::get('/export-status/{exportId}', [App\Http\Controllers\Api\N8NController::class, 'getExportStatus']);
-    
-    // Report generation
-    Route::post('/generate-report', [App\Http\Controllers\Api\N8NController::class, 'generateReport']);
-    Route::get('/report/{reportId}', [App\Http\Controllers\Api\N8NController::class, 'getReport']);
-    Route::get('/meeting/{meetingId}/reports', [App\Http\Controllers\Api\N8NController::class, 'getMeetingReports']);
-    
-    // Live updates
-    Route::post('/live-update', [App\Http\Controllers\Api\N8NController::class, 'sendLiveUpdate']);
-    
-    // Configuration and testing
-    Route::post('/test-connection', [App\Http\Controllers\Api\N8NController::class, 'testConnection']);
-    Route::get('/config', [App\Http\Controllers\Api\ConfigController::class, 'getN8NConfig']);   
-	
-    // Operation management
-    Route::post('/cancel-operation/{operationId}', [App\Http\Controllers\Api\N8NController::class, 'cancelOperation']);
-});
-
-// Webhook endpoint for N8N to send reports back (no auth required)
-Route::post('/webhook/n8n/report-completed', [App\Http\Controllers\Api\N8NWebhookController::class, 'reportCompleted']);
-Route::post('/webhook/n8n/export-completed', [App\Http\Controllers\Api\N8NWebhookController::class, 'exportCompleted']);
