@@ -130,7 +130,7 @@ const WhisperTranscriptionPanel = ({
           onClick={onToggle}
         >
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
-          <h3 className="font-semibold text-slate-900">🤖 Whisper Transcriptie</h3>
+          <h3 className="font-semibold text-slate-900">Whisper Transcriptie</h3>
           <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
             {allTranscriptions.length} items
           </span>

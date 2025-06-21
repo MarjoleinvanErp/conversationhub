@@ -20,110 +20,43 @@ import {
   ConfirmationModal
 } from '../../components/meeting/MeetingRoom/index.js';
 
-// Debug Component - VERWIJDER DIT IN PRODUCTIE
-const DebugPanel = ({ transcriptions, liveTranscriptions, whisperTranscriptions }) => {
-  const [showDebug, setShowDebug] = useState(false);
+// Import icons voor FloatingButtons
+import { Download, Send } from '../../components/meeting/MeetingRoom/Icons.jsx';
 
-  if (!showDebug) {
-    return (
-      <div className="fixed bottom-4 right-4">
-        <button
-          onClick={() => setShowDebug(true)}
-          className="bg-purple-600 text-white px-3 py-2 rounded-lg text-xs hover:bg-purple-700"
-        >
-          🐛 Debug Data
-        </button>
-      </div>
-    );
-  }
-
+const FloatingButtons = ({ 
+  meetingId, 
+  meeting, 
+  isLoading = false,
+  onDownloadRawData,
+  onN8NTrigger 
+}) => {
   return (
-    <div className="fixed bottom-4 right-4 bg-white border-2 border-purple-500 rounded-lg p-4 max-w-md max-h-96 overflow-y-auto shadow-lg z-50">
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="font-bold text-purple-800">Debug Info</h3>
-        <button
-          onClick={() => setShowDebug(false)}
-          className="text-purple-600 hover:text-purple-800"
-        >
-          ✕
-        </button>
-      </div>
-      
-      <div className="space-y-3 text-xs">
-        <div>
-          <h4 className="font-semibold text-gray-700">📊 Totaal Overzicht</h4>
-          <p>Alle transcripties: {transcriptions.length}</p>
-          <p>Live transcripties: {liveTranscriptions.length}</p>
-          <p>Whisper transcripties: {whisperTranscriptions.length}</p>
-        </div>
+    <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-50">
+      {/* Download Raw Data Button */}
+      <button
+        onClick={onDownloadRawData}
+        disabled={isLoading}
+        className={`bg-blue-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-all transform hover:scale-105 flex items-center space-x-2 ${
+          isLoading ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
+        title="Download ruwe data"
+      >
+        <Download className="w-5 h-5" />
+        <span className="text-sm font-medium">Ruwe Data</span>
+      </button>
 
-        <div>
-          <h4 className="font-semibold text-green-700">🎤 Live Transcripties</h4>
-          {liveTranscriptions.length === 0 ? (
-            <p className="text-gray-500">Geen live transcripties</p>
-          ) : (
-            liveTranscriptions.slice(0, 3).map((t, i) => (
-              <div key={i} className="bg-green-50 p-2 rounded mb-1">
-                <p><strong>ID:</strong> {t.id}</p>
-                <p><strong>Source:</strong> {t.source}</p>
-                <p><strong>Speaker:</strong> {t.speaker_name || t.speaker}</p>
-                <p><strong>Text:</strong> {(t.text || '').substring(0, 50)}...</p>
-                <p><strong>Timestamp:</strong> {t.created_at ? new Date(t.created_at).toLocaleTimeString() : 'Nu'}</p>
-              </div>
-            ))
-          )}
-          {liveTranscriptions.length > 3 && (
-            <p className="text-gray-500">... en {liveTranscriptions.length - 3} meer</p>
-          )}
-        </div>
-
-        <div>
-          <h4 className="font-semibold text-blue-700">🤖 Whisper Transcripties</h4>
-          {whisperTranscriptions.length === 0 ? (
-            <p className="text-gray-500">Geen whisper transcripties</p>
-          ) : (
-            whisperTranscriptions.slice(0, 3).map((t, i) => (
-              <div key={i} className="bg-blue-50 p-2 rounded mb-1">
-                <p><strong>ID:</strong> {t.id}</p>
-                <p><strong>Source:</strong> {t.source}</p>
-                <p><strong>Speaker:</strong> {t.speaker_name || t.speaker}</p>
-                <p><strong>Text:</strong> {(t.text || '').substring(0, 50)}...</p>
-                <p><strong>Confidence:</strong> {t.confidence ? Math.round(parseFloat(t.confidence) * 100) + '%' : 'N/A'}</p>
-                <p><strong>Timestamp:</strong> {t.created_at ? new Date(t.created_at).toLocaleTimeString() : 'Nu'}</p>
-              </div>
-            ))
-          )}
-          {whisperTranscriptions.length > 3 && (
-            <p className="text-gray-500">... en {whisperTranscriptions.length - 3} meer</p>
-          )}
-        </div>
-
-        <div>
-          <h4 className="font-semibold text-gray-700">🔄 Source Types</h4>
-          {Object.entries(transcriptions.reduce((acc, t) => {
-            acc[t.source] = (acc[t.source] || 0) + 1;
-            return acc;
-          }, {})).map(([source, count]) => (
-            <p key={source}>{source}: {count}</p>
-          ))}
-        </div>
-
-        <div className="pt-2 border-t">
-          <button
-            onClick={() => {
-              console.log('🐛 DEBUG DATA:', {
-                allTranscriptions: transcriptions,
-                liveTranscriptions,
-                whisperTranscriptions
-              });
-              alert('Debug data logged to console (F12)');
-            }}
-            className="bg-purple-600 text-white px-2 py-1 rounded text-xs hover:bg-purple-700"
-          >
-            Log to Console
-          </button>
-        </div>
-      </div>
+      {/* N8N Report Button */}
+      <button
+        onClick={onN8NTrigger}
+        disabled={isLoading}
+        className={`bg-green-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-green-700 transition-all transform hover:scale-105 flex items-center space-x-2 ${
+          isLoading ? 'opacity-50 cursor-not-allowed' : ''
+        }`}
+        title="Genereer verslag via N8N"
+      >
+        <Send className="w-5 h-5" />
+        <span className="text-sm font-medium">Verslag</span>
+      </button>
     </div>
   );
 };
@@ -131,6 +64,11 @@ const DebugPanel = ({ transcriptions, liveTranscriptions, whisperTranscriptions 
 const MeetingRoom = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+
+  // FEATURE FLAGS - Zet deze op false om panels te verbergen
+  const SHOW_LIVE_TRANSCRIPTION_PANEL = false; // <- Zet op true om weer te tonen
+  const SHOW_WHISPER_TRANSCRIPTION_PANEL = true;
+  const SHOW_RECORDING_PANEL = true;
 
   // Basic states
   const [loading, setLoading] = useState(true);
@@ -696,60 +634,69 @@ const MeetingRoom = () => {
           <div className="col-span-8 space-y-6">
             
             {/* 1. Recording Panel */}
-            <RecordingPanel
-              isExpanded={expandedPanels.recording}
-              onToggle={() => togglePanel('recording')}
-              recordingMode={recordingMode}
-              onSelectRecordingMode={selectRecordingMode}
-              isRecording={isRecording}
-              recordingTime={recordingTime}
-              recordingStartTime={recordingStartTime}
-              onStartManualRecording={startManualRecording}
-              onStartAutoTranscription={startAutoTranscription}
-              onPauseRecording={pauseRecording}
-              onStopRecording={stopRecording}
-              onLiveTranscriptionReceived={handleLiveTranscriptionReceived}
-              onWhisperTranscriptionReceived={handleWhisperUpdate} // UPDATED
-              meetingId={id}
-              meeting={meeting}
-              formatTime={formatTime}
-              onRefresh={refreshPanelData}
-              isRefreshing={refreshingPanels.recording}
-            />
+            {SHOW_RECORDING_PANEL && (
+              <RecordingPanel
+                isExpanded={expandedPanels.recording}
+                onToggle={() => togglePanel('recording')}
+                recordingMode={recordingMode}
+                onSelectRecordingMode={selectRecordingMode}
+                isRecording={isRecording}
+                recordingTime={recordingTime}
+                recordingStartTime={recordingStartTime}
+                onStartManualRecording={startManualRecording}
+                onStartAutoTranscription={startAutoTranscription}
+                onPauseRecording={pauseRecording}
+                onStopRecording={stopRecording}
+                onLiveTranscriptionReceived={handleLiveTranscriptionReceived}
+                onWhisperTranscriptionReceived={handleWhisperUpdate} // UPDATED
+                meetingId={id}
+                meeting={meeting}
+                formatTime={formatTime}
+                onRefresh={refreshPanelData}
+                isRefreshing={refreshingPanels.recording}
+              />
+            )}
 
             {/* 2. Report Panel - MOVED FROM SIDEBAR TO MAIN COLUMN */}
-<ReportPanel
-  meetingId={id}
-  meeting={meeting}
-  recordingTime={recordingTime}
-  isRefreshing={refreshingPanels.report}
-  reportData={reportData}
-  setReportData={setReportData}
-            />
-
-            {/* 3. Live Transcription Panel */}
-            <LiveTranscriptionPanel
-              isExpanded={expandedPanels.liveTranscription}
-              onToggle={() => togglePanel('liveTranscription')}
+            <ReportPanel
+              meetingId={id}
+              meeting={meeting}
+              recordingTime={recordingTime}
+              isRefreshing={refreshingPanels.report}
+              reportData={reportData}
+              setReportData={setReportData}
               liveTranscriptions={liveTranscriptions}
-              isAutoTranscriptionActive={isAutoTranscriptionActive}
-              onDeleteTranscriptions={handleDeleteTranscriptions}
-              isDeleting={isDeleting && deleteTarget === 'live'}
+              whisperTranscriptions={whisperTranscriptions}
               onRefresh={refreshPanelData}
-              isRefreshing={refreshingPanels.liveTranscription}
             />
 
-            {/* 4. Whisper Transcription Panel */}
-            <WhisperTranscriptionPanel
-              isExpanded={expandedPanels.whisperTranscription}
-              onToggle={() => togglePanel('whisperTranscription')}
-              whisperTranscriptions={whisperTranscriptions}
-              onDeleteTranscriptions={handleDeleteTranscriptions}
-              isDeleting={isDeleting && deleteTarget === 'whisper'}
-              meetingId={id} // ADDED
-              onRefresh={refreshPanelData}
-              isRefreshing={refreshingPanels.whisperTranscription}
-            />
+            {/* 3. Live Transcription Panel - CONDITIONAL RENDERING */}
+            {SHOW_LIVE_TRANSCRIPTION_PANEL && (
+              <LiveTranscriptionPanel
+                isExpanded={expandedPanels.liveTranscription}
+                onToggle={() => togglePanel('liveTranscription')}
+                liveTranscriptions={liveTranscriptions}
+                isAutoTranscriptionActive={isAutoTranscriptionActive}
+                onDeleteTranscriptions={handleDeleteTranscriptions}
+                isDeleting={isDeleting && deleteTarget === 'live'}
+                onRefresh={refreshPanelData}
+                isRefreshing={refreshingPanels.liveTranscription}
+              />
+            )}
+
+            {/* 4. Whisper Transcription Panel - CONDITIONAL RENDERING */}
+            {SHOW_WHISPER_TRANSCRIPTION_PANEL && (
+              <WhisperTranscriptionPanel
+                isExpanded={expandedPanels.whisperTranscription}
+                onToggle={() => togglePanel('whisperTranscription')}
+                whisperTranscriptions={whisperTranscriptions}
+                onDeleteTranscriptions={handleDeleteTranscriptions}
+                isDeleting={isDeleting && deleteTarget === 'whisper'}
+                meetingId={id} // ADDED
+                onRefresh={refreshPanelData}
+                isRefreshing={refreshingPanels.whisperTranscription}
+              />
+            )}
           </div>
 
           {/* Right Column - Sidebar Panels (4 columns) */}
@@ -810,11 +757,95 @@ const MeetingRoom = () => {
         />
       )}
 
-      {/* Debug Panel - Remove in production */}
-      <DebugPanel 
-        transcriptions={transcriptions}
-        liveTranscriptions={liveTranscriptions}
-        whisperTranscriptions={whisperTranscriptions}
+      {/* Floating Action Buttons */}
+      <FloatingButtons
+        meetingId={id}
+        meeting={meeting}
+        isLoading={refreshingPanels.report || loading}
+        onDownloadRawData={() => {
+          // Implementeer download raw data functionaliteit
+          if (!id) {
+            alert('Meeting ID niet beschikbaar');
+            return;
+          }
+
+          const mockData = {
+            meeting: {
+              id: id,
+              title: meeting?.title || 'Onbekend',
+              status: meeting?.status || 'onbekend',
+              participants: meeting?.participants || [],
+              liveTranscriptions: liveTranscriptions,
+              whisperTranscriptions: whisperTranscriptions,
+              recordingTime: recordingTime
+            },
+            exported_at: new Date().toISOString()
+          };
+
+          const jsonData = JSON.stringify(mockData, null, 2);
+          const blob = new Blob([jsonData], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `meeting-${id}-data-${new Date().toISOString().split('T')[0]}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }}
+        onN8NTrigger={async () => {
+          // Implementeer N8N trigger functionaliteit
+          if (!id) {
+            alert('Meeting ID niet beschikbaar');
+            return;
+          }
+
+          setLoading(true);
+          
+          try {
+            const token = localStorage.getItem('auth_token') || '';
+            const url = `/api/n8n/trigger-meeting-completed/${id}`;
+            
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+                'Accept': 'application/json'
+              }
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`HTTP ${response.status}: ${errorText}`);
+            }
+
+            const result = await response.json();
+            
+            if (result.success) {
+              alert('Meeting data succesvol verzonden naar N8N!');
+              // Refresh report panel data
+              await refreshPanelData('report');
+            } else {
+              alert('Fout bij versturen naar N8N: ' + (result.error || result.message || 'Onbekende fout'));
+            }
+          } catch (error) {
+            console.error('❌ N8N trigger error:', error);
+            
+            if (error.message.includes('Failed to fetch')) {
+              alert('Netwerkfout: Kan geen verbinding maken met de server. Check of de backend draait.');
+            } else if (error.message.includes('401')) {
+              alert('Autorisatie fout: Je bent mogelijk niet ingelogd. Probeer opnieuw in te loggen.');
+            } else if (error.message.includes('404')) {
+              alert('Endpoint niet gevonden: De N8N route bestaat niet op de server.');
+            } else {
+              alert('Fout bij versturen naar N8N: ' + error.message);
+            }
+          } finally {
+            setLoading(false);
+          }
+        }}
       />
     </div>
   );

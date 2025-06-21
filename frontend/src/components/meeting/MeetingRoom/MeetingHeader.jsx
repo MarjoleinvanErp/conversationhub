@@ -14,23 +14,11 @@ const MeetingHeader = ({
       <div className="max-w-7xl mx-auto px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <button 
-              onClick={onNavigateBack} 
-              className="text-slate-600 hover:text-slate-900 transition-colors"
-            >
-              ← Terug naar dashboard
-            </button>
+
             <div>
               <h1 className="text-2xl font-bold text-slate-900">{meeting.title}</h1>
               <p className="text-slate-600">
-                {meeting.participants && meeting.participants.length > 0 
-                  ? `Met ${meeting.participants.map(p => p.name).join(', ')}`
-                  : 'Geen deelnemers'
-                } • 
-                {meeting.scheduled_at 
-                  ? `Gepland voor ${new Date(meeting.scheduled_at).toLocaleString('nl-NL')}`
-                  : 'Niet gepland'
-                }
+
               </p>
             </div>
           </div>
