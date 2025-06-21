@@ -106,7 +106,7 @@ const MaterialProSidebar = ({
           >
             
           </Box>
-          Babbelbox
+          Mayo
         </Typography>
         <Typography
           variant="caption"

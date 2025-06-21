@@ -5,8 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Cache;
+
 
 class Meeting extends Model
 {
@@ -134,6 +136,13 @@ class Meeting extends Model
                           ->get();
         });
     }
+
+
+public function report(): HasOne
+{
+    return $this->hasOne(MeetingReport::class);
+}
+
 
     // PERFORMANCE: Cache clearing when model changes
     protected static function booted()

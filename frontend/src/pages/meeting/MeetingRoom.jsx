@@ -718,18 +718,13 @@ const MeetingRoom = () => {
             />
 
             {/* 2. Report Panel - MOVED FROM SIDEBAR TO MAIN COLUMN */}
-            <ReportPanel
-              isExpanded={expandedPanels.report}
-              onToggle={() => togglePanel('report')}
-              reportData={reportData}
-              setReportData={setReportData}
-              recordingTime={recordingTime}
-              liveTranscriptions={liveTranscriptions}
-              whisperTranscriptions={whisperTranscriptions}
-              meeting={meeting}
-              formatTime={formatTime}
-              onRefresh={refreshPanelData}
-              isRefreshing={refreshingPanels.report}
+<ReportPanel
+  meetingId={id}
+  meeting={meeting}
+  recordingTime={recordingTime}
+  isRefreshing={refreshingPanels.report}
+  reportData={reportData}
+  setReportData={setReportData}
             />
 
             {/* 3. Live Transcription Panel */}

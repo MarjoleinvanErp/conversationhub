@@ -29,7 +29,7 @@ const SpeakerPanel = ({
           onClick={onToggle}
         >
           <Users className="w-5 h-5 text-orange-600" />
-          <h3 className="font-semibold text-slate-900">🎤 Actieve Spreker</h3>
+          <h4 className="font-semibold text-slate-900">Deelnemers</h4>
           <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full">
             {availableSpeakers?.length || 0} sprekers
           </span>

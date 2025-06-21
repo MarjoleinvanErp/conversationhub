@@ -104,7 +104,7 @@ const MaterialProHeader = ({ toggleMobileSidebar, toggleSidebar, isSidebarOpen, 
               mr: 2,
             }}
           >
-            ConversationHub
+            Mayo
           </Typography>
         )}
 

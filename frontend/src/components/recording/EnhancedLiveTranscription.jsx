@@ -573,22 +573,6 @@ const EnhancedLiveTranscription = ({
       <div className="bg-white rounded-lg border">
         <div className="p-6 text-center">
           
-          {/* Config Status Display */}
-          <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-            <div className="text-sm text-gray-700 mb-2">
-              <strong>Transcriptie Configuratie:</strong>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
-              <div className={`flex items-center space-x-2 ${transcriptionConfig.live_webspeech_enabled ? 'text-green-600' : 'text-red-600'}`}>
-                <div className={`w-2 h-2 rounded-full ${transcriptionConfig.live_webspeech_enabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span>WebSpeech: {transcriptionConfig.live_webspeech_enabled ? 'Aan' : 'Uit'}</span>
-              </div>
-              <div className={`flex items-center space-x-2 ${transcriptionConfig.whisper_enabled ? 'text-green-600' : 'text-red-600'}`}>
-                <div className={`w-2 h-2 rounded-full ${transcriptionConfig.whisper_enabled ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                <span>Whisper: {transcriptionConfig.whisper_enabled ? `Aan (${transcriptionConfig.whisper_chunk_duration}s)` : 'Uit'}</span>
-              </div>
-            </div>
-          </div>
           
           {/* Loading State */}
           {isStartingSession ? (
@@ -649,10 +633,6 @@ const EnhancedLiveTranscription = ({
                 </div>
               )}
 
-              {/* Debug info */}
-              <div className="text-xs text-gray-400 mt-4 p-2 bg-gray-50 rounded">
-                Debug: meetingId={meetingId}, participants={participants.length}, speech={speechSupported ? 'OK' : 'NO'}
-              </div>
             </div>
           )}
         </div>
@@ -930,7 +910,7 @@ const EnhancedLiveTranscription = ({
                 (!transcriptionConfig.live_webspeech_enabled && !transcriptionConfig.whisper_enabled)
               }
             >
-              🎤 Start {transcriptionConfig.whisper_chunk_duration}s Opname
+              🎤 Start Opname
             </button>
           ) : (
             <>
@@ -974,17 +954,6 @@ const EnhancedLiveTranscription = ({
             </p>
           )}
           
-          {transcriptionConfig.live_webspeech_enabled && !transcriptionConfig.whisper_enabled && (
-            <p className="text-xs text-blue-600">
-              🎤 Alleen WebSpeech transcriptie actief (real-time)
-            </p>
-          )}
-          
-          {!transcriptionConfig.live_webspeech_enabled && transcriptionConfig.whisper_enabled && (
-            <p className="text-xs text-purple-600">
-              🤖 Alleen Whisper AI transcriptie actief ({transcriptionConfig.whisper_chunk_duration}s chunks)
-            </p>
-          )}
         </div>
       </div>
     </div>

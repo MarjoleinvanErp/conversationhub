@@ -226,7 +226,7 @@ const AgendaPanel = ({
         >
           <Calendar className="w-5 h-5 text-green-600" />
           <div>
-            <h3 className="font-bold text-green-900">📋 Agenda</h3>
+            <h4 className="font-bold text-green-900">Agenda</h4>
             <p className="text-sm text-green-700">
               {meeting?.agenda_items?.length > 0 
                 ? `${meeting.agenda_items.filter(item => item.completed || item.status === 'completed').length} van ${meeting.agenda_items.length} voltooid`

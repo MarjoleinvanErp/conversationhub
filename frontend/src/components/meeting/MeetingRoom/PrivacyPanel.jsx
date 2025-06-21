@@ -60,7 +60,7 @@ const PrivacyPanel = ({
           onClick={onToggle}
         >
           <Shield className="w-5 h-5 text-yellow-600" />
-          <h3 className="font-semibold text-slate-900">🛡️ Privacy Gevoelige Data</h3>
+          <h4 className="font-semibold text-slate-900">Privacy</h4>
           <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
             {privacyData.totalFiltered} gefilterd
           </span>

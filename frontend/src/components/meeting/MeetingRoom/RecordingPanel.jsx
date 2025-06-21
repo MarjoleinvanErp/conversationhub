@@ -213,7 +213,6 @@ const RecordingPanel = ({
 
           {recordingMode === 'automatic' && (
             <div className={`border-t pt-6 ${isRefreshing ? 'opacity-60' : ''}`}>
-              <h4 className="font-medium text-gray-800 mb-4">🤖 Enhanced Live Transcriptie</h4>
               <EnhancedLiveTranscription
                 meetingId={meetingId}
                 participants={meeting?.participants || []}
@@ -232,32 +231,6 @@ const RecordingPanel = ({
             </div>
           )}
 
-          {/* Meeting Info Display */}
-          {meeting && (
-            <div className={`border-t pt-4 mt-6 ${isRefreshing ? 'opacity-60' : ''}`}>
-              <h5 className="font-medium text-gray-700 mb-3">📋 Meeting Informatie</h5>
-              <div className="bg-gray-50 p-3 rounded-lg">
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <span className="text-gray-500">Titel:</span>
-                    <div className="font-medium">{meeting.title || 'Geen titel'}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Status:</span>
-                    <div className="font-medium capitalize">{meeting.status || 'Onbekend'}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Deelnemers:</span>
-                    <div className="font-medium">{meeting.participants?.length || 0}</div>
-                  </div>
-                  <div>
-                    <span className="text-gray-500">Agenda items:</span>
-                    <div className="font-medium">{meeting.agenda_items?.length || 0}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Loading skeleton when refreshing */}
           {isRefreshing && (

@@ -1,5 +1,3 @@
-// File: frontend/src/services/api/n8nService.js
-
 import apiClient from '../api.js';
 
 /**

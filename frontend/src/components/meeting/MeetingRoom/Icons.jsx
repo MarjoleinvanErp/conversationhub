@@ -24,3 +24,8 @@ export const Clock = ({ className }) => <Icon className={className}>🕐</Icon>;
 export const Loader2 = ({ className }) => <Icon className={className}>⏳</Icon>;
 export const RefreshCw = ({ className }) => <Icon className={className}>🔄</Icon>;
 export const List = ({ className }) => <Icon className={className}>📋</Icon>;
+export const Eye = ({ className }) => <Icon className={className}>👁️</Icon>;
+export const Edit3 = ({ className }) => <Icon className={className}>✏️</Icon>;
+export const Save = ({ className }) => <Icon className={className}>💾</Icon>;
+export const X = ({ className }) => <Icon className={className}>❌</Icon>;
+export const ExternalLink = ({ className }) => <Icon className={className}>🔗</Icon>;
