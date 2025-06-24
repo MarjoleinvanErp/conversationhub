@@ -30,3 +30,5 @@ export const Save = ({ className }) => <Icon className={className}>💾</Icon>;
 export const X = ({ className }) => <Icon className={className}>❌</Icon>;
 export const Clock = ({ className }) => <Icon className={className}>🕐</Icon>;
 export const ExternalLink = ({ className }) => <Icon className={className}>🔗</Icon>;
+export const ToggleLeft = ({ className }) => <Icon className={className}>⬅️</Icon>;
+export const ToggleRight = ({ className }) => <Icon className={className}>➡️</Icon>;

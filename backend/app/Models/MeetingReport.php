@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Carbon\Carbon;
 
 class MeetingReport extends Model
 {
@@ -12,312 +14,207 @@ class MeetingReport extends Model
 
     protected $fillable = [
         'meeting_id',
-        'summary',
-        'key_points',
-        'action_items',
-        'next_steps',
-        'statistics',
-        'n8n_response',
+        'report_title',
+        'report_content',
+        'report_type',
+        'generated_by',
         'generated_at',
+        'metadata',
+        'privacy_filtered',
         'is_editable',
-        'last_edited_at',
-        'html_content'
+        'version_number',
+        'status'
     ];
 
     protected $casts = [
-        'key_points' => 'array',
-        'action_items' => 'array',
-        'next_steps' => 'array',
-        'statistics' => 'array',
-        'n8n_response' => 'array',
+        'metadata' => 'array',
         'generated_at' => 'datetime',
+        'privacy_filtered' => 'boolean',
         'is_editable' => 'boolean',
-        'last_edited_at' => 'datetime',
+        'version_number' => 'integer'
+    ];
+
+    protected $attributes = [
+        'report_type' => 'ai_generated',
+        'generated_by' => 'N8N_AI_Agent',
+        'privacy_filtered' => false,
+        'is_editable' => true,
+        'version_number' => 1,
+        'status' => 'draft'
     ];
 
     /**
-     * Meeting report belongs to a meeting
+     * Relationships
      */
     public function meeting(): BelongsTo
     {
         return $this->belongsTo(Meeting::class);
     }
 
-    /**
-     * Generate HTML content from the report data
-     */
-    public function generateHtmlContent(): string
+    public function sections(): HasMany
     {
-        $meeting = $this->meeting;
-        
+        return $this->hasMany(ReportSection::class)->orderBy('order_index');
+    }
+
+    /**
+     * Get sections grouped by type
+     */
+    public function getSectionsByType(): array
+    {
+        $grouped = [];
+        foreach ($this->sections as $section) {
+            $grouped[$section->section_type][] = $section;
+        }
+        return $grouped;
+    }
+
+    /**
+     * Generate complete HTML output from sections
+     */
+    public function toHtml(): string
+    {
         $html = '<div class="meeting-report">';
         
-        // Header
+        // Report header
         $html .= '<div class="report-header">';
-        $html .= '<h1>' . htmlspecialchars($meeting->title) . '</h1>';
+        $html .= '<h1>' . htmlspecialchars($this->report_title) . '</h1>';
         $html .= '<div class="report-meta">';
-        $html .= '<p><strong>Datum:</strong> ' . ($meeting->start_time ? $meeting->start_time->format('d-m-Y H:i') : 'Niet bekend') . '</p>';
-        $html .= '<p><strong>Duur:</strong> ' . ($meeting->duration ?? 0) . ' minuten</p>';
-        $html .= '<p><strong>Gegenereerd:</strong> ' . $this->generated_at->format('d-m-Y H:i') . '</p>';
+        $html .= '<p><strong>Meeting:</strong> ' . htmlspecialchars($this->meeting->title) . '</p>';
+$scheduledAt = $this->meeting->scheduled_at;
+if (is_string($scheduledAt)) {
+    $scheduledAt = \Carbon\Carbon::parse($scheduledAt);
+}
+$html .= '<p><strong>Datum:</strong> ' . ($scheduledAt ? $scheduledAt->format('d-m-Y H:i') : 'Niet bekend') . '</p>';
+
+
+        $html .= '<p><strong>Gegenereerd op:</strong> ' . $this->generated_at?->format('d-m-Y H:i') . '</p>';
+        if ($this->privacy_filtered) {
+            $html .= '<p class="privacy-notice"><em>⚠️ Privacy-gevoelige informatie is gefilterd</em></p>';
+        }
         $html .= '</div>';
         $html .= '</div>';
 
-        // Summary
-        if ($this->summary) {
-            $html .= '<div class="report-section">';
-            $html .= '<h2>Samenvatting</h2>';
-            $html .= '<div class="content">' . nl2br(htmlspecialchars($this->summary)) . '</div>';
-            $html .= '</div>';
-        }
-
-        // Participants
-        $participants = $meeting->participants;
-        if ($participants->count() > 0) {
-            $html .= '<div class="report-section">';
-            $html .= '<h2>Deelnemers</h2>';
-            $html .= '<ul>';
-            foreach ($participants as $participant) {
-                $html .= '<li>' . htmlspecialchars($participant->name);
-                if ($participant->role) {
-                    $html .= ' (' . htmlspecialchars($participant->role) . ')';
-                }
-                $html .= '</li>';
-            }
-            $html .= '</ul>';
-            $html .= '</div>';
-        }
-
-        // Agenda items
-        $agendaItems = $meeting->agendaItems;
-        if ($agendaItems->count() > 0) {
-            $html .= '<div class="report-section">';
-            $html .= '<h2>Agendapunten</h2>';
-            $html .= '<ol>';
-            foreach ($agendaItems as $item) {
-                $html .= '<li>';
-                $html .= '<strong>' . htmlspecialchars($item->title) . '</strong>';
-                if ($item->description) {
-                    $html .= '<br><em>' . htmlspecialchars($item->description) . '</em>';
-                }
-                $html .= '</li>';
-            }
-            $html .= '</ol>';
-            $html .= '</div>';
-        }
-
-        // Key points
-        if (!empty($this->key_points)) {
-            $html .= '<div class="report-section">';
-            $html .= '<h2>Belangrijkste Punten</h2>';
-            $html .= '<ul>';
-            foreach ($this->key_points as $point) {
-                if (is_array($point)) {
-                    $html .= '<li><strong>' . htmlspecialchars($point['topic'] ?? '') . '</strong>';
-                    if (!empty($point['description'])) {
-                        $html .= ': ' . htmlspecialchars($point['description']);
-                    }
-                    $html .= '</li>';
-                } else {
-                    $html .= '<li>' . htmlspecialchars($point) . '</li>';
-                }
-            }
-            $html .= '</ul>';
-            $html .= '</div>';
-        }
-
-        // Action items
-        if (!empty($this->action_items)) {
-            $html .= '<div class="report-section">';
-            $html .= '<h2>Actiepunten</h2>';
-            $html .= '<ul>';
-            foreach ($this->action_items as $action) {
-                if (is_array($action)) {
-                    $html .= '<li>' . htmlspecialchars($action['action'] ?? '');
-                    if (!empty($action['speaker'])) {
-                        $html .= ' <em>(Genoemd door: ' . htmlspecialchars($action['speaker']) . ')</em>';
-                    }
-                    $html .= '</li>';
-                } else {
-                    $html .= '<li>' . htmlspecialchars($action) . '</li>';
-                }
-            }
-            $html .= '</ul>';
-            $html .= '</div>';
-        }
-
-        // Next steps
-        if (!empty($this->next_steps)) {
-            $html .= '<div class="report-section">';
-            $html .= '<h2>Vervolgstappen</h2>';
-            $html .= '<ul>';
-            foreach ($this->next_steps as $step) {
-                if (is_array($step)) {
-                    $html .= '<li>' . htmlspecialchars($step['step'] ?? $step['action'] ?? '');
-                    if (!empty($step['deadline'])) {
-                        $html .= ' <em>(Deadline: ' . htmlspecialchars($step['deadline']) . ')</em>';
-                    }
-                    if (!empty($step['responsible'])) {
-                        $html .= ' <em>(Verantwoordelijke: ' . htmlspecialchars($step['responsible']) . ')</em>';
-                    }
-                    $html .= '</li>';
-                } else {
-                    $html .= '<li>' . htmlspecialchars($step) . '</li>';
-                }
-            }
-            $html .= '</ul>';
-            $html .= '</div>';
-        }
-
-        // Statistics
-        if (!empty($this->statistics)) {
-            $stats = $this->statistics;
-            $html .= '<div class="report-section">';
-            $html .= '<h2>Gespreksstatistieken</h2>';
-            $html .= '<div class="stats-grid">';
+        // Render sections in order
+        foreach ($this->sections as $section) {
+            $html .= '<div class="report-section" data-section-type="' . $section->section_type . '">';
             
-            if (isset($stats['duration_minutes'])) {
-                $html .= '<div class="stat-item"><strong>Duur:</strong> ' . $stats['duration_minutes'] . ' minuten</div>';
+            // Section header
+            $html .= '<div class="section-header">';
+            $html .= '<h2>' . htmlspecialchars($section->title) . '</h2>';
+            
+            if ($section->contains_privacy_info) {
+                $html .= '<span class="privacy-indicator">🔒 Privacy gefilterd</span>';
             }
-            if (isset($stats['total_words'])) {
-                $html .= '<div class="stat-item"><strong>Totaal woorden:</strong> ' . number_format($stats['total_words']) . '</div>';
-            }
-            if (isset($stats['participants_count'])) {
-                $html .= '<div class="stat-item"><strong>Deelnemers:</strong> ' . $stats['participants_count'] . '</div>';
-            }
-            if (isset($stats['total_transcriptions'])) {
-                $html .= '<div class="stat-item"><strong>Transcriptie segmenten:</strong> ' . $stats['total_transcriptions'] . '</div>';
+            
+            if (!$section->is_auto_generated && $section->last_edited_at) {
+                $html .= '<small class="edit-info">Handmatig bewerkt op ' . $section->last_edited_at->format('d-m-Y H:i') . '</small>';
             }
             
             $html .= '</div>';
+            
+            // Section content
+            $html .= '<div class="section-content">';
+            $html .= nl2br(htmlspecialchars($section->content));
+            $html .= '</div>';
+            
             $html .= '</div>';
         }
 
         $html .= '</div>';
-
-        // Add CSS styling
-        $html .= $this->getReportCss();
-
         return $html;
     }
 
     /**
-     * Get CSS styling for the HTML report
+     * Apply privacy filtering to all sections
      */
-    private function getReportCss(): string
+    public function applyPrivacyFiltering(): void
     {
-        return '
-        <style>
-        .meeting-report {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
+        foreach ($this->sections as $section) {
+            $section->applyPrivacyFiltering();
         }
         
-        .report-header {
-            border-bottom: 2px solid #e5e7eb;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }
-        
-        .report-header h1 {
-            color: #1f2937;
-            margin: 0 0 15px 0;
-            font-size: 28px;
-            font-weight: 700;
-        }
-        
-        .report-meta {
-            background: #f9fafb;
-            padding: 15px;
-            border-radius: 8px;
-            border-left: 4px solid #3b82f6;
-        }
-        
-        .report-meta p {
-            margin: 5px 0;
-            color: #6b7280;
-        }
-        
-        .report-section {
-            margin-bottom: 30px;
-            padding: 20px;
-            background: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-        }
-        
-        .report-section h2 {
-            color: #1f2937;
-            margin: 0 0 15px 0;
-            font-size: 20px;
-            font-weight: 600;
-            border-bottom: 1px solid #e5e7eb;
-            padding-bottom: 8px;
-        }
-        
-        .report-section .content {
-            color: #374151;
-            line-height: 1.7;
-        }
-        
-        .report-section ul, .report-section ol {
-            margin: 0;
-            padding-left: 20px;
-        }
-        
-        .report-section li {
-            margin-bottom: 8px;
-            color: #374151;
-        }
-        
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 15px;
-        }
-        
-        .stat-item {
-            padding: 12px;
-            background: #f3f4f6;
-            border-radius: 6px;
-            color: #374151;
-        }
-        
-        em {
-            color: #6b7280;
-            font-style: italic;
-        }
-        
-        strong {
-            color: #1f2937;
-            font-weight: 600;
-        }
-        
-        @media print {
-            .meeting-report {
-                max-width: none;
-                padding: 10px;
-            }
-            
-            .report-section {
-                break-inside: avoid;
-                border: 1px solid #ccc;
-            }
-        }
-        </style>';
+        $this->update(['privacy_filtered' => true]);
     }
 
     /**
-     * Update HTML content when report is saved
+     * Create a new version of this report
      */
-    protected static function boot()
+    public function createNewVersion(): self
     {
-        parent::boot();
+        $newReport = $this->replicate();
+        $newReport->version_number = $this->version_number + 1;
+        $newReport->status = 'draft';
+        $newReport->save();
 
-        static::saving(function ($report) {
-            $report->html_content = $report->generateHtmlContent();
-        });
+        // Copy all sections
+        foreach ($this->sections as $section) {
+            $newSection = $section->replicate();
+            $newSection->meeting_report_id = $newReport->id;
+            $newSection->save();
+        }
+
+        return $newReport;
     }
+
+    /**
+     * Check if report has privacy-sensitive content
+     */
+    public function hasPrivacyContent(): bool
+    {
+        return $this->sections()->where('contains_privacy_info', true)->exists();
+    }
+
+    /**
+     * Legacy support - get old-style report data from sections
+     */
+    public function getLegacyDataAttribute(): array
+    {
+        $sections = $this->getSectionsByType();
+        
+        return [
+            'summary' => $sections['summary'][0]->content ?? '',
+            'key_points' => $this->extractKeyPointsFromSections(),
+            'action_items' => $this->extractActionItemsFromSections(),
+            'next_steps' => [],
+            'statistics' => $this->metadata['meeting_stats'] ?? []
+        ];
+    }
+
+    /**
+     * Extract key points from sections for backward compatibility
+     */
+    private function extractKeyPointsFromSections(): array
+    {
+        $keyPoints = [];
+        foreach ($this->sections as $section) {
+            if ($section->section_type === 'agenda_item') {
+                $keyPoints[] = [
+                    'topic' => $section->title,
+                    'description' => $section->content
+                ];
+            }
+        }
+        return $keyPoints;
+    }
+
+    /**
+     * Extract action items from sections for backward compatibility
+     */
+    private function extractActionItemsFromSections(): array
+    {
+        $actionSections = $this->sections()->where('section_type', 'action_items')->get();
+        $actionItems = [];
+        
+        foreach ($actionSections as $section) {
+            $lines = explode("\n", $section->content);
+            foreach ($lines as $line) {
+                $line = trim($line);
+                if ($line && strpos($line, '•') === 0) {
+                    $actionItems[] = ['action' => ltrim($line, '• ')];
+                }
+            }
+        }
+        
+        return $actionItems;
+    }
+}

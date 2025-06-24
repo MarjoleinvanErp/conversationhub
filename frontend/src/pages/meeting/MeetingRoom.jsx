@@ -28,8 +28,56 @@ const FloatingButtons = ({
   meeting, 
   isLoading = false,
   onDownloadRawData,
-  onN8NTrigger 
+  onN8NTrigger,
+  n8nButtonState = 'idle' // NEW PROP
 }) => {
+  
+  // Define button appearance based on state
+  const getN8NButtonClass = () => {
+    const baseClass = "text-white px-4 py-3 rounded-full shadow-lg transition-all transform hover:scale-105 flex items-center space-x-2";
+    
+    switch (n8nButtonState) {
+      case 'loading':
+        return `${baseClass} bg-yellow-600 cursor-wait`;
+      case 'success':
+        return `${baseClass} bg-green-600 hover:bg-green-700`;
+      case 'error':
+        return `${baseClass} bg-red-600 hover:bg-red-700`;
+      default:
+        return `${baseClass} bg-green-600 hover:bg-green-700`;
+    }
+  };
+
+  const getN8NButtonText = () => {
+    switch (n8nButtonState) {
+      case 'loading':
+        return 'Versturen...';
+      case 'success':
+        return 'Verstuurd!';
+      case 'error':
+        return 'Probeer opnieuw';
+      default:
+        return 'Verslag';
+    }
+  };
+
+  const getN8NButtonIcon = () => {
+    switch (n8nButtonState) {
+      case 'loading':
+        return <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />;
+      case 'success':
+        return <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>;
+      case 'error':
+        return <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        </svg>;
+      default:
+        return <Send className="w-5 h-5" />;
+    }
+  };
+
   return (
     <div className="fixed bottom-6 right-6 flex flex-col space-y-3 z-50">
       {/* Download Raw Data Button */}
@@ -45,17 +93,16 @@ const FloatingButtons = ({
         <span className="text-sm font-medium">Ruwe Data</span>
       </button>
 
-      {/* N8N Report Button */}
+      {/* N8N Report Button - UPDATED met visuele feedback */}
       <button
+        type="button"
         onClick={onN8NTrigger}
-        disabled={isLoading}
-        className={`bg-green-600 text-white px-4 py-3 rounded-full shadow-lg hover:bg-green-700 transition-all transform hover:scale-105 flex items-center space-x-2 ${
-          isLoading ? 'opacity-50 cursor-not-allowed' : ''
-        }`}
-        title="Genereer verslag via N8N"
+        disabled={isLoading || n8nButtonState === 'loading'}
+        className={getN8NButtonClass()}
+        title={n8nButtonState === 'loading' ? 'Wordt verstuurd naar N8N...' : 'Genereer verslag via N8N'}
       >
-        <Send className="w-5 h-5" />
-        <span className="text-sm font-medium">Verslag</span>
+        {getN8NButtonIcon()}
+        <span className="text-sm font-medium">{getN8NButtonText()}</span>
       </button>
     </div>
   );
@@ -77,6 +124,7 @@ const MeetingRoom = () => {
   const [transcriptions, setTranscriptions] = useState([]);
   const [liveTranscriptions, setLiveTranscriptions] = useState([]);
   const [whisperTranscriptions, setWhisperTranscriptions] = useState([]);
+  const [n8nButtonState, setN8nButtonState] = useState('idle'); // NEW STATE
 
   // Panel states
   const [expandedPanels, setExpandedPanels] = useState({
@@ -658,17 +706,14 @@ const MeetingRoom = () => {
             )}
 
             {/* 2. Report Panel - MOVED FROM SIDEBAR TO MAIN COLUMN */}
-            <ReportPanel
-              meetingId={id}
-              meeting={meeting}
-              recordingTime={recordingTime}
-              isRefreshing={refreshingPanels.report}
-              reportData={reportData}
-              setReportData={setReportData}
-              liveTranscriptions={liveTranscriptions}
-              whisperTranscriptions={whisperTranscriptions}
-              onRefresh={refreshPanelData}
-            />
+<ReportPanel
+  meetingId={id}
+  meeting={meeting}
+  isExpanded={expandedPanels.report}
+  onToggle={() => togglePanel('report')}
+  onRefresh={refreshPanelData}
+  isRefreshing={refreshingPanels.report}
+/>
 
             {/* 3. Live Transcription Panel - CONDITIONAL RENDERING */}
             {SHOW_LIVE_TRANSCRIPTION_PANEL && (
@@ -762,6 +807,7 @@ const MeetingRoom = () => {
         meetingId={id}
         meeting={meeting}
         isLoading={refreshingPanels.report || loading}
+        n8nButtonState={n8nButtonState} // NEW PROP
         onDownloadRawData={() => {
           // Implementeer download raw data functionaliteit
           if (!id) {
@@ -794,57 +840,36 @@ const MeetingRoom = () => {
           document.body.removeChild(a);
           URL.revokeObjectURL(url);
         }}
-        onN8NTrigger={async () => {
-          // Implementeer N8N trigger functionaliteit
-          if (!id) {
-            alert('Meeting ID niet beschikbaar');
-            return;
-          }
-
-          setLoading(true);
+        onN8NTrigger={(event) => {
+          event?.preventDefault();
           
-          try {
-            const token = localStorage.getItem('auth_token') || '';
-            const url = `/api/n8n/trigger-meeting-completed/${id}`;
-            
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
-                'Accept': 'application/json'
-              }
-            });
-
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`HTTP ${response.status}: ${errorText}`);
-            }
-
-            const result = await response.json();
+          if (!id || n8nButtonState === 'loading') return; // Prevent multiple clicks
+          
+          setN8nButtonState('loading'); // Show loading state
+          
+          fetch(`http://localhost:8000/api/n8n/trigger-meeting-completed/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+          })
+          .then(response => response.json())
+          .then(result => {
+            console.log('N8N triggered:', result.success ? '✅' : '❌', result);
             
             if (result.success) {
-              alert('Meeting data succesvol verzonden naar N8N!');
-              // Refresh report panel data
-              await refreshPanelData('report');
+              setN8nButtonState('success');
+              // Reset to idle after 2 seconds
+              setTimeout(() => setN8nButtonState('idle'), 2000);
             } else {
-              alert('Fout bij versturen naar N8N: ' + (result.error || result.message || 'Onbekende fout'));
+              setN8nButtonState('error');
+              setTimeout(() => setN8nButtonState('idle'), 3000);
             }
-          } catch (error) {
-            console.error('❌ N8N trigger error:', error);
-            
-            if (error.message.includes('Failed to fetch')) {
-              alert('Netwerkfout: Kan geen verbinding maken met de server. Check of de backend draait.');
-            } else if (error.message.includes('401')) {
-              alert('Autorisatie fout: Je bent mogelijk niet ingelogd. Probeer opnieuw in te loggen.');
-            } else if (error.message.includes('404')) {
-              alert('Endpoint niet gevonden: De N8N route bestaat niet op de server.');
-            } else {
-              alert('Fout bij versturen naar N8N: ' + error.message);
-            }
-          } finally {
-            setLoading(false);
-          }
+          })
+          .catch(error => {
+            console.error('N8N error:', error);
+            setN8nButtonState('error');
+            setTimeout(() => setN8nButtonState('idle'), 3000);
+          });
         }}
       />
     </div>

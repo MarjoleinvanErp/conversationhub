@@ -68,6 +68,16 @@ class Meeting extends Model
         return $this->hasMany(AgendaItem::class);
     }
 
+/**
+ * Meeting has many reports
+ */
+public function reports(): HasMany
+{
+    return $this->hasMany(MeetingReport::class);
+}
+
+
+
     // PERFORMANCE: Scoped queries voor betere performance
     public function scopeActive($query)
     {

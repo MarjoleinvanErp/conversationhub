@@ -3,6 +3,7 @@
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AgendaController;
+use App\Http\Controllers\Api\ReportController;
 
 /*
 |--------------------------------------------------------------------------
@@ -77,10 +78,6 @@ Route::prefix('n8n')->group(function () {
 
    // Gespreksverslag opslaan
     Route::post('/save-report/{meetingId}', [App\Http\Controllers\Api\N8NController::class, 'saveReport']);
-
-
-
-
 });
 
 // N8N Webhook Endpoints - Voor N8N om data terug te sturen
@@ -214,14 +211,34 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/meetings/{meetingId}/agenda/{agendaItemId}/status', [AgendaController::class, 'updateStatus']);
     Route::delete('/meetings/{meetingId}/agenda/{agendaItemId}', [AgendaController::class, 'destroy']);
 
-    /*
-    |--------------------------------------------------------------------------
-    | Export Routes
-    |--------------------------------------------------------------------------
-    */
+
+
+/*
+|--------------------------------------------------------------------------
+| Report Routes (N8N writes via SQL, API reads/edits only)
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('meetings/{meeting}/reports')->group(function () {
+    // Read operations (voor meetingroom pagina)
+    Route::get('/', [ReportController::class, 'index']);
+    Route::get('/stats', [ReportController::class, 'getReportStats']);
+    Route::get('/{report}', [ReportController::class, 'show']);
     
-    Route::post('/meetings/{meeting}/export', [\App\Http\Controllers\Api\ExportController::class, 'export']);
-    Route::get('/exports/{export}/download', [\App\Http\Controllers\Api\ExportController::class, 'download']);
+    // User editing operations (sectie-per-sectie bewerking)
+    Route::put('/{report}/sections/{section}', [ReportController::class, 'updateSection']);
+    Route::post('/{report}/privacy-toggle', [ReportController::class, 'togglePrivacyFiltering']);
+    
+    // Export operations
+    Route::get('/{report}/export/html', [ReportController::class, 'exportHtml']);
+});
+
+
+
+
+
+
+
 
     /*
     |--------------------------------------------------------------------------

@@ -1,504 +1,572 @@
-// frontend/src/components/meeting/MeetingRoom/ReportPanel.jsx
 import React, { useState, useEffect } from 'react';
-import { FileText, Edit3, Save, X, RefreshCw, AlertCircle, CheckCircle, Eye } from './Icons.jsx';
+import { 
+  FileText, 
+  Edit3, 
+  Save, 
+  X, 
+  ChevronUp,
+  ChevronDown,
+  RefreshCw, 
+  AlertCircle, 
+  Shield,
+  Download
+} from './Icons.jsx';
+import reportService from '../../../services/api/reportService.js';
 
 const ReportPanel = ({ 
   meetingId, 
   meeting, 
-  recordingTime, 
-  isRefreshing = false,
-  reportData,
-  setReportData,
-  liveTranscriptions = [],
-  whisperTranscriptions = [],
-  onRefresh
+  isExpanded,
+  onToggle,
+  // Refresh props (consistent met andere panels)
+  onRefresh,
+  isRefreshing = false
 }) => {
-  const [report, setReport] = useState(null);
-  const [loadingReport, setLoadingReport] = useState(false);
-  const [reportError, setReportError] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editingContent, setEditingContent] = useState({});
+  const [reports, setReports] = useState([]);
+  const [currentReport, setCurrentReport] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [editingSection, setEditingSection] = useState(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [editingTitle, setEditingTitle] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Load report when component mounts or meetingId changes
+  // Load reports when component mounts
   useEffect(() => {
     if (meetingId) {
-      loadReport();
+      loadReports();
     }
   }, [meetingId]);
 
-  const loadReport = async () => {
-    if (!meetingId) return;
-    
-    setLoadingReport(true);
-    setReportError(null);
+  const loadReports = async () => {
+    setLoading(true);
+    setError(null);
     
     try {
-      const response = await fetch(`/api/n8n/meeting-report/${meetingId}`);
+      const result = await reportService.getReports(meetingId);
       
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data) {
-          setReport(result.data);
-          initializeEditingContent(result.data);
-        } else {
-          setReport(null);
+      if (result.success) {
+        setReports(result.data);
+        
+        // Load the latest report with sections - PREFER STRUCTURED REPORTS
+        if (result.data.length > 0) {
+          // First try to find a structured report (with sections)
+          const structuredReport = result.data.find(report => 
+            report.report_type === 'structured' && report.sections_count > 0
+          );
+          
+          if (structuredReport) {
+            await loadReport(structuredReport.id);
+          } else {
+            // Fallback to the latest report (first in array)
+            const latestReport = result.data[0];
+            await loadReport(latestReport.id);
+          }
         }
-      } else if (response.status === 404) {
-        setReport(null);
       } else {
-        throw new Error(`HTTP ${response.status}`);
+        setError(result.error);
+      }
+    } catch (error) {
+      console.error('Error loading reports:', error);
+      setError('Fout bij laden verslagen');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadReport = async (reportId) => {
+    try {
+      const result = await reportService.getReport(meetingId, reportId);
+      
+      if (result.success) {
+        setCurrentReport(result.data);
+      } else {
+        setError(result.error);
       }
     } catch (error) {
       console.error('Error loading report:', error);
-      setReportError('Fout bij laden verslag');
-      setReport(null);
-    } finally {
-      setLoadingReport(false);
+      setError('Fout bij laden verslag');
     }
   };
 
-  const initializeEditingContent = (reportData) => {
-    setEditingContent({
-      summary: reportData.summary || '',
-      key_points: reportData.key_points || [],
-      action_items: reportData.action_items || [],
-      next_steps: reportData.next_steps || [],
-      agenda_items: reportData.agenda_items || []
-    });
+  const startEditingSection = (section) => {
+    setEditingSection(section.id);
+    setEditingContent(section.content);
+    setEditingTitle(section.title);
   };
 
-  const handleEdit = () => {
-    if (report) {
-      initializeEditingContent(report);
-      setIsEditing(true);
-    }
+  const cancelEditing = () => {
+    setEditingSection(null);
+    setEditingContent('');
+    setEditingTitle('');
   };
 
-  const handleCancel = () => {
-    setIsEditing(false);
-    if (report) {
-      initializeEditingContent(report);
-    }
-  };
+  const saveSection = async () => {
+    if (!editingSection) return;
 
-  const handleSave = async () => {
     setSaving(true);
     try {
-      const response = await fetch(`/api/n8n/meeting-report/${meetingId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token') || ''}`
-        },
-        body: JSON.stringify(editingContent)
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success) {
-          setReport(result.data);
-          setIsEditing(false);
-          console.log('✅ Report saved successfully');
-        } else {
-          alert('Fout bij opslaan: ' + result.error);
+      const result = await reportService.updateSection(
+        meetingId, 
+        currentReport.id, 
+        editingSection, 
+        {
+          content: editingContent,
+          title: editingTitle
         }
+      );
+
+      if (result.success) {
+        // Update the section in current report
+        setCurrentReport(prev => ({
+          ...prev,
+          sections: prev.sections.map(section => 
+            section.id === editingSection 
+              ? { ...section, content: editingContent, title: editingTitle, is_auto_generated: false }
+              : section
+          )
+        }));
+        
+        cancelEditing();
       } else {
-        throw new Error(`HTTP ${response.status}`);
+        setError(result.error);
       }
     } catch (error) {
-      console.error('Error saving report:', error);
-      alert('Fout bij opslaan verslag');
+      console.error('Error saving section:', error);
+      setError('Fout bij opslaan sectie');
     } finally {
       setSaving(false);
     }
   };
 
-  const updateListItem = (field, index, value) => {
-    setEditingContent(prev => ({
-      ...prev,
-      [field]: prev[field].map((item, i) => 
-        i === index ? value : item
-      )
-    }));
-  };
+  const togglePrivacyFiltering = async () => {
+    if (!currentReport) return;
 
-  const addListItem = (field) => {
-    setEditingContent(prev => ({
-      ...prev,
-      [field]: [...(prev[field] || []), '']
-    }));
-  };
-
-  const removeListItem = (field, index) => {
-    setEditingContent(prev => ({
-      ...prev,
-      [field]: prev[field].filter((_, i) => i !== index)
-    }));
-  };
-
-  // Mock report data voor development
-  const mockReport = {
-    summary: "Dit was een productief gesprek waarbij de voortgang van het project werd besproken. Belangrijke beslissingen zijn genomen over de volgende stappen.",
-    agenda_items: [
-      {
-        title: "Projectvoortgang bespreken",
-        discussion: "Het team heeft goede vooruitgang geboekt. Alle mijlpalen voor Q1 zijn behaald.",
-        status: "completed"
-      },
-      {
-        title: "Budget evaluatie",
-        discussion: "Het budget ligt op koers. Kleine aanpassingen nodig voor Q2.",
-        status: "completed"
-      },
-      {
-        title: "Planning volgende fase",
-        discussion: "Start van fase 2 gepland voor volgende maand.",
-        status: "in_progress"
+    try {
+      const result = await reportService.togglePrivacyFiltering(meetingId, currentReport.id);
+      
+      if (result.success) {
+        setCurrentReport(result.data);
+      } else {
+        setError(result.error);
       }
-    ],
-    key_points: [
-      "Project ligt op schema",
-      "Budget aanpassingen nodig voor Q2",
-      "Team werkt goed samen",
-      "Nieuwe fase start volgende maand"
-    ],
-    action_items: [
-      "Budget voorstel opstellen voor Q2",
-      "Planning maken voor fase 2",
-      "Team uitbreiden met 2 developers"
-    ],
-    next_steps: [
-      "Volgende week: budget meeting",
-      "Over 2 weken: start fase 2",
-      "Maandelijks: voortgang evalueren"
-    ],
-    generated_at: new Date().toISOString()
+    } catch (error) {
+      console.error('Error toggling privacy filtering:', error);
+      setError('Fout bij privacy filtering');
+    }
   };
 
-  // Voor development: gebruik mock data als er geen report is
-  const displayReport = report || (process.env.NODE_ENV === 'development' ? mockReport : null);
+  const downloadHtml = async () => {
+    if (!currentReport) return;
+
+    try {
+      const result = await reportService.exportHtml(meetingId, currentReport.id);
+      
+      if (result.success) {
+        const blob = new Blob([result.data], { type: 'text/html' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${result.title || 'verslag'}-${new Date().toISOString().split('T')[0]}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        setError(result.error);
+      }
+    } catch (error) {
+      console.error('Error downloading HTML:', error);
+      setError('Fout bij downloaden');
+    }
+  };
+
+  // Manual refresh handler (consistent met andere panels)
+  const handleManualRefresh = async () => {
+    if (onRefresh) {
+      await onRefresh('report');
+    } else {
+      await loadReports();
+    }
+  };
+
+  const getSectionIcon = (sectionType) => {
+    switch (sectionType) {
+      case 'summary': return '📝';
+      case 'participants': return '👥';
+      case 'agenda_item': return '📋';
+      case 'action_items': return '✅';
+      case 'decisions': return '⚖️';
+      case 'custom': return '📄';
+      default: return '📄';
+    }
+  };
+
+  const getSectionColor = (sectionType) => {
+    switch (sectionType) {
+      case 'summary': return 'bg-blue-50 border-blue-200';
+      case 'participants': return 'bg-green-50 border-green-200';
+      case 'agenda_item': return 'bg-purple-50 border-purple-200';
+      case 'action_items': return 'bg-orange-50 border-orange-200';
+      case 'decisions': return 'bg-yellow-50 border-yellow-200';
+      case 'custom': return 'bg-gray-50 border-gray-200';
+      default: return 'bg-gray-50 border-gray-200';
+    }
+  };
+
+  // Determine if we're in a loading state
+  const isLoadingState = loading || isRefreshing;
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 border-b border-blue-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <FileText className="w-6 h-6 text-blue-600" />
-            <div>
-              <h2 className="text-lg font-semibold text-blue-900">Gespreksverslag</h2>
-              <p className="text-sm text-blue-700">
-                {meeting?.title || 'Meeting Verslag'}
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            {/* Refresh button */}
+      {/* Panel Header - CONSISTENT STYLE */}
+      <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-blue-100">
+        <div 
+          className="flex items-center space-x-3 flex-1 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={onToggle}
+        >
+          <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+          <h3 className="font-semibold text-slate-900">Gespreksverslagen</h3>
+          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+            {reports.length} verslag{reports.length !== 1 ? 'en' : ''}
+          </span>
+          {currentReport?.sections?.length > 0 && (
+            <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">
+              {currentReport.sections.length} secties
+            </span>
+          )}
+          {currentReport?.privacy_filtered && (
+            <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
+              🔒 Privacy
+            </span>
+          )}
+        </div>
+        
+        <div className="flex items-center space-x-2">
+          {/* Privacy Toggle - alleen tonen als er een report is EN expanded */}
+          {currentReport && isExpanded && (
             <button
-              onClick={loadReport}
-              disabled={loadingReport}
-              className="p-2 rounded-lg border border-blue-200 bg-white text-blue-600 hover:bg-blue-50 transition-colors"
-              title="Ververs verslag"
+              onClick={(e) => {
+                e.stopPropagation();
+                togglePrivacyFiltering();
+              }}
+              className={`p-1 rounded transition-colors ${
+                currentReport.privacy_filtered
+                  ? 'text-red-600 hover:bg-red-100'
+                  : 'text-green-600 hover:bg-green-100'
+              }`}
+              title={currentReport.privacy_filtered ? 'Privacy filtering UIT' : 'Privacy filtering AAN'}
             >
-              <RefreshCw className={`w-4 h-4 ${loadingReport ? 'animate-spin' : ''}`} />
+              <Shield className="w-4 h-4" />
             </button>
+          )}
 
-            {/* Edit/Save buttons */}
-            {displayReport && !isEditing && (
-              <button
-                onClick={handleEdit}
-                className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-              >
-                <Edit3 className="w-4 h-4" />
-                <span className="text-sm">Bewerken</span>
-              </button>
-            )}
+          {/* Download Button - alleen tonen als er een report is EN expanded */}
+          {currentReport && isExpanded && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                downloadHtml();
+              }}
+              className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors"
+              title="Download HTML"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          )}
 
-            {isEditing && (
-              <div className="flex space-x-2">
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2 disabled:opacity-50"
-                >
-                  <Save className="w-4 h-4" />
-                  <span className="text-sm">{saving ? 'Opslaan...' : 'Opslaan'}</span>
-                </button>
-                <button
-                  onClick={handleCancel}
-                  className="px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors flex items-center space-x-2"
-                >
-                  <X className="w-4 h-4" />
-                  <span className="text-sm">Annuleren</span>
-                </button>
-              </div>
+          {/* Refresh Button - EXACT SAME STYLE AS WhisperTranscriptionPanel */}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleManualRefresh();
+            }}
+            disabled={isRefreshing || loading}
+            className={`p-2 rounded-lg border transition-colors ${
+              isRefreshing || loading
+                ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                : 'bg-white text-blue-600 hover:bg-blue-50 border-blue-200 shadow-sm'
+            }`}
+            title="Vernieuw verslagen"
+          >
+            <svg 
+              className={`w-4 h-4 ${isRefreshing || loading ? 'animate-spin' : ''}`} 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+              />
+            </svg>
+          </button>
+
+          {/* Expand/Collapse Button - CONSISTENT STYLE */}
+          <button
+            onClick={onToggle}
+            className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+          >
+            {isExpanded ? (
+              <ChevronUp className="w-4 h-4" />
+            ) : (
+              <ChevronDown className="w-4 h-4" />
             )}
-          </div>
+          </button>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="p-6">
-        {loadingReport ? (
-          <div className="flex items-center justify-center py-8">
-            <RefreshCw className="w-6 h-6 text-blue-600 animate-spin mr-3" />
-            <span className="text-gray-600">Verslag laden...</span>
-          </div>
-        ) : reportError ? (
-          <div className="flex items-center p-4 bg-red-50 rounded-lg">
-            <AlertCircle className="w-5 h-5 text-red-600 mr-3" />
-            <span className="text-red-700">{reportError}</span>
-          </div>
-        ) : !displayReport ? (
-          <div className="text-center py-8">
-            <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Nog geen verslag beschikbaar</h3>
-            <p className="text-gray-500 mb-4">
-              Gebruik de groene "Verslag" knop rechtsonder om een verslag te genereren
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {/* Meeting Info */}
-            <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-              <div className="grid grid-cols-3 gap-4 text-sm">
-                <div>
-                  <span className="font-medium text-gray-700">📅 Datum:</span>
-                  <div className="text-gray-600">
-                    {meeting?.start_time 
-                      ? new Date(meeting.start_time).toLocaleDateString('nl-NL')
-                      : new Date().toLocaleDateString('nl-NL')
-                    }
-                  </div>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">👥 Deelnemers:</span>
-                  <div className="text-gray-600">{meeting?.participants?.length || 0}</div>
-                </div>
-                <div>
-                  <span className="font-medium text-gray-700">⏱️ Duur:</span>
-                  <div className="text-gray-600">
-                    {recordingTime ? Math.floor(recordingTime / 60) : 0} minuten
-                  </div>
-                </div>
+      {/* Panel Content - ONLY SHOW WHEN EXPANDED */}
+      {isExpanded && (
+        <div className="p-4">
+          {/* Refresh Status Indicator - CONSISTENT STYLE */}
+          {isRefreshing && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <div className="flex items-center space-x-2">
+                <svg className="animate-spin w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-sm text-blue-800">Verslagen worden vernieuwd...</span>
               </div>
             </div>
+          )}
 
-            {/* Summary */}
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                📝 Samenvatting
-              </h3>
-              {isEditing ? (
-                <textarea
-                  value={editingContent.summary}
-                  onChange={(e) => setEditingContent(prev => ({ ...prev, summary: e.target.value }))}
-                  className="w-full p-4 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                  rows={4}
-                  placeholder="Voer een samenvatting van het gesprek in..."
-                />
-              ) : (
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">
-                    {displayReport.summary || 'Geen samenvatting beschikbaar'}
-                  </p>
-                </div>
-              )}
+          {/* Loading State - ONLY when loading initially, not when refreshing */}
+          {loading && !isRefreshing && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+              <div className="flex items-center space-x-2">
+                <svg className="animate-spin w-4 h-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span className="text-sm text-blue-800">Verslagen laden...</span>
+              </div>
             </div>
+          )}
 
-            {/* Agenda Items */}
-            {displayReport.agenda_items && displayReport.agenda_items.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                  📋 Agendapunten Bespreking
-                </h3>
-                <div className="space-y-3">
-                  {displayReport.agenda_items.map((item, index) => (
-                    <div key={index} className="bg-green-50 p-4 rounded-lg border border-green-200">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-medium text-green-900">{item.title}</h4>
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          item.status === 'completed' 
-                            ? 'bg-green-200 text-green-800'
-                            : item.status === 'in_progress'
-                            ? 'bg-yellow-200 text-yellow-800'
-                            : 'bg-gray-200 text-gray-800'
-                        }`}>
-                          {item.status === 'completed' ? '✅ Voltooid' : 
-                           item.status === 'in_progress' ? '🔄 Bezig' : '⏳ Open'}
-                        </span>
-                      </div>
-                      {item.discussion && (
-                        <p className="text-green-700 text-sm leading-relaxed">
-                          {item.discussion}
-                        </p>
-                      )}
+          {/* Error State */}
+          {error && (
+            <div className="flex items-center p-4 bg-red-50 rounded-lg mb-4">
+              <AlertCircle className="w-5 h-5 text-red-600 mr-3" />
+              <span className="text-red-700">{error}</span>
+            </div>
+          )}
+
+          {/* Content */}
+          <div className={`${isRefreshing ? 'opacity-60' : ''}`}>
+            {/* Show loading skeleton ONLY when initially loading AND no data yet */}
+            {loading && !currentReport && !isRefreshing ? (
+              <div className="space-y-4">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="rounded-lg border p-4 bg-blue-50 border-blue-200 animate-pulse">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <div className="w-6 h-6 bg-blue-200 rounded"></div>
+                      <div className="h-4 bg-blue-200 rounded w-32"></div>
+                      <div className="h-3 bg-blue-100 rounded w-16"></div>
                     </div>
-                  ))}
-                </div>
+                    <div className="space-y-2">
+                      <div className="h-3 bg-blue-100 rounded w-full"></div>
+                      <div className="h-3 bg-blue-100 rounded w-3/4"></div>
+                      <div className="h-3 bg-blue-100 rounded w-1/2"></div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-
-            {/* Key Points */}
-            {displayReport.key_points && displayReport.key_points.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                  🎯 Belangrijkste Punten
-                </h3>
-                {isEditing ? (
-                  <div className="space-y-2">
-                    {editingContent.key_points.map((point, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={typeof point === 'string' ? point : point.topic || ''}
-                          onChange={(e) => updateListItem('key_points', index, e.target.value)}
-                          className="flex-1 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Voer een belangrijk punt in..."
-                        />
-                        <button
-                          onClick={() => removeListItem('key_points', index)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => addListItem('key_points')}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      + Punt toevoegen
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-                    <ul className="space-y-2">
-                      {displayReport.key_points.map((point, index) => (
-                        <li key={index} className="flex items-start text-gray-700">
-                          <span className="text-orange-500 mr-3 mt-1">•</span>
-                          <span className="leading-relaxed">
-                            {typeof point === 'string' ? point : point.topic || point}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Action Items */}
-            {displayReport.action_items && displayReport.action_items.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                  ✅ Actiepunten
-                </h3>
-                {isEditing ? (
-                  <div className="space-y-2">
-                    {editingContent.action_items.map((action, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={typeof action === 'string' ? action : action.action || ''}
-                          onChange={(e) => updateListItem('action_items', index, e.target.value)}
-                          className="flex-1 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Voer een actiepunt in..."
-                        />
-                        <button
-                          onClick={() => removeListItem('action_items', index)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => addListItem('action_items')}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      + Actie toevoegen
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                    <ul className="space-y-2">
-                      {displayReport.action_items.map((action, index) => (
-                        <li key={index} className="flex items-start text-gray-700">
-                          <span className="text-red-500 mr-3 mt-1">→</span>
-                          <span className="leading-relaxed">
-                            {typeof action === 'string' ? action : action.action || action}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Next Steps */}
-            {displayReport.next_steps && displayReport.next_steps.length > 0 && (
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center">
-                  ➡️ Vervolgstappen
-                </h3>
-                {isEditing ? (
-                  <div className="space-y-2">
-                    {editingContent.next_steps.map((step, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={typeof step === 'string' ? step : step.step || step.action || ''}
-                          onChange={(e) => updateListItem('next_steps', index, e.target.value)}
-                          className="flex-1 p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                          placeholder="Voer een vervolgstap in..."
-                        />
-                        <button
-                          onClick={() => removeListItem('next_steps', index)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => addListItem('next_steps')}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      + Stap toevoegen
-                    </button>
-                  </div>
-                ) : (
-                  <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-                    <ul className="space-y-2">
-                      {displayReport.next_steps.map((step, index) => (
-                        <li key={index} className="flex items-start text-gray-700">
-                          <span className="text-purple-500 mr-3 mt-1">▶</span>
-                          <span className="leading-relaxed">
-                            {typeof step === 'string' ? step : step.step || step.action || step}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Generation Info */}
-            {displayReport.generated_at && (
-              <div className="text-sm text-gray-500 pt-4 border-t border-gray-200">
-                <p>
-                  📅 Verslag gegenereerd op: {new Date(displayReport.generated_at).toLocaleString('nl-NL')}
+            ) : !currentReport && !isLoadingState ? (
+              /* Show "no report" message only when NOT loading */
+              <div className="text-center py-8">
+                <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">Nog geen verslag beschikbaar</h3>
+                <p className="text-gray-500 mb-4">
+                  Gebruik de groene "Verslag" knop rechtsonder om een verslag te genereren
                 </p>
               </div>
-            )}
+            ) : currentReport ? (
+              /* Show report content */
+              <div className="space-y-6">
+                {/* Report Header Info */}
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-gray-900">{currentReport.report_title}</h3>
+                    <div className="flex items-center space-x-2 text-sm text-gray-500">
+                      <span>v{currentReport.version_number}</span>
+                      <span>•</span>
+                      <span>{currentReport.sections?.length || 0} secties</span>
+                      {currentReport.privacy_filtered && (
+                        <>
+                          <span>•</span>
+                          <span className="text-red-600">🔒 Privacy gefilterd</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    Gegenereerd door {currentReport.generated_by} op {' '}
+                    {currentReport.generated_at ? new Date(currentReport.generated_at).toLocaleString('nl-NL') : 'Onbekend'}
+                  </p>
+                  
+                  {/* Report Selection Dropdown - NIEUW */}
+                  {reports.length > 1 && (
+                    <div className="mt-3 pt-3 border-t border-gray-300">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Beschikbare verslagen ({reports.length}):
+                      </label>
+                      <select
+                        value={currentReport.id}
+                        onChange={(e) => loadReport(parseInt(e.target.value))}
+                        className="w-full p-2 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        {reports.map((report) => (
+                          <option key={report.id} value={report.id}>
+                            {report.report_title} (v{report.version_number}) - {report.sections_count} secties - {report.report_type}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Report Sections */}
+                {currentReport.sections && currentReport.sections.length > 0 ? (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                      📄 Verslagsecties
+                    </h3>
+                    
+                    {currentReport.sections.map((section) => (
+                      <div 
+                        key={section.id} 
+                        className={`rounded-lg border p-4 ${getSectionColor(section.section_type)}`}
+                      >
+                        {/* Section Header */}
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xl">{getSectionIcon(section.section_type)}</span>
+                            <h4 className="font-medium text-gray-900">{section.title}</h4>
+                            {section.contains_privacy_info && (
+                              <span className="text-xs bg-red-100 text-red-600 px-2 py-1 rounded">
+                                🔒 Privacy info
+                              </span>
+                            )}
+                            {!section.is_auto_generated && (
+                              <span className="text-xs bg-blue-100 text-blue-600 px-2 py-1 rounded">
+                                ✏️ Bewerkt
+                              </span>
+                            )}
+                          </div>
+                          
+                          {section.is_editable && editingSection !== section.id && (
+                            <button
+                              onClick={() => startEditingSection(section)}
+                              className="text-blue-600 hover:text-blue-800 p-1"
+                              title="Sectie bewerken"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Section Content */}
+                        {editingSection === section.id ? (
+                          <div className="space-y-3">
+                            {/* Edit Title */}
+                            <input
+                              type="text"
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              className="w-full p-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium"
+                              placeholder="Sectie titel..."
+                            />
+                            
+                            {/* Edit Content */}
+                            <textarea
+                              value={editingContent}
+                              onChange={(e) => setEditingContent(e.target.value)}
+                              className="w-full p-3 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              rows={section.section_type === 'summary' ? 6 : 4}
+                              placeholder="Sectie inhoud..."
+                            />
+                            
+                            {/* Edit Buttons */}
+                            <div className="flex justify-end space-x-2">
+                              <button
+                                onClick={cancelEditing}
+                                className="px-3 py-1 bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors text-sm"
+                              >
+                                <X className="w-3 h-3 mr-1 inline" />
+                                Annuleren
+                              </button>
+                              <button
+                                onClick={saveSection}
+                                disabled={saving}
+                                className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors text-sm disabled:opacity-50"
+                              >
+                                <Save className="w-3 h-3 mr-1 inline" />
+                                {saving ? 'Opslaan...' : 'Opslaan'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-gray-700 whitespace-pre-wrap text-sm leading-relaxed">
+                            {section.content || 'Geen inhoud beschikbaar'}
+                          </div>
+                        )}
+
+                        {/* Section Meta Info */}
+                        {section.last_edited_at && !section.is_auto_generated && (
+                          <div className="mt-3 pt-2 border-t border-gray-200 text-xs text-gray-500">
+                            Laatst bewerkt: {new Date(section.last_edited_at).toLocaleString('nl-NL')}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Geen secties beschikbaar</h3>
+                    <p className="text-gray-500">
+                      Dit verslag heeft nog geen secties. Dit kan een oud verslag zijn.
+                    </p>
+                  </div>
+                )}
+
+                {/* Report Statistics - CONSISTENT STYLE */}
+                {currentReport.sections && currentReport.sections.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <h4 className="font-medium text-gray-700 mb-3">📊 Verslag Statistieken</h4>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <span className="text-gray-500">Totaal secties:</span>
+                        <div className="font-medium">{currentReport.sections.length}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Bewerkte secties:</span>
+                        <div className="font-medium text-blue-600">
+                          {currentReport.sections.filter(s => !s.is_auto_generated).length}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Privacy secties:</span>
+                        <div className="font-medium text-red-600">
+                          {currentReport.sections.filter(s => s.contains_privacy_info).length}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Status:</span>
+                        <div className="font-medium text-green-600">{currentReport.status}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 };
