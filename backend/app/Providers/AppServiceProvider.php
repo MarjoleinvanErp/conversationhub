@@ -19,9 +19,22 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\N8nIntegrationService::class);
         $this->app->singleton(\App\Services\N8NService::class);
 
-        // Enhanced services
+        // NEW: Voice Service voor speaker identification
+        $this->app->singleton(\App\Services\VoiceService::class, function ($app) {
+            return new \App\Services\VoiceService();
+        });
+
+        // Enhanced services - UPDATE: met VoiceService dependency
+        $this->app->singleton(\App\Services\EnhancedLiveTranscriptionService::class, function ($app) {
+            return new \App\Services\EnhancedLiveTranscriptionService(
+                $app->make(\App\Services\AzureWhisperService::class),
+                $app->make(\App\Services\VoiceService::class),
+                $app->make(\App\Services\MeetingService::class)
+            );
+        });
+
+        // Other enhanced services
         $this->app->singleton(\App\Services\VoiceFingerprintService::class);
-        $this->app->singleton(\App\Services\EnhancedLiveTranscriptionService::class);
         $this->app->singleton(\App\Services\AudioChunkingService::class);
         
         // Mock Whisper service voor testing

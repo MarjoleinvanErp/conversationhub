@@ -2,168 +2,147 @@
 
 namespace App\Services;
 
-use App\Services\VoiceFingerprintService;
-use App\Services\AzureWhisperService;
+use App\Models\Meeting;
 use App\Models\Transcription;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Cache;
 
 class EnhancedLiveTranscriptionService
 {
+    private $azureWhisperService;
     private $voiceService;
-    private $whisperService;
-    private $sessionPrefix = 'enhanced_session:';
+    private $meetingService;
 
     public function __construct(
-        VoiceFingerprintService $voiceService,
-        AzureWhisperService $whisperService
+        AzureWhisperService $azureWhisperService,
+        VoiceService $voiceService,
+        MeetingService $meetingService
     ) {
+        $this->azureWhisperService = $azureWhisperService;
         $this->voiceService = $voiceService;
-        $this->whisperService = $whisperService;
+        $this->meetingService = $meetingService;
     }
 
     /**
-     * Get session from Redis
+     * Start enhanced session
      */
-    private function getSession(string $sessionId): ?array
+    public function startEnhancedSession(int $meetingId, array $participants): array
     {
         try {
-            $sessionData = Redis::get($this->sessionPrefix . $sessionId);
-            if ($sessionData) {
-                return json_decode($sessionData, true);
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to get session from Redis', [
+            $meeting = Meeting::findOrFail($meetingId);
+            $sessionId = uniqid('session_', true);
+
+            $sessionData = [
                 'session_id' => $sessionId,
-                'error' => $e->getMessage()
-            ]);
-        }
-        return null;
-    }
+                'meeting_id' => $meetingId,
+                'participants' => $participants,
+                'voice_setup_complete' => false,
+                'voice_profiles' => [],
+                'created_at' => now(),
+                'chunk_counter' => 0,
+            ];
 
-    /**
-     * Save session to Redis
-     */
-    private function saveSession(string $sessionId, array $sessionData): void
-    {
-        try {
-            // Session expires in 24 hours
-            Redis::setex(
-                $this->sessionPrefix . $sessionId,
-                86400, // 24 hours
-                json_encode($sessionData)
-            );
-        } catch (\Exception $e) {
-            Log::error('Failed to save session to Redis', [
-                'session_id' => $sessionId,
-                'error' => $e->getMessage()
-            ]);
-        }
-    }
-
-    /**
-     * Start enhanced session with voice setup
-     */
-    public function startEnhancedSession(int $meetingId, array $participants = []): array
-    {
-        $sessionId = uniqid('enhanced_', true);
-        
-        Log::info('Creating new enhanced session', [
-            'session_id' => $sessionId,
-            'meeting_id' => $meetingId,
-            'participants_count' => count($participants),
-            'participants' => $participants
-        ]);
-        
-        $sessionData = [
-            'meeting_id' => $meetingId,
-            'started_at' => now()->toISOString(),
-            'participants' => $participants,
-            'transcriptions' => [],
-            'voice_setup_complete' => false,
-            'auto_speaker_detection' => true,
-            'chunk_counter' => 0,
-        ];
-
-        // Save to Redis
-        $this->saveSession($sessionId, $sessionData);
-
-        $this->voiceService->loadVoiceProfiles($meetingId);
-
-        Log::info('Enhanced session created and saved to Redis', [
-            'session_id' => $sessionId,
-        ]);
-
-        return [
-            'success' => true,
-            'session_id' => $sessionId,
-            'voice_setup_required' => !empty($participants),
-            'participants' => $participants,
-        ];
-    }
-
-    /**
-     * Setup voice profile for participant
-     */
-    public function setupVoiceProfile(string $sessionId, string $speakerId, $voiceSample): array
-    {
-        Log::info('Setting up voice profile', [
-            'session_id' => $sessionId,
-            'speaker_id' => $speakerId,
-        ]);
-
-        $sessionData = $this->getSession($sessionId);
-        if (!$sessionData) {
-            Log::error('Session not found in Redis', [
-                'session_id' => $sessionId,
-                'speaker_id' => $speakerId,
-            ]);
-            return ['success' => false, 'error' => 'Invalid session - session not found'];
-        }
-
-        Log::info('Session found, creating voice profile', [
-            'session_id' => $sessionId,
-            'speaker_id' => $speakerId,
-            'session_data' => $sessionData,
-        ]);
-
-        $result = $this->voiceService->createVoiceProfile($speakerId, $voiceSample);
-        
-        if ($result['success']) {
-            // Update participants in session
-            foreach ($sessionData['participants'] as &$participant) {
-                if ($participant['id'] === $speakerId) {
-                    $participant['voice_setup'] = true;
-                    break;
-                }
-            }
-
-            // Check if all participants have voice setup
-            $allSetup = true;
-            foreach ($sessionData['participants'] as $participant) {
-                if (!($participant['voice_setup'] ?? false)) {
-                    $allSetup = false;
-                    break;
-                }
-            }
-            
-            $sessionData['voice_setup_complete'] = $allSetup;
-            
-            // Save updated session
             $this->saveSession($sessionId, $sessionData);
 
-            Log::info('Voice profile setup completed and session updated', [
+            Log::info('Enhanced session started', [
                 'session_id' => $sessionId,
-                'speaker_id' => $speakerId,
-                'all_setup' => $allSetup,
+                'meeting_id' => $meetingId,
+                'participant_count' => count($participants)
             ]);
-        }
 
-        return $result;
+            return [
+                'success' => true,
+                'session_id' => $sessionId,
+                'meeting_id' => $meetingId,
+                'participants' => $participants
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Failed to start enhanced session', [
+                'meeting_id' => $meetingId,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Failed to start session: ' . $e->getMessage()
+            ];
+        }
     }
 
     /**
-     * Process live transcription with automatic speaker detection
+     * Setup voice profile met VoiceService integratie
+     */
+    public function setupVoiceProfile(string $sessionId, string $speakerId, $audioContent): array
+    {
+        try {
+            $sessionData = $this->getSession($sessionId);
+            if (!$sessionData) {
+                return ['success' => false, 'error' => 'Invalid session'];
+            }
+
+            Log::info('Setting up voice profile', [
+                'session_id' => $sessionId,
+                'speaker_id' => $speakerId
+            ]);
+
+            // Load existing voice profiles into VoiceService
+            $this->voiceService->loadVoiceProfilesFromSession($sessionData);
+
+            // Setup voice profile
+            $result = $this->voiceService->setupVoiceProfile($speakerId, $audioContent);
+
+            if ($result['success']) {
+                // Update session with voice profiles
+                $sessionData['voice_profiles'] = $this->voiceService->saveVoiceProfilesToSession();
+                
+                // Mark participant as setup
+                foreach ($sessionData['participants'] as &$participant) {
+                    if ($participant['id'] === $speakerId) {
+                        $participant['voice_setup'] = true;
+                        break;
+                    }
+                }
+
+                // Check if all participants are setup
+                $allSetup = true;
+                foreach ($sessionData['participants'] as $participant) {
+                    if (!($participant['voice_setup'] ?? false)) {
+                        $allSetup = false;
+                        break;
+                    }
+                }
+                
+                $sessionData['voice_setup_complete'] = $allSetup;
+                
+                // Save updated session
+                $this->saveSession($sessionId, $sessionData);
+
+                Log::info('Voice profile setup completed', [
+                    'session_id' => $sessionId,
+                    'speaker_id' => $speakerId,
+                    'all_setup' => $allSetup,
+                ]);
+            }
+
+            return $result;
+
+        } catch (\Exception $e) {
+            Log::error('Voice profile setup failed', [
+                'session_id' => $sessionId,
+                'speaker_id' => $speakerId,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Voice profile setup failed: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Process live transcription met automatische spreker detectie
      */
     public function processLiveTranscription(
         string $sessionId, 
@@ -171,315 +150,246 @@ class EnhancedLiveTranscriptionService
         $audioSample = null,
         float $confidence = 0.8
     ): array {
-        $sessionData = $this->getSession($sessionId);
-        if (!$sessionData) {
-            return ['success' => false, 'error' => 'Invalid session'];
+        try {
+            $sessionData = $this->getSession($sessionId);
+            if (!$sessionData) {
+                return ['success' => false, 'error' => 'Invalid session'];
+            }
+
+            $sessionData['chunk_counter']++;
+
+            // Load voice profiles for speaker identification
+            $this->voiceService->loadVoiceProfilesFromSession($sessionData);
+
+            // Default spreker info
+            $speakerInfo = [
+                'speaker_id' => 'unknown_speaker', 
+                'confidence' => 0.0,
+                'method' => 'fallback'
+            ];
+            
+            // Probeer spreker herkenning als we audio hebben en voice setup compleet is
+            if ($audioSample && $sessionData['voice_setup_complete']) {
+                Log::info('Attempting speaker identification', [
+                    'session_id' => $sessionId,
+                    'has_audio' => true,
+                    'voice_setup_complete' => true
+                ]);
+                
+                $speakerInfo = $this->voiceService->identifySpeaker($audioSample);
+                
+                Log::info('Speaker identification result', [
+                    'session_id' => $sessionId,
+                    'identified_speaker' => $speakerInfo['speaker_id'],
+                    'confidence' => $speakerInfo['confidence']
+                ]);
+            } else {
+                Log::info('Speaker identification skipped', [
+                    'session_id' => $sessionId,
+                    'has_audio' => !!$audioSample,
+                    'voice_setup_complete' => $sessionData['voice_setup_complete'] ?? false
+                ]);
+            }
+
+            // Find speaker details
+            $speaker = $this->findSpeakerDetails($sessionData['participants'], $speakerInfo['speaker_id']);
+
+            // Create transcription entry
+            $transcriptionData = [
+                'meeting_id' => $sessionData['meeting_id'],
+                'speaker_name' => $speaker['name'] ?? 'Onbekende Spreker',
+                'speaker_id' => $speakerInfo['speaker_id'],
+                'speaker_color' => $speaker['color'] ?? '#6B7280',
+                'text' => $liveText,
+                'confidence' => $confidence,
+                'speaker_confidence' => $speakerInfo['confidence'],
+                'source' => 'enhanced_live',
+                'is_final' => true,
+                'spoken_at' => now(),
+                'processing_status' => 'completed',
+                'metadata' => [
+                    'session_id' => $sessionId,
+                    'speaker_detection_method' => $speakerInfo['method'] ?? 'fallback',
+                    'chunk_number' => $sessionData['chunk_counter']
+                ]
+            ];
+
+            // Save to database
+            $transcription = Transcription::create($transcriptionData);
+
+            // Update session
+            $this->saveSession($sessionId, $sessionData);
+
+            Log::info('Live transcription processed with speaker identification', [
+                'session_id' => $sessionId,
+                'transcription_id' => $transcription->id,
+                'identified_speaker' => $speakerInfo['speaker_id'],
+                'speaker_confidence' => $speakerInfo['confidence']
+            ]);
+
+            return [
+                'success' => true,
+                'transcription' => [
+                    'id' => $transcription->id,
+                    'text' => $transcription->text,
+                    'speaker_name' => $transcription->speaker_name,
+                    'speaker_id' => $transcription->speaker_id,
+                    'speaker_color' => $transcription->speaker_color,
+                    'confidence' => $transcription->confidence,
+                    'speaker_confidence' => $transcription->speaker_confidence,
+                    'spoken_at' => $transcription->spoken_at,
+                    'source' => $transcription->source,
+                    'processing_status' => $transcription->processing_status
+                ],
+                'speaker_identification' => $speakerInfo,
+                'session_stats' => [
+                    'total_chunks' => $sessionData['chunk_counter'],
+                    'voice_setup_complete' => $sessionData['voice_setup_complete']
+                ]
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Live transcription processing failed', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage()
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Failed to process live transcription: ' . $e->getMessage()
+            ];
         }
-
-        $sessionData['chunk_counter']++;
-
-        $speakerInfo = ['speaker_id' => 'unknown_speaker', 'confidence' => 0.0];
-        
-        if ($audioSample && $sessionData['voice_setup_complete']) {
-            $speakerInfo = $this->voiceService->identifySpeaker($audioSample);
-        }
-
-        $speaker = $this->findSpeakerDetails($sessionData['participants'], $speakerInfo['speaker_id']);
-
-        $transcriptionEntry = [
-            'id' => uniqid('live_', true),
-            'type' => 'live',
-            'text' => $liveText,
-            'speaker_id' => $speakerInfo['speaker_id'],
-            'speaker_name' => $speaker['name'] ?? 'Onbekende Spreker',
-            'speaker_color' => $speaker['color'] ?? '#6B7280',
-            'speaker_confidence' => $speakerInfo['confidence'] ?? 0.0,
-            'text_confidence' => $confidence,
-            'timestamp' => now()->toISOString(),
-            'chunk_number' => $sessionData['chunk_counter'],
-            'processing_status' => 'live',
-            'whisper_processed' => false,
-        ];
-
-        $sessionData['transcriptions'][] = $transcriptionEntry;
-        $this->saveSession($sessionId, $sessionData);
-
-        return [
-            'success' => true,
-            'transcription' => $transcriptionEntry,
-            'speaker_detection' => $speakerInfo,
-            'session_stats' => $this->getSessionStats($sessionId),
-        ];
     }
 
     /**
-     * Process Whisper verification - ENHANCED WITH DEBUG
+     * Process Whisper verification met speaker identification
      */
     public function processWhisperVerification(
         string $sessionId,
         string $liveTranscriptionId,
-        $audioChunk
+        $audioContent
     ): array {
-        // Debug session data first
-        Log::info('🔍 Debug Whisper verification start', [
-            'session_id' => $sessionId,
-            'live_transcription_id' => $liveTranscriptionId,
-            'audio_chunk_size' => strlen($audioChunk)
-        ]);
-
-        $sessionData = $this->getSession($sessionId);
-        if (!$sessionData) {
-            Log::error('❌ Session not found', ['session_id' => $sessionId]);
-            return ['success' => false, 'error' => 'Invalid session'];
-        }
-
-        // Debug session contents
-        Log::info('🔍 Session data found', [
-            'session_id' => $sessionId,
-            'transcriptions_count' => count($sessionData['transcriptions'] ?? []),
-            'session_keys' => array_keys($sessionData)
-        ]);
-
-        // Debug all transcription IDs in session
-        $transcriptionIds = [];
-        foreach ($sessionData['transcriptions'] as $index => $transcription) {
-            $transcriptionIds[] = [
-                'index' => $index,
-                'id' => $transcription['id'],
-                'text_preview' => substr($transcription['text'] ?? '', 0, 30),
-                'status' => $transcription['processing_status'] ?? 'unknown'
-            ];
-        }
-        
-        Log::info('🔍 All transcriptions in session', [
-            'looking_for_id' => $liveTranscriptionId,
-            'available_transcriptions' => $transcriptionIds
-        ]);
-        
-        $transcriptionIndex = null;
-        foreach ($sessionData['transcriptions'] as $index => $transcription) {
-            if ($transcription['id'] === $liveTranscriptionId) {
-                $transcriptionIndex = $index;
-                break;
-            }
-        }
-
-        if ($transcriptionIndex === null) {
-            Log::error('❌ Live transcription not found in session', [
-                'session_id' => $sessionId,
-                'looking_for_id' => $liveTranscriptionId,
-                'available_ids' => array_column($sessionData['transcriptions'], 'id'),
-                'total_transcriptions' => count($sessionData['transcriptions'])
-            ]);
-            return ['success' => false, 'error' => 'Live transcription not found'];
-        }
-
-        Log::info('✅ Found transcription for Whisper verification', [
-            'transcription_index' => $transcriptionIndex,
-            'transcription_id' => $liveTranscriptionId,
-            'current_status' => $sessionData['transcriptions'][$transcriptionIndex]['processing_status']
-        ]);
-
-        $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'processing';
-        $this->saveSession($sessionId, $sessionData);
-
         try {
-            $tempFile = tempnam(storage_path('app/temp'), 'whisper_chunk_');
-            file_put_contents($tempFile, $audioChunk);
+            $sessionData = $this->getSession($sessionId);
+            if (!$sessionData) {
+                return ['success' => false, 'error' => 'Invalid session'];
+            }
 
-            $uploadedFile = new \Illuminate\Http\UploadedFile(
-                $tempFile,
-                'chunk.webm',
-                'audio/webm',
-                null,
-                true
-            );
+            // Find original transcription
+            $originalTranscription = Transcription::find($liveTranscriptionId);
+            if (!$originalTranscription) {
+                return ['success' => false, 'error' => 'Original transcription not found'];
+            }
 
-            Log::info('🤖 Calling Whisper API', [
-                'temp_file_size' => filesize($tempFile),
-                'transcription_id' => $liveTranscriptionId
+            Log::info('Starting Whisper verification with speaker identification', [
+                'session_id' => $sessionId,
+                'original_transcription_id' => $liveTranscriptionId,
+                'audio_size' => strlen($audioContent)
             ]);
 
-            $whisperResult = $this->whisperService->transcribeAudio($uploadedFile);
+            // Load voice profiles
+            $this->voiceService->loadVoiceProfilesFromSession($sessionData);
 
-            Log::info('🤖 Whisper API result', [
-                'success' => $whisperResult['success'],
-                'error' => $whisperResult['error'] ?? null,
-                'text_length' => isset($whisperResult['text']) ? strlen($whisperResult['text']) : 0
-            ]);
+            // Probeer spreker herkenning vanaf audio
+            $speakerInfo = [
+                'speaker_id' => 'unknown_speaker',
+                'confidence' => 0.0,
+                'method' => 'fallback'
+            ];
 
-            if ($whisperResult['success']) {
-                $speakerInfo = $this->voiceService->identifySpeaker($audioChunk);
-                $speaker = $this->findSpeakerDetails($sessionData['participants'], $speakerInfo['speaker_id']);
-
-                $sessionData['transcriptions'][$transcriptionIndex] = array_merge(
-                    $sessionData['transcriptions'][$transcriptionIndex],
-                    [
-                        'type' => 'verified',
-                        'text' => $whisperResult['text'],
-                        'speaker_id' => $speakerInfo['speaker_id'],
-                        'speaker_name' => $speaker['name'] ?? 'Onbekende Spreker',
-                        'speaker_color' => $speaker['color'] ?? '#6B7280',
-                        'speaker_confidence' => $speakerInfo['confidence'] ?? 0.0,
-                        'text_confidence' => 1.0,
-                        'processing_status' => 'verified',
-                        'whisper_processed' => true,
-                        'whisper_language' => $whisperResult['language'] ?? 'nl',
-                        'whisper_duration' => $whisperResult['duration'] ?? 0,
-                        'verified_at' => now()->toISOString(),
-                    ]
-                );
-
-                $this->saveVerifiedTranscription($sessionData['meeting_id'], $sessionData['transcriptions'][$transcriptionIndex]);
-
-                Log::info('✅ Whisper verification completed successfully', [
-                    'transcription_id' => $liveTranscriptionId,
-                    'whisper_text' => substr($whisperResult['text'], 0, 50) . '...'
-                ]);
-            } else {
-                $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'error';
-                $sessionData['transcriptions'][$transcriptionIndex]['whisper_error'] = $whisperResult['error'];
+            if ($sessionData['voice_setup_complete']) {
+                $speakerInfo = $this->voiceService->identifySpeaker($audioContent);
                 
-                Log::error('❌ Whisper API failed', [
-                    'transcription_id' => $liveTranscriptionId,
-                    'error' => $whisperResult['error']
+                Log::info('Whisper speaker identification result', [
+                    'session_id' => $sessionId,
+                    'identified_speaker' => $speakerInfo['speaker_id'],
+                    'confidence' => $speakerInfo['confidence']
                 ]);
             }
 
-            $this->saveSession($sessionId, $sessionData);
+            // Create temp audio file for Whisper
+            $tempFile = tmpfile();
+            fwrite($tempFile, $audioContent);
+            $tempPath = stream_get_meta_data($tempFile)['uri'];
+
+            // Process with Whisper
+            $whisperResult = $this->azureWhisperService->transcribeAudioFile($tempPath);
+            fclose($tempFile);
+
+            if (!$whisperResult['success']) {
+                return [
+                    'success' => false,
+                    'error' => 'Whisper transcription failed: ' . $whisperResult['error']
+                ];
+            }
+
+            // Find speaker details
+            $speaker = $this->findSpeakerDetails($sessionData['participants'], $speakerInfo['speaker_id']);
+
+            // Update original transcription with Whisper results and speaker info
+            $originalTranscription->update([
+                'whisper_text' => $whisperResult['text'],
+                'whisper_confidence' => $whisperResult['confidence'] ?? 0.9,
+                'whisper_language' => $whisperResult['language'] ?? 'nl',
+                'speaker_id' => $speakerInfo['speaker_id'],
+                'speaker_name' => $speaker['name'] ?? 'Onbekende Spreker',
+                'speaker_color' => $speaker['color'] ?? '#6B7280',
+                'speaker_confidence' => $speakerInfo['confidence'],
+                'processing_status' => 'whisper_verified',
+                'metadata' => array_merge($originalTranscription->metadata ?? [], [
+                    'whisper_processed_at' => now(),
+                    'speaker_detection_method' => $speakerInfo['method'],
+                    'voice_setup_complete' => $sessionData['voice_setup_complete']
+                ])
+            ]);
+
+            Log::info('Whisper verification completed with speaker identification', [
+                'session_id' => $sessionId,
+                'transcription_id' => $originalTranscription->id,
+                'whisper_text_length' => strlen($whisperResult['text']),
+                'identified_speaker' => $speakerInfo['speaker_id'],
+                'speaker_confidence' => $speakerInfo['confidence']
+            ]);
 
             return [
                 'success' => true,
-                'transcription' => $sessionData['transcriptions'][$transcriptionIndex],
-                'whisper_result' => $whisperResult,
+                'transcription' => [
+                    'id' => $originalTranscription->id,
+                    'text' => $originalTranscription->whisper_text,
+                    'original_text' => $originalTranscription->text,
+                    'speaker_name' => $originalTranscription->speaker_name,
+                    'speaker_id' => $originalTranscription->speaker_id,
+                    'speaker_color' => $originalTranscription->speaker_color,
+                    'confidence' => $originalTranscription->whisper_confidence,
+                    'speaker_confidence' => $originalTranscription->speaker_confidence,
+                    'language' => $originalTranscription->whisper_language,
+                    'spoken_at' => $originalTranscription->spoken_at,
+                    'processing_status' => $originalTranscription->processing_status,
+                    'database_saved' => true
+                ],
+                'speaker_identification' => $speakerInfo,
+                'whisper_processing' => [
+                    'text_improved' => $originalTranscription->whisper_text !== $originalTranscription->text,
+                    'confidence_improved' => ($whisperResult['confidence'] ?? 0) > $originalTranscription->confidence
+                ]
             ];
 
         } catch (\Exception $e) {
-            Log::error('❌ Whisper verification exception', [
+            Log::error('Whisper verification with speaker identification failed', [
+                'session_id' => $sessionId,
                 'transcription_id' => $liveTranscriptionId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'error' => $e->getMessage()
             ]);
-
-            $sessionData['transcriptions'][$transcriptionIndex]['processing_status'] = 'error';
-            $sessionData['transcriptions'][$transcriptionIndex]['whisper_error'] = $e->getMessage();
-            $this->saveSession($sessionId, $sessionData);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage(),
-                'transcription' => $sessionData['transcriptions'][$transcriptionIndex],
+                'error' => 'Whisper verification failed: ' . $e->getMessage()
             ];
-        } finally {
-            if (isset($tempFile) && file_exists($tempFile)) {
-                unlink($tempFile);
-            }
         }
     }
 
     /**
-     * Save verified transcription to database - FIXED WITH DYNAMIC SOURCE
-     */
-    private function saveVerifiedTranscription(int $meetingId, array $transcription): void
-    {
-        try {
-            // Determine correct source based on transcription type and origin
-            $source = $this->determineTranscriptionSource($transcription);
-            
-            Log::info('Saving verified transcription to database', [
-                'meeting_id' => $meetingId,
-                'transcription_id' => $transcription['id'] ?? 'unknown',
-                'source' => $source,
-                'type' => $transcription['type'] ?? 'unknown',
-                'processing_status' => $transcription['processing_status'] ?? 'unknown',
-                'text_preview' => substr($transcription['text'] ?? '', 0, 50) . '...'
-            ]);
-            
-            Transcription::create([
-                'meeting_id' => $meetingId,
-                'speaker_name' => $transcription['speaker_name'] ?? 'Onbekende Spreker',
-                'speaker_id' => $transcription['speaker_id'] ?? 'unknown_speaker',
-                'speaker_color' => $transcription['speaker_color'] ?? '#6B7280',
-                'text' => $transcription['text'] ?? '',
-                'confidence' => $transcription['text_confidence'] ?? 0.8,
-                'source' => $source, // FIXED: Now uses dynamic source determination
-                'is_final' => true,
-                'spoken_at' => $transcription['timestamp'] ?? now()->toISOString(),
-                'metadata' => json_encode([
-                    'whisper_language' => $transcription['whisper_language'] ?? null,
-                    'whisper_duration' => $transcription['whisper_duration'] ?? null,
-                    'processing_status' => $transcription['processing_status'] ?? null,
-                    'verified_at' => $transcription['verified_at'] ?? null,
-                    'whisper_processed' => $transcription['whisper_processed'] ?? false,
-                    'chunk_number' => $transcription['chunk_number'] ?? null,
-                    'speaker_confidence' => $transcription['speaker_confidence'] ?? 0.0,
-                ])
-            ]);
-            
-            Log::info('Verified transcription saved successfully', [
-                'meeting_id' => $meetingId,
-                'source' => $source,
-                'transcription_id' => $transcription['id'] ?? 'unknown'
-            ]);
-            
-        } catch (\Exception $e) {
-            Log::error('Failed to save verified transcription', [
-                'meeting_id' => $meetingId,
-                'transcription_id' => $transcription['id'] ?? 'unknown',
-                'error' => $e->getMessage(),
-                'transcription_data' => $transcription
-            ]);
-        }
-    }
-
-    /**
-     * Determine the correct source for a transcription based on its properties
-     */
-    private function determineTranscriptionSource(array $transcription): string
-    {
-        // Check if this transcription has been processed by Whisper
-        if (isset($transcription['whisper_processed']) && $transcription['whisper_processed'] === true) {
-            return 'whisper_verified';
-        }
-
-        // Check if this is a verified transcription (processed by Whisper)
-        if (isset($transcription['type']) && $transcription['type'] === 'verified') {
-            return 'whisper_verified';
-        }
-
-        // Check processing status
-        if (isset($transcription['processing_status']) && $transcription['processing_status'] === 'verified') {
-            return 'whisper_verified';
-        }
-
-        // Check if it has Whisper metadata
-        if (isset($transcription['whisper_language']) || isset($transcription['whisper_duration'])) {
-            return 'whisper_verified';
-        }
-
-        // Check original type
-        if (isset($transcription['type'])) {
-            switch ($transcription['type']) {
-                case 'live':
-                    return 'background_live';
-                case 'whisper':
-                case 'background_whisper':
-                    return 'background_whisper';
-                case 'verified':
-                    return 'whisper_verified';
-                default:
-                    // Fallback based on confidence and processing
-                    return $transcription['text_confidence'] >= 0.9 ? 'whisper_verified' : 'background_live';
-            }
-        }
-
-        // Final fallback - if confidence is high, assume it's Whisper
-        $confidence = $transcription['text_confidence'] ?? 0.8;
-        return $confidence >= 0.9 ? 'whisper_verified' : 'background_live';
-    }
-
-    /**
-     * Find speaker details by ID
+     * Find speaker details from participants array
      */
     private function findSpeakerDetails(array $participants, string $speakerId): ?array
     {
@@ -488,39 +398,23 @@ class EnhancedLiveTranscriptionService
                 return $participant;
             }
         }
+        
         return null;
     }
 
     /**
-     * Get session statistics
+     * Save session data to cache
      */
-    private function getSessionStats(string $sessionId): array
+    private function saveSession(string $sessionId, array $sessionData): void
     {
-        $sessionData = $this->getSession($sessionId);
-        if (!$sessionData) {
-            return [];
-        }
-        
-        $statusCounts = [
-            'live' => 0,
-            'processing' => 0,
-            'verified' => 0,
-            'error' => 0,
-        ];
+        Cache::put("live_session_{$sessionId}", $sessionData, now()->addHours(4));
+    }
 
-        foreach ($sessionData['transcriptions'] as $transcription) {
-            $status = $transcription['processing_status'] ?? 'unknown';
-            if (isset($statusCounts[$status])) {
-                $statusCounts[$status]++;
-            }
-        }
-
-        return [
-            'total_transcriptions' => count($sessionData['transcriptions']),
-            'status_breakdown' => $statusCounts,
-            'verification_rate' => $statusCounts['verified'] / max(1, count($sessionData['transcriptions'])),
-            'voice_setup_complete' => $sessionData['voice_setup_complete'] ?? false,
-            'duration_minutes' => now()->diffInMinutes($sessionData['started_at'] ?? now()),
-        ];
+    /**
+     * Get session data from cache
+     */
+    private function getSession(string $sessionId): ?array
+    {
+        return Cache::get("live_session_{$sessionId}");
     }
 }
