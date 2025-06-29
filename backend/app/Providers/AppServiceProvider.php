@@ -19,6 +19,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(\App\Services\N8nIntegrationService::class);
         $this->app->singleton(\App\Services\N8NService::class);
 
+        // NEW: Meeting Service (was missing!)
+        $this->app->singleton(\App\Services\MeetingService::class, function ($app) {
+            return new \App\Services\MeetingService();
+        });
+
         // NEW: Voice Service voor speaker identification
         $this->app->singleton(\App\Services\VoiceService::class, function ($app) {
             return new \App\Services\VoiceService();
@@ -33,9 +38,14 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
-        // Other enhanced services
-        $this->app->singleton(\App\Services\VoiceFingerprintService::class);
-        $this->app->singleton(\App\Services\AudioChunkingService::class);
+        // Other enhanced services (check if these exist before registering)
+        if (class_exists(\App\Services\VoiceFingerprintService::class)) {
+            $this->app->singleton(\App\Services\VoiceFingerprintService::class);
+        }
+        
+        if (class_exists(\App\Services\AudioChunkingService::class)) {
+            $this->app->singleton(\App\Services\AudioChunkingService::class);
+        }
         
         // Mock Whisper service voor testing
         if (env('WHISPER_SERVICE_MOCK', false)) {

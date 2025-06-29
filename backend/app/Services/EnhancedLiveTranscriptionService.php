@@ -287,6 +287,20 @@ class EnhancedLiveTranscriptionService
                 'audio_size' => strlen($audioContent)
             ]);
 
+            // TEMP DEBUG - Check audio content details
+            Log::info('TEMP DEBUG: Audio content analysis', [
+                'session_id' => $sessionId,
+                'transcription_id' => $liveTranscriptionId,
+                'audio_size_bytes' => strlen($audioContent),
+                'audio_size_kb' => round(strlen($audioContent) / 1024, 2),
+                'audio_first_20_bytes_hex' => bin2hex(substr($audioContent, 0, 20)),
+                'audio_last_20_bytes_hex' => bin2hex(substr($audioContent, -20)),
+                'audio_is_empty' => empty($audioContent),
+                'audio_starts_with_webm' => substr($audioContent, 0, 4) === "\x1A\x45\xDF\xA3",
+                'audio_starts_with_wav' => substr($audioContent, 0, 4) === "RIFF",
+                'estimated_duration_sec' => round(strlen($audioContent) / 16000, 2)
+            ]);
+
             // Load voice profiles
             $this->voiceService->loadVoiceProfilesFromSession($sessionData);
 
@@ -298,25 +312,87 @@ class EnhancedLiveTranscriptionService
             ];
 
             if ($sessionData['voice_setup_complete']) {
+                Log::info('TEMP DEBUG: Starting speaker identification', [
+                    'session_id' => $sessionId,
+                    'voice_profiles_count' => count($sessionData['voice_profiles'] ?? [])
+                ]);
+                
                 $speakerInfo = $this->voiceService->identifySpeaker($audioContent);
                 
                 Log::info('Whisper speaker identification result', [
                     'session_id' => $sessionId,
                     'identified_speaker' => $speakerInfo['speaker_id'],
-                    'confidence' => $speakerInfo['confidence']
+                    'confidence' => $speakerInfo['confidence'],
+                    'method' => $speakerInfo['method'] ?? 'unknown'
+                ]);
+            } else {
+                Log::info('TEMP DEBUG: Speaker identification skipped - voice setup not complete', [
+                    'session_id' => $sessionId
                 ]);
             }
 
-            // Create temp audio file for Whisper
+            // Create temp audio file for Whisper - FIXED METHOD CALL
             $tempFile = tmpfile();
-            fwrite($tempFile, $audioContent);
+            if (!$tempFile) {
+                Log::error('TEMP DEBUG: Failed to create temp file', ['session_id' => $sessionId]);
+                return ['success' => false, 'error' => 'Failed to create temporary file'];
+            }
+
+            $bytesWritten = fwrite($tempFile, $audioContent);
             $tempPath = stream_get_meta_data($tempFile)['uri'];
 
-            // Process with Whisper
-            $whisperResult = $this->azureWhisperService->transcribeAudioFile($tempPath);
+            Log::info('TEMP DEBUG: Temp file created for Whisper', [
+                'session_id' => $sessionId,
+                'temp_path' => $tempPath,
+                'bytes_written' => $bytesWritten,
+                'file_exists' => file_exists($tempPath),
+                'file_size' => file_exists($tempPath) ? filesize($tempPath) : 0
+            ]);
+
+            // Create UploadedFile instance voor AzureWhisperService
+            $uploadedFile = new \Illuminate\Http\UploadedFile(
+                $tempPath,
+                'whisper_chunk_' . time() . '.webm',
+                'audio/webm',
+                null,
+                true // test mode
+            );
+
+            Log::info('TEMP DEBUG: UploadedFile created', [
+                'session_id' => $sessionId,
+                'file_path' => $uploadedFile->getPathname(),
+                'file_size' => $uploadedFile->getSize(),
+                'file_type' => $uploadedFile->getMimeType(),
+                'original_name' => $uploadedFile->getClientOriginalName()
+            ]);
+
+            // Process with Whisper - FIXED: gebruik transcribeAudio() in plaats van transcribeAudioFile()
+            Log::info('TEMP DEBUG: Calling Azure Whisper API', [
+                'session_id' => $sessionId,
+                'file_ready' => $uploadedFile->isValid()
+            ]);
+
+            $whisperResult = $this->azureWhisperService->transcribeAudio($uploadedFile);
+
+            Log::info('TEMP DEBUG: Azure Whisper API response', [
+                'session_id' => $sessionId,
+                'success' => $whisperResult['success'] ?? false,
+                'has_text' => !empty($whisperResult['text'] ?? ''),
+                'text_length' => strlen($whisperResult['text'] ?? ''),
+                'text_preview' => substr($whisperResult['text'] ?? '', 0, 100),
+                'language' => $whisperResult['language'] ?? 'unknown',
+                'confidence' => $whisperResult['confidence'] ?? 0,
+                'error' => $whisperResult['error'] ?? null
+            ]);
+
+            // Cleanup temp file
             fclose($tempFile);
 
             if (!$whisperResult['success']) {
+                Log::error('TEMP DEBUG: Whisper transcription failed', [
+                    'session_id' => $sessionId,
+                    'error' => $whisperResult['error']
+                ]);
                 return [
                     'success' => false,
                     'error' => 'Whisper transcription failed: ' . $whisperResult['error']
@@ -326,8 +402,15 @@ class EnhancedLiveTranscriptionService
             // Find speaker details
             $speaker = $this->findSpeakerDetails($sessionData['participants'], $speakerInfo['speaker_id']);
 
+            Log::info('TEMP DEBUG: Speaker details found', [
+                'session_id' => $sessionId,
+                'speaker_id' => $speakerInfo['speaker_id'],
+                'speaker_name' => $speaker['name'] ?? 'Unknown',
+                'speaker_color' => $speaker['color'] ?? '#6B7280'
+            ]);
+
             // Update original transcription with Whisper results and speaker info
-            $originalTranscription->update([
+            $updateData = [
                 'whisper_text' => $whisperResult['text'],
                 'whisper_confidence' => $whisperResult['confidence'] ?? 0.9,
                 'whisper_language' => $whisperResult['language'] ?? 'nl',
@@ -341,7 +424,19 @@ class EnhancedLiveTranscriptionService
                     'speaker_detection_method' => $speakerInfo['method'],
                     'voice_setup_complete' => $sessionData['voice_setup_complete']
                 ])
+            ];
+
+            Log::info('TEMP DEBUG: Updating transcription with Whisper results', [
+                'session_id' => $sessionId,
+                'transcription_id' => $originalTranscription->id,
+                'update_data_preview' => [
+                    'whisper_text_length' => strlen($updateData['whisper_text']),
+                    'speaker_name' => $updateData['speaker_name'],
+                    'speaker_confidence' => $updateData['speaker_confidence']
+                ]
             ]);
+
+            $originalTranscription->update($updateData);
 
             Log::info('Whisper verification completed with speaker identification', [
                 'session_id' => $sessionId,
@@ -351,7 +446,7 @@ class EnhancedLiveTranscriptionService
                 'speaker_confidence' => $speakerInfo['confidence']
             ]);
 
-            return [
+            $responseData = [
                 'success' => true,
                 'transcription' => [
                     'id' => $originalTranscription->id,
@@ -374,11 +469,21 @@ class EnhancedLiveTranscriptionService
                 ]
             ];
 
+            Log::info('TEMP DEBUG: Final response data', [
+                'session_id' => $sessionId,
+                'response_success' => $responseData['success'],
+                'response_text_length' => strlen($responseData['transcription']['text']),
+                'response_has_speaker' => !empty($responseData['transcription']['speaker_name'])
+            ]);
+
+            return $responseData;
+
         } catch (\Exception $e) {
             Log::error('Whisper verification with speaker identification failed', [
                 'session_id' => $sessionId,
                 'transcription_id' => $liveTranscriptionId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
             ]);
 
             return [

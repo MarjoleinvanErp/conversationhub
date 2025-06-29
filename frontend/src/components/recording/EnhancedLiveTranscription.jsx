@@ -465,7 +465,7 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-  // Background audio chunk processing - UPDATED MET SPEAKER DETECTION
+  // Background audio chunk processing - UPDATED MET SPEAKER DETECTION EN DEBUGGING
   const handleBackgroundAudioChunk = async (audioBlob) => {
     // Skip if Whisper is disabled
     if (!transcriptionConfig.whisper_enabled) {
@@ -476,9 +476,24 @@ const EnhancedLiveTranscription = ({
     try {
       console.log('🎵 Processing audio chunk with Whisper and speaker detection...', {
         size: audioBlob.size,
+        type: audioBlob.type,
         timestamp: new Date().toLocaleTimeString(),
         chunkDuration: transcriptionConfig.whisper_chunk_duration + 's'
       });
+
+      // Check if audio chunk is too small
+      if (audioBlob.size < 1000) { // Less than 1KB probably means silence
+        console.warn('⚠️ Audio chunk too small, likely silence - skipping Whisper processing');
+        
+        if (onWhisperUpdate) {
+          onWhisperUpdate({
+            type: 'processing_info',
+            message: 'Audio chunk te klein (waarschijnlijk stilte) - overgeslagen',
+            timestamp: new Date().toISOString()
+          });
+        }
+        return;
+      }
 
       // Get transcription ID voor Whisper verification
       let transcriptionId = `background_${Date.now()}`; // fallback
@@ -518,17 +533,33 @@ const EnhancedLiveTranscription = ({
       }
 
       // Process with Whisper using the correct ID (will also do speaker detection)
+      console.log('🤖 Sending audio chunk to Whisper API...');
       const result = await enhancedLiveTranscriptionService.processWhisperVerification(
         transcriptionId,
         audioBlob
       );
 
+      console.log('🤖 Whisper API response:', {
+        success: result.success,
+        has_transcription: !!result.transcription,
+        text_length: result.transcription?.text?.length || 0,
+        whisper_text_length: result.transcription?.whisper_text?.length || 0,
+        error: result.error
+      });
+
       if (result.success && result.transcription) {
         const transcriptionData = {
           ...result.transcription,
           source: 'background_whisper',
-          confidence: result.transcription.text_confidence || 1.0,
+          confidence: result.transcription.text_confidence || result.transcription.confidence || 1.0,
           database_saved: result.transcription.database_saved || false,
+          // Ensure text is not null/undefined - try multiple fields
+          text: result.transcription.text || 
+                result.transcription.whisper_text || 
+                result.transcription.original_text || 
+                'Geen spraak gedetecteerd in audio chunk',
+          speaker_name: result.transcription.speaker_name || 'Onbekende Spreker',
+          speaker_confidence: result.transcription.speaker_confidence || 0,
           // NIEUW: Speaker detection info
           speakerDetection: {
             method: result.speaker_identification?.method || 'whisper_audio',
@@ -539,27 +570,42 @@ const EnhancedLiveTranscription = ({
         };
 
         console.log('✅ Whisper transcription completed with speaker identification:', {
-          text_preview: transcriptionData.text.substring(0, 50) + '...',
+          text_preview: (transcriptionData.text || 'No text').substring(0, 50) + '...',
           database_saved: transcriptionData.database_saved,
           processing_status: transcriptionData.processing_status,
           transcription_id: transcriptionId,
-          identified_speaker: transcriptionData.speaker_name,
-          speaker_confidence: transcriptionData.speaker_confidence,
+          identified_speaker: transcriptionData.speaker_name || 'Unknown',
+          speaker_confidence: transcriptionData.speaker_confidence || 0,
           chunk_duration: transcriptionConfig.whisper_chunk_duration + 's'
         });
 
-        // Send improved transcription to parent
-        onTranscriptionUpdate(transcriptionData);
+        // Send improved transcription to parent - check for meaningful text
+        const hasValidText = transcriptionData.text && 
+                           transcriptionData.text !== 'Geen tekst beschikbaar' &&
+                           transcriptionData.text !== 'Geen spraak gedetecteerd in audio chunk' &&
+                           transcriptionData.text.length > 3;
 
-        // Update het Whisper panel met speaker info
+        if (hasValidText) {
+          console.log('📤 Sending transcription update to parent');
+          onTranscriptionUpdate(transcriptionData);
+        } else {
+          console.warn('⚠️ Skipping transcription update - no meaningful text:', {
+            text: transcriptionData.text,
+            length: transcriptionData.text?.length || 0
+          });
+        }
+
+        // Update het Whisper panel met speaker info (always send for status updates)
         if (onWhisperUpdate) {
           onWhisperUpdate({
-            type: 'transcription_completed',
+            type: hasValidText ? 'transcription_completed' : 'transcription_empty',
             transcription: transcriptionData,
             speakerDetection: transcriptionData.speakerDetection,
-            message: transcriptionData.database_saved 
-              ? `Whisper transcriptie opgeslagen - Spreker: ${transcriptionData.speaker_name}` 
-              : `Whisper transcriptie verwerkt - Spreker: ${transcriptionData.speaker_name}`,
+            message: hasValidText 
+              ? (transcriptionData.database_saved 
+                  ? `Whisper transcriptie opgeslagen - Spreker: ${transcriptionData.speaker_name}` 
+                  : `Whisper transcriptie verwerkt - Spreker: ${transcriptionData.speaker_name}`)
+              : 'Whisper: Geen spraak gedetecteerd in audio chunk',
             timestamp: new Date().toISOString()
           });
         }
@@ -571,7 +617,7 @@ const EnhancedLiveTranscription = ({
           onWhisperUpdate({
             type: 'processing_error',
             error: result.error,
-            message: 'Whisper verwerking mislukt',
+            message: 'Whisper verwerking mislukt: ' + (result.error || 'Onbekende fout'),
             timestamp: new Date().toISOString()
           });
         }
@@ -584,7 +630,7 @@ const EnhancedLiveTranscription = ({
         onWhisperUpdate({
           type: 'processing_error',
           error: error.message,
-          message: 'Fout bij Whisper verwerking',
+          message: 'Fout bij Whisper verwerking: ' + error.message,
           timestamp: new Date().toISOString()
         });
       }
