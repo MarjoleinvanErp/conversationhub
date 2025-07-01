@@ -183,7 +183,7 @@ const EnhancedLiveTranscription = ({
       const audioBlob = await enhancedLiveTranscriptionService.recordVoiceSample(5000);
       const speakerId = speaker.id ? `participant_${speaker.id}` : `participant_${speaker.name.toLowerCase().replace(/\s+/g, '_')}_${currentSetupSpeaker}`;
       
-      const result = await enhancedLiveTranscriptionService.setupVoiceProfile(speakerId, audioBlob);
+      const result = await enhancedLiveTranscriptionService.setupVoiceProfile(speakerId, speaker.name, audioBlob);
       setIsRecordingVoice(false);
 
       if (result.success) {
@@ -349,8 +349,7 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-
-// Background transcription processing (WebSpeech) - FIXED ID USAGE
+  // Background transcription processing (WebSpeech) - FIXED ID USAGE
   const handleBackgroundTranscription = async (result) => {
     // Skip if WebSpeech is disabled
     if (!transcriptionConfig.live_webspeech_enabled) {
@@ -422,9 +421,7 @@ const EnhancedLiveTranscription = ({
     }
   };
 
-
-
-// Background audio chunk processing - FIXED WITH CORRECT ID
+  // FIXED: Background audio chunk processing - Direct Whisper transcription
   const handleBackgroundAudioChunk = async (audioBlob) => {
     // Skip if Whisper is disabled
     if (!transcriptionConfig.whisper_enabled) {
@@ -433,62 +430,85 @@ const EnhancedLiveTranscription = ({
     }
 
     try {
-      console.log('🎵 Processing audio chunk with Whisper...', {
+      console.log('🎵 Processing audio chunk with Whisper direct transcription...', {
         size: audioBlob.size,
         timestamp: new Date().toLocaleTimeString(),
         chunkDuration: transcriptionConfig.whisper_chunk_duration + 's'
       });
 
-      // FIXED: Use the last transcription ID if available
+      // Check if we have a recent transcription to verify (WebSpeech + Whisper mode)
       let transcriptionId = `background_${Date.now()}`; // fallback
       
-      // Check if we have a recent transcription to verify
       if (window.lastTranscriptionForWhisper && window.lastTranscriptionForWhisper.id) {
         transcriptionId = window.lastTranscriptionForWhisper.id;
-        console.log('✅ Using real transcription ID for Whisper:', transcriptionId);
+        console.log('✅ Using real transcription ID for Whisper verification:', transcriptionId);
         
         // Clear it after use to prevent reuse
         delete window.lastTranscriptionForWhisper;
       } else {
-        console.log('⚠️ No recent transcription found, using fallback ID:', transcriptionId);
+        console.log('⚠️ No recent transcription found, creating placeholder for Whisper processing...');
         
-        // ALTERNATIVE: Create a dummy transcription for this audio chunk
+        // FIXED: Create a placeholder transcription entry voor tracking
         try {
-          console.log('📝 Creating transcription entry for audio chunk...');
-          const dummyTranscription = await enhancedLiveTranscriptionService.processLiveTranscription(
-            'Audio chunk transcriptie wordt verwerkt...',
-            0.5
+          console.log('📝 Creating placeholder transcription entry for Whisper processing...');
+          const placeholderResult = await enhancedLiveTranscriptionService.processLiveTranscription(
+            'Whisper verwerkt audio...', // FIXED: Better placeholder text
+            0.1, // Low confidence to indicate processing
+            audioBlob // Audio voor speaker detection
           );
           
-          if (dummyTranscription.success && dummyTranscription.transcription) {
-            transcriptionId = dummyTranscription.transcription.id;
-            console.log('✅ Created transcription entry with ID:', transcriptionId);
+          if (placeholderResult.success && placeholderResult.transcription) {
+            transcriptionId = placeholderResult.transcription.id;
+            console.log('✅ Created placeholder transcription for processing:', {
+              id: transcriptionId,
+              speaker: placeholderResult.transcription.speaker_name
+            });
           }
         } catch (error) {
           console.warn('❌ Failed to create transcription entry:', error.message);
         }
       }
 
-      // Process with Whisper using the correct ID
+      // FIXED: Process with Whisper using the correct ID (this will replace the placeholder text)
+      console.log('🤖 Starting Whisper transcription of audio chunk...');
       const result = await enhancedLiveTranscriptionService.processWhisperVerification(
         transcriptionId,
         audioBlob
       );
 
       if (result.success && result.transcription) {
+        // FIXED: Extract the ACTUAL Whisper transcription with null safety
+        const actualWhisperText = result.transcription.whisper_text || result.transcription.text || 'Geen transcriptie tekst gevonden';
+        
+        console.log('✅ Whisper transcription completed successfully:', {
+          original_placeholder: 'Whisper verwerkt audio...',
+          actual_whisper_text: actualWhisperText ? actualWhisperText.substring(0, 100) + '...' : 'Geen tekst',
+          speaker: result.transcription.speaker_name || 'Onbekend',
+          confidence: result.transcription.whisper_confidence || result.transcription.text_confidence || 0,
+          database_saved: result.transcription.database_saved || false
+        });
+
+        // Create final transcription data with actual Whisper results
         const transcriptionData = {
           ...result.transcription,
+          text: actualWhisperText || 'Geen transcriptie beschikbaar', // FIXED: Use actual Whisper text with fallback
           source: 'background_whisper',
-          confidence: result.transcription.text_confidence || 1.0,
-          database_saved: result.transcription.database_saved || false
+          confidence: result.transcription.whisper_confidence || result.transcription.text_confidence || 1.0,
+          database_saved: result.transcription.database_saved || false,
+          processing_status: 'completed',
+          // Speaker detection info
+          speakerDetection: {
+            method: result.speaker_identification?.method || 'whisper_audio',
+            confidence: result.speaker_identification?.confidence || 0.0,
+            identified: result.speaker_identification?.speaker_id !== 'unknown_speaker'
+          }
         };
 
-        console.log('✅ Whisper transcription completed:', {
-          text_preview: transcriptionData.text.substring(0, 50) + '...',
-          database_saved: transcriptionData.database_saved,
-          processing_status: transcriptionData.processing_status,
-          transcription_id: transcriptionId,
-          chunk_duration: transcriptionConfig.whisper_chunk_duration + 's'
+        console.log('📤 Sending actual transcription to parent:', {
+          text_preview: transcriptionData.text ? transcriptionData.text.substring(0, 50) + '...' : 'Geen tekst',
+          speaker: transcriptionData.speaker_name || 'Onbekend',
+          source: transcriptionData.source,
+          confidence: transcriptionData.confidence
         });
 
         // Send improved transcription to parent (voor algemene transcripties)
@@ -499,9 +519,10 @@ const EnhancedLiveTranscription = ({
           onWhisperUpdate({
             type: 'transcription_completed',
             transcription: transcriptionData,
+            speakerDetection: transcriptionData.speakerDetection,
             message: transcriptionData.database_saved 
-              ? 'Whisper transcriptie opgeslagen in database' 
-              : 'Whisper transcriptie verwerkt',
+              ? `Whisper transcriptie opgeslagen - Spreker: ${transcriptionData.speaker_name}` 
+              : `Whisper transcriptie verwerkt - Spreker: ${transcriptionData.speaker_name}`,
             timestamp: new Date().toISOString()
           });
         }
@@ -532,9 +553,6 @@ const EnhancedLiveTranscription = ({
       }
     }
   };
-
-
-
 
   // Handle speech recognition errors
   const handleSpeechError = (error) => {

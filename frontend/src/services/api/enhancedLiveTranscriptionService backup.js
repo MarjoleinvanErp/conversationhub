@@ -97,26 +97,59 @@ class EnhancedLiveTranscriptionService {
   }
 
   /**
-   * Process live transcription text
+   * Process live transcription text met audio sample voor speaker detection
    */
-  async processLiveTranscription(text, confidence = 0.8) {
+  async processLiveTranscription(text, confidence = 0.8, audioSample = null) {
     if (!this.currentSession) {
       throw new Error('No active session');
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/live-transcription/process-live`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authService.getToken()}`,
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: JSON.stringify({
+      console.log('📤 Processing live transcription with speaker detection:', {
+        text_length: text.length,
+        confidence,
+        has_audio_sample: !!audioSample,
+        audio_size: audioSample?.size || 0
+      });
+
+      // Prepare form data als we audio hebben, anders JSON
+      let requestData;
+      let headers = {
+        'Authorization': `Bearer ${authService.getToken()}`,
+        'X-Requested-With': 'XMLHttpRequest',
+      };
+
+      if (audioSample) {
+        // Use FormData voor audio upload
+        requestData = new FormData();
+        requestData.append('session_id', this.currentSession.session_id);
+        requestData.append('live_text', text);
+        requestData.append('confidence', confidence.toString());
+        
+        // Add audio sample voor speaker detection
+        const audioFile = new File([audioSample], `audio_sample_${Date.now()}.webm`, {
+          type: 'audio/webm',
+          lastModified: Date.now()
+        });
+        requestData.append('audio_sample', audioFile);
+        
+        console.log('📤 Sending with audio sample for speaker detection');
+      } else {
+        // Use JSON zonder audio
+        headers['Content-Type'] = 'application/json';
+        requestData = JSON.stringify({
           session_id: this.currentSession.session_id,
           live_text: text,
           confidence: confidence
-        }),
+        });
+        
+        console.log('📤 Sending without audio sample');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/live-transcription/process-live`, {
+        method: 'POST',
+        headers: headers,
+        body: requestData,
       });
 
       if (!response.ok) {
@@ -125,6 +158,16 @@ class EnhancedLiveTranscriptionService {
       }
 
       const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Live transcription processed with speaker info:', {
+          transcription_id: result.transcription?.id,
+          speaker: result.transcription?.speaker_name,
+          speaker_confidence: result.speaker_identification?.confidence,
+          detection_method: result.speaker_identification?.method
+        });
+      }
+      
       return result;
     } catch (error) {
       console.error('❌ Failed to process live transcription:', error);
@@ -200,7 +243,9 @@ class EnhancedLiveTranscriptionService {
           success: result.success,
           original_id: liveTranscriptionId,
           whisper_text: result.transcription?.text?.substring(0, 50) + '...',
-          database_saved: result.transcription?.database_saved
+          database_saved: result.transcription?.database_saved,
+          identified_speaker: result.speaker_identification?.speaker_id,
+          speaker_confidence: result.speaker_identification?.confidence
         });
 
         // Notify successful completion
@@ -210,9 +255,14 @@ class EnhancedLiveTranscriptionService {
             ...result.transcription,
             database_saved: result.transcription?.database_saved || false
           },
+          speakerDetection: {
+            method: result.speaker_identification?.method || 'whisper_audio',
+            confidence: result.speaker_identification?.confidence || 0.0,
+            identified: result.speaker_identification?.speaker_id !== 'unknown_speaker'
+          },
           message: result.transcription?.database_saved 
-            ? 'Whisper transcriptie opgeslagen in database' 
-            : 'Whisper transcriptie verwerkt',
+            ? `Whisper transcriptie opgeslagen - Spreker: ${result.transcription?.speaker_name}` 
+            : `Whisper transcriptie verwerkt - Spreker: ${result.transcription?.speaker_name}`,
           timestamp: new Date().toISOString()
         });
       } else {

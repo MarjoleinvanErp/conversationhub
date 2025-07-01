@@ -1,0 +1,126 @@
+services:
+  # Gebruik pre-built Node image voor snelle start
+  frontend:
+    image: node:18-alpine
+    container_name: conversationhub_frontend_dev
+    working_dir: /app
+    ports:
+      - "3000:5173"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+      - CHOKIDAR_USEPOLLING=true
+    command: sh -c "npm config set registry https://registry.npmjs.org/ && npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    networks:
+      - conversationhub
+
+  # Laravel Backend (unchanged)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: conversationhub_backend
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./backend:/var/www
+      - ./backend/storage/app:/var/www/storage/app
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=local
+      - APP_DEBUG=true
+      - APP_URL=http://localhost:8000
+      - DB_HOST=database
+      - DB_DATABASE=conversationhub
+      - DB_USERNAME=postgres
+      - DB_PASSWORD=secret
+      - REDIS_HOST=redis
+      - N8N_URL=http://n8n:5678
+      - N8N_WEBHOOK_BASE_URL=http://n8n:5678/webhook
+      - N8N_WEBHOOK_URL=http://n8n:5678/webhook/gespreksverslag
+    depends_on:
+      - database
+      - redis
+      - n8n
+    networks:
+      - conversationhub
+
+  # PostgreSQL Database
+  database:
+    image: postgres:15-alpine
+    container_name: conversationhub_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: conversationhub
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - conversationhub
+
+  # Redis Cache & Queue
+  redis:
+    image: redis:7-alpine
+    container_name: conversationhub_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - conversationhub
+
+  # N8N Workflow Automation
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: conversationhub_n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      # Database configuratie 
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=database
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=postgres
+      - DB_POSTGRESDB_PASSWORD=secret
+      
+      # N8N configuratie
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=conversationhub123
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678
+      
+      # Security
+      - N8N_SECURE_COOKIE=false
+      - N8N_HIRING_BANNER_ENABLED=false
+      
+      # Voor ConversationHub integratie
+      - CONVERSATIONHUB_API_URL=http://backend:8000/api
+      
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - database
+    networks:
+      - conversationhub
+
+volumes:
+  postgres_data:
+  redis_data:
+  frontend_node_modules:
+  n8n_data:
+
+networks:
+  conversationhub:
+    driver: bridge

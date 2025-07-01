@@ -95,7 +95,7 @@ class LiveTranscriptionController extends Controller
     }
 
     /**
-     * Process live transcription - FIXED SESSION HANDLING
+     * Process live transcription met audio sample voor speaker detection
      */
     public function processLive(Request $request): JsonResponse
     {
@@ -104,6 +104,7 @@ class LiveTranscriptionController extends Controller
                 'session_id' => 'required|string',
                 'live_text' => 'required|string',
                 'confidence' => 'sometimes|numeric|between:0,1',
+                'audio_sample' => 'sometimes|file|mimes:webm,wav,mp3,m4a|max:5120', // 5MB max for small samples
             ]);
 
             if ($validator->fails()) {
@@ -113,24 +114,37 @@ class LiveTranscriptionController extends Controller
                 ], 422);
             }
 
-            Log::info('Processing live transcription', [
+            Log::info('Processing live transcription with speaker detection', [
                 'session_id' => $request->session_id,
                 'text_length' => strlen($request->live_text),
-                'confidence' => $request->confidence
+                'confidence' => $request->confidence,
+                'has_audio_sample' => $request->hasFile('audio_sample')
             ]);
 
-            // FIXED: Pass session_id to the service
+            // Get audio sample voor speaker detection
+            $audioSample = null;
+            if ($request->hasFile('audio_sample')) {
+                $audioSample = file_get_contents($request->file('audio_sample')->getPathname());
+                Log::info('Audio sample received for speaker detection', [
+                    'session_id' => $request->session_id,
+                    'audio_size' => strlen($audioSample)
+                ]);
+            }
+
+            // Process with speaker detection
             $result = $this->liveTranscriptionService->processLiveTranscription(
-                $request->session_id,  // Add session_id parameter
+                $request->session_id,
                 $request->live_text,
-                null, // audioSample
+                $audioSample, // Audio sample voor speaker detection
                 $request->confidence ?? 0.8
             );
 
             if ($result['success']) {
-                Log::info('Live transcription processed successfully', [
+                Log::info('Live transcription processed successfully with speaker detection', [
                     'session_id' => $request->session_id,
-                    'transcription_id' => $result['transcription']['id']
+                    'transcription_id' => $result['transcription']['id'],
+                    'identified_speaker' => $result['speaker_identification']['speaker_id'] ?? 'unknown',
+                    'speaker_confidence' => $result['speaker_identification']['confidence'] ?? 0.0
                 ]);
             } else {
                 Log::warning('Live transcription processing failed', [
@@ -156,7 +170,7 @@ class LiveTranscriptionController extends Controller
     }
 
     /**
-     * Process Whisper verification - FIXED SESSION HANDLING
+     * Process Whisper verification met speaker identification
      */
     public function verifyWithWhisper(Request $request): JsonResponse
     {
@@ -182,9 +196,9 @@ class LiveTranscriptionController extends Controller
 
             $audioContent = file_get_contents($request->file('audio_chunk')->getPathname());
 
-            // FIXED: Pass session_id to the service
+            // Process with speaker identification
             $result = $this->liveTranscriptionService->processWhisperVerification(
-                $request->session_id,    // Add session_id parameter
+                $request->session_id,
                 $request->live_transcription_id,
                 $audioContent
             );
@@ -192,7 +206,9 @@ class LiveTranscriptionController extends Controller
             if ($result['success']) {
                 Log::info('Whisper verification completed', [
                     'session_id' => $request->session_id,
-                    'transcription_id' => $result['transcription']['id']
+                    'transcription_id' => $result['transcription']['id'],
+                    'identified_speaker' => $result['speaker_identification']['speaker_id'] ?? 'unknown',
+                    'speaker_confidence' => $result['speaker_identification']['confidence'] ?? 0.0
                 ]);
             } else {
                 Log::warning('Whisper verification failed', [

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import meetingService from '../../services/api/meetingService.js';
 import transcriptionService from '../../services/api/transcriptionService.js';
@@ -6,6 +6,7 @@ import enhancedLiveTranscriptionService from '../../services/api/enhancedLiveTra
 import { agendaService } from '../../services/agendaService';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
 import { getSpeakerColor } from './utils/meetingUtils.js';
+
 
 // Import alle components
 import {
@@ -112,6 +113,11 @@ const MeetingRoom = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  console.log('🔄 MeetingRoom component rendering, ID:', id, 'Time:', new Date().toLocaleTimeString());
+
+  const loadingRef = useRef(false);
+  const loadedIdRef = useRef(null);
+
   // FEATURE FLAGS - Zet deze op false om panels te verbergen
   const SHOW_LIVE_TRANSCRIPTION_PANEL = false; // <- Zet op true om weer te tonen
   const SHOW_WHISPER_TRANSCRIPTION_PANEL = true;
@@ -186,9 +192,16 @@ const MeetingRoom = () => {
   });
 
   // Load meeting data on mount
-  useEffect(() => {
+useEffect(() => {
+  console.log('🎯 useEffect triggered for ID:', id, 'Already loading:', loadingRef.current);
+  
+  // Prevent duplicate calls
+  if (id && !loadingRef.current && loadedIdRef.current !== id) {
+    loadingRef.current = true;
+    loadedIdRef.current = id;
     loadMeetingData();
-  }, [id]);
+  }
+}, [id]);
 
   // Setup speakers when meeting loads
   useEffect(() => {
@@ -415,67 +428,65 @@ const MeetingRoom = () => {
     }
   };
 
-  // Load meeting and transcription data
-  const loadMeetingData = async () => {
-    try {
-      setLoading(true);
-      setError('');
 
-      console.log('📥 Loading meeting data for ID:', id);
+// Load meeting and transcription data (OPTIMIZED)
+const loadMeetingData = async () => {
+  console.log('🚀 loadMeetingData CALLED at:', new Date().toLocaleTimeString());
+  
+  try {
+    setLoading(true);
+    setError('');
 
-      const meetingResult = await meetingService.getMeeting(id);
-      if (!meetingResult.success) {
-        throw new Error(meetingResult.message || 'Fout bij ophalen meeting');
-      }
+    console.log('📥 Loading meeting data for ID:', id);
 
-      setMeeting(meetingResult.data);
-      console.log('✅ Meeting loaded:', meetingResult.data);
-
-      // Load transcriptions
-      console.log('📥 Loading transcriptions...');
-      const transcriptionsResult = await transcriptionService.getTranscriptions(id);
-      
-      if (transcriptionsResult.success) {
-        const allTranscriptions = transcriptionsResult.data || [];
-        
-        // Separate transcriptions by source
-        const live = allTranscriptions.filter(t => t.source === 'live');
-        const whisper = allTranscriptions.filter(t => ['whisper', 'whisper_verified', 'background_whisper'].includes(t.source));
-        
-        setTranscriptions(allTranscriptions);
-        setLiveTranscriptions(live);
-        setWhisperTranscriptions(whisper);
-        
-        console.log('✅ Transcriptions loaded:', {
-          total: allTranscriptions.length,
-          live: live.length,
-          whisper: whisper.length
-        });
-      } else {
-        console.warn('⚠️ Transcriptions not loaded:', transcriptionsResult.message);
-      }
-
-      // Load initial Whisper transcriptions
-      await refreshWhisperTranscriptions().catch(console.error);
-
-      // Auto-refresh transcriptions after page load
-      console.log('🔄 Auto-refreshing transcriptions after page load...');
-      setTimeout(async () => {
-        try {
-          await refreshAllTranscriptions();
-          console.log('✅ Auto-refresh transcriptions completed');
-        } catch (error) {
-          console.error('❌ Auto-refresh transcriptions failed:', error);
-        }
-      }, 1000); // Wait 1 second after initial load
-
-    } catch (error) {
-      console.error('❌ Error loading meeting data:', error);
-      setError(error.message || 'Er ging iets mis bij het laden van de meeting');
-    } finally {
-      setLoading(false);
+    // Load meeting data ONLY (no duplicate calls)
+    const meetingResult = await meetingService.getMeeting(id);
+    if (!meetingResult.success) {
+      throw new Error(meetingResult.message || 'Fout bij ophalen meeting');
     }
-  };
+
+    setMeeting(meetingResult.data);
+    console.log('✅ Meeting loaded:', meetingResult.data);
+
+    // Load transcriptions ONLY ONCE
+    console.log('📥 Loading transcriptions...');
+    const transcriptionsResult = await transcriptionService.getTranscriptions(id);
+    
+    if (transcriptionsResult.success) {
+      const allTranscriptions = transcriptionsResult.data || [];
+      
+      // Separate transcriptions by source
+      const live = allTranscriptions.filter(t => t.source === 'live');
+      const whisper = allTranscriptions.filter(t => ['whisper', 'whisper_verified', 'background_whisper'].includes(t.source));
+      
+      setTranscriptions(allTranscriptions);
+      setLiveTranscriptions(live);
+      setWhisperTranscriptions(whisper);
+      
+      console.log('✅ Transcriptions loaded:', {
+        total: allTranscriptions.length,
+        live: live.length,
+        whisper: whisper.length
+      });
+    } else {
+      console.warn('⚠️ Transcriptions not loaded:', transcriptionsResult.message);
+    }
+
+    // REMOVED: Extra Whisper refresh call
+    // REMOVED: Auto-refresh timeout
+    console.log('✅ Initial data loading complete');
+
+  } catch (error) {
+    console.error('❌ Error loading meeting data:', error);
+    setError(error.message || 'Er ging iets mis bij het laden van de meeting');
+  } finally {
+    setLoading(false);
+    loadingRef.current = false; // ADD THIS
+  }
+};
+
+
+
 
   const setupSpeakers = () => {
     if (meeting?.participants) {
