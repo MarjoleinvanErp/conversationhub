@@ -1,0 +1,277 @@
+{
+  "name": "Hybrid AI Agent - Final Meeting Report",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "ai-meeting-report-final",
+        "options": {}
+      },
+      "id": "webhook-request",
+      "name": "Meeting Report Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Analyseer meeting {{ $json.meeting_id }} en genereer een volledig intelligent rapport.\n\nJe hebt toegang tot de volgende tools:\n1. 'Get Meeting Data' - voor meeting info en agenda items\n2. 'Get Transcriptions' - voor alle gespreksopnames\n3. 'Get Participants' - voor deelnemerslijst\n4. 'Update Agenda Status' - om agenda items als completed te markeren\n5. 'Save Report' - om het finale rapport op te slaan\n\nSTAPPEN:\n1. Haal ALLE data op met de beschikbare tools\n2. Analyseer intelligent:\n   - Match transcripties aan agenda items (keyword matching)\n   - Zoek privacy info: BSN (9 cijfers), telefoons (+31/06), emails, postcodes (1234AB)\n   - Vind action items: woorden als 'actie', 'taak', 'zorgen', 'regelen', 'deadline'\n   - Identificeer genoemde personen en match aan deelnemers\n3. Update agenda items die daadwerkelijk besproken zijn\n4. Sla het complete rapport op\n5. Return gestructureerde output\n\nMeeting ID: {{ $json.meeting_id }}\n\nZorg voor een professioneel, actionable rapport met duidelijke privacy aanbevelingen.",
+        "options": {
+          "systemMessage": "Je bent een expert meeting analytics AI. Je analyseert vergaderingen voor Nederlandse organisaties.\n\nPRIVACY PATTERNS (hoog risico):\n- BSN: 9 cijfers (123456789) of XXX.XX.XXX format\n- IBAN: NL + 2 cijfers + 4 letters + 10 cijfers\n- Telefoonnummers: +31, 06, 020 formaten\n- Email adressen: naam@domein.nl\n- Postcodes: 1234AB format\n- Persoonlijke data: 'geboortedatum', 'adres', 'salaris', 'medisch'\n\nACTION ITEM KEYWORDS:\n- Taken: 'actie', 'taak', 'opdracht', 'zorgen', 'regelen', 'opvolgen'\n- Deadlines: 'voor [dag]', 'volgende week', 'uiterlijk', 'tegen [datum]'\n- Verantwoordelijken: '[naam] gaat', '[naam] zorgt', '[naam] regelt'\n\nAGENDA MATCHING:\n- Match transcriptie tekst aan agenda item titels/beschrijvingen\n- Minimaal 2+ keyword matches = besproken\n- Mark agenda items als 'completed' wanneer substantieel besproken\n\nGebruik ALLE tools systematisch voordat je concludeert.",
+          "maxIterations": 20,
+          "returnIntermediateSteps": false
+        }
+      },
+      "id": "ai-agent-tools",
+      "name": "AI Agent - Meeting Analyzer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/ai-agent/meeting-data",
+        "method": "GET",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "meeting_id",
+              "value": "={{ $fromAI('meeting_id') }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-meeting-data-tool",
+      "name": "Get Meeting Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 100]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/ai-agent/transcriptions",
+        "method": "GET",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "meeting_id",
+              "value": "={{ $fromAI('meeting_id') }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-transcriptions-tool",
+      "name": "Get Transcriptions",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 200]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/ai-agent/participants",
+        "method": "GET",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "meeting_id",
+              "value": "={{ $fromAI('meeting_id') }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "get-participants-tool",
+      "name": "Get Participants",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/ai-agent/update-agenda",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "agenda_id",
+              "value": "={{ $fromAI('agenda_id') }}"
+            },
+            {
+              "name": "status",
+              "value": "={{ $fromAI('status') || 'completed' }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "update-agenda-tool",
+      "name": "Update Agenda Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:8000/api/ai-agent/save-report",
+        "method": "POST",
+        "sendBody": true,
+        "contentType": "json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "meeting_id",
+              "value": "={{ $fromAI('meeting_id') }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $fromAI('title') }}"
+            },
+            {
+              "name": "content",
+              "value": "={{ $fromAI('content') }}"
+            },
+            {
+              "name": "metadata",
+              "value": "={{ $fromAI('metadata') }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "save-report-tool",
+      "name": "Save Report",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 500]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4",
+        "options": {
+          "temperature": 0.2,
+          "maxTokens": 4000
+        }
+      },
+      "id": "openai-model",
+      "name": "OpenAI Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [900, 300],
+      "credentials": {
+        "openAiApi": {
+          "name": "OpenAI API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "jsonSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"meeting_summary\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"meeting_id\": {\"type\": \"integer\"},\n        \"title\": {\"type\": \"string\"},\n        \"scheduled_at\": {\"type\": \"string\"},\n        \"total_speakers\": {\"type\": \"integer\"},\n        \"total_transcriptions\": {\"type\": \"integer\"},\n        \"analysis_completed_at\": {\"type\": \"string\"}\n      }\n    },\n    \"agenda_analysis\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"agenda_item_id\": {\"type\": \"integer\"},\n          \"title\": {\"type\": \"string\"},\n          \"discussed\": {\"type\": \"boolean\"},\n          \"status_updated\": {\"type\": \"boolean\"},\n          \"discussion_summary\": {\"type\": \"string\"},\n          \"key_points\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}},\n          \"speakers_involved\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}}\n        }\n      }\n    },\n    \"privacy_analysis\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"total_issues_found\": {\"type\": \"integer\"},\n        \"by_severity\": {\n          \"type\": \"object\",\n          \"properties\": {\n            \"HIGH\": {\"type\": \"integer\"},\n            \"MEDIUM\": {\"type\": \"integer\"},\n            \"LOW\": {\"type\": \"integer\"}\n          }\n        },\n        \"issues\": {\n          \"type\": \"array\",\n          \"items\": {\n            \"type\": \"object\",\n            \"properties\": {\n              \"type\": {\"type\": \"string\"},\n              \"severity\": {\"type\": \"string\"},\n              \"found_text\": {\"type\": \"string\"},\n              \"speaker\": {\"type\": \"string\"},\n              \"context\": {\"type\": \"string\"},\n              \"recommendation\": {\"type\": \"string\"},\n              \"include_in_report\": {\"type\": \"boolean\"}\n            }\n          }\n        }\n      }\n    },\n    \"action_items\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"description\": {\"type\": \"string\"},\n          \"assigned_to\": {\"type\": \"string\"},\n          \"deadline\": {\"type\": \"string\"},\n          \"priority\": {\"type\": \"string\"},\n          \"mentioned_by\": {\"type\": \"string\"}\n        }\n      }\n    },\n    \"mentioned_persons\": {\n      \"type\": \"array\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": {\"type\": \"string\"},\n          \"is_participant\": {\"type\": \"boolean\"},\n          \"mention_count\": {\"type\": \"integer\"}\n        }\n      }\n    },\n    \"report_saved\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"success\": {\"type\": \"boolean\"},\n        \"report_id\": {\"type\": \"integer\"},\n        \"title\": {\"type\": \"string\"}\n      }\n    }\n  },\n  \"required\": [\"meeting_summary\", \"agenda_analysis\", \"privacy_analysis\", \"action_items\", \"mentioned_persons\", \"report_saved\"]\n}"
+      },
+      "id": "structured-output",
+      "name": "Structured Report Output",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [1120, 300]
+    }
+  ],
+  "connections": {
+    "Meeting Report Request": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Meeting Analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Meeting Analyzer": {
+      "ai_tool": [
+        [
+          {
+            "node": "Get Meeting Data",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Get Transcriptions",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Get Participants",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Update Agenda Status",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "Save Report",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_model": [
+        [
+          {
+            "node": "OpenAI Model",
+            "type": "ai_model",
+            "index": 0
+          }
+        ]
+      ],
+      "ai_outputParser": [
+        [
+          {
+            "node": "Structured Report Output",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -115,11 +115,33 @@ services:
     networks:
       - conversationhub
 
+  pyannote:
+    build:
+      context: ./docker/pyannote
+      dockerfile: Dockerfile
+    container_name: conversationhub_pyannote
+    ports:
+      - "8001:8000"  # Poort 8001 om conflict met backend te vermijden
+    environment:
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN:-}  # Optioneel voor betere modellen
+    volumes:
+      - pyannote_data:/app/temp_audio
+    networks:
+      - conversationhub
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+
 volumes:
   postgres_data:
   redis_data:
   frontend_node_modules:
   n8n_data:
+  pyannote_data:
 
 networks:
   conversationhub:

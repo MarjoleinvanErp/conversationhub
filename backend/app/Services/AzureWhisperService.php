@@ -71,6 +71,14 @@ class AzureWhisperService
                 ->withHeaders([
                     'api-key' => $this->apiKey,
                 ])
+    ->withOptions([
+        'verify' => false, // Tijdelijk SSL verificatie uitschakelen
+        'curl' => [
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => false,
+        ]
+    ])
+
                 ->asMultipart()
                 ->attach('file', $fileContent, $fileName)
                 ->post($url, [

@@ -4,6 +4,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\AIAgentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -86,6 +87,15 @@ Route::prefix('webhook/n8n')->group(function () {
     Route::post('/report-completed', [App\Http\Controllers\Api\N8NWebhookController::class, 'reportCompleted']);
     Route::post('/export-completed', [App\Http\Controllers\Api\N8NWebhookController::class, 'exportCompleted']);
     Route::post('/custom', [App\Http\Controllers\Api\N8NWebhookController::class, 'customWebhook']);
+});
+
+Route::prefix('ai-agent')->group(function () {
+    Route::get('/health', [AIAgentController::class, 'health']);
+    Route::get('/meeting-data', [AIAgentController::class, 'getMeetingData']);
+    Route::get('/transcriptions', [AIAgentController::class, 'getTranscriptions']);
+    Route::get('/participants', [AIAgentController::class, 'getParticipants']);
+    Route::post('/update-agenda', [AIAgentController::class, 'updateAgendaStatus']);
+    Route::post('/save-report', [AIAgentController::class, 'saveReport']);
 });
 
 /*
@@ -249,3 +259,16 @@ Route::prefix('meetings/{meeting}/reports')->group(function () {
     Route::get('/privacy/settings', [\App\Http\Controllers\Api\PrivacyController::class, 'settings']);
     Route::post('/privacy/consent', [\App\Http\Controllers\Api\PrivacyController::class, 'consent']);
 });
+
+Route::prefix('meeting-types')->group(function () {
+    Route::get('/', [App\Http\Controllers\Api\MeetingTypeController::class, 'index']);
+    Route::get('/{id}', [App\Http\Controllers\Api\MeetingTypeController::class, 'show']);
+    Route::post('/', [App\Http\Controllers\Api\MeetingTypeController::class, 'store']);
+    Route::put('/{id}', [App\Http\Controllers\Api\MeetingTypeController::class, 'update']);
+    Route::delete('/{id}', [App\Http\Controllers\Api\MeetingTypeController::class, 'destroy']);
+    Route::get('/{id}/default-agenda', [App\Http\Controllers\Api\MeetingTypeController::class, 'getDefaultAgenda']);
+    Route::post('/{id}/test-privacy-filters', [App\Http\Controllers\Api\MeetingTypeController::class, 'testPrivacyFilters']);
+});
+
+
+

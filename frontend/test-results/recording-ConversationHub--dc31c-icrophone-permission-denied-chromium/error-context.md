@@ -1,0 +1,81 @@
+# Page snapshot
+
+```yaml
+- heading "Mayo" [level=5]
+- text: Gemeente Meierijstad HOOFDMENU
+- list:
+  - listitem:
+    - button "Alle Gesprekken"
+  - listitem:
+    - button "Nieuw Gesprek"
+  - listitem:
+    - button "Gesprek"
+- separator
+- text: INSTELLINGEN
+- list:
+  - listitem:
+    - button "Instellingen"
+- text: 🔒 GDPR/AVG Compliant
+- banner:
+  - button "toggle sidebar"
+  - text: Niet actief 🔒 Privé modus
+  - button "Nieuw Gesprek"
+  - button "3"
+  - button "JB"
+- heading "Dashboard" [level=4]
+- paragraph: Overzicht van al je gesprekken en hun voortgang
+- heading "2" [level=5]
+- paragraph: Actieve Gesprekken
+- heading "11" [level=5]
+- paragraph: Totaal Deelnemers
+- heading "3" [level=5]
+- paragraph: Voltooide Gesprekken
+- heading "📋 Actieve Gesprekken 2" [level=5]
+- button "Nieuw Gesprek"
+- heading "Open kaart interview" [level=6]
+- text: Gepland
+- paragraph: 💼 Algemeen
+- paragraph: 2 deelnemers
+- paragraph: 5 agenda punten
+- text: F R
+- separator
+- button "Bekijk"
+- button "Start"
+- heading "test" [level=6]
+- text: Actief
+- paragraph: 🤝 Participatie
+- paragraph: 2 deelnemers
+- paragraph: 3 agenda punten
+- paragraph: 6 jun, 09:19
+- text: m b
+- separator
+- button "Bekijk"
+- button "Deelnemen"
+- heading "📋 Voltooide Gesprekken 3" [level=5]
+- heading "test gesprek" [level=6]
+- text: Voltooid
+- paragraph: 💼 Algemeen
+- paragraph: 3 deelnemers
+- paragraph: 4 agenda punten
+- text: M B J
+- separator
+- button "Bekijk"
+- heading "test gesprek" [level=6]
+- text: Voltooid
+- paragraph: 💼 Algemeen
+- paragraph: 3 deelnemers
+- paragraph: 4 agenda punten
+- paragraph: 7 jun, 17:25
+- text: M B J
+- separator
+- button "Bekijk"
+- heading "test gesprek" [level=6]
+- text: Voltooid
+- paragraph: 💼 Algemeen
+- paragraph: 1 deelnemers
+- paragraph: 2 agenda punten
+- paragraph: 5 jun, 19:06
+- text: m
+- separator
+- button "Bekijk"
+```
