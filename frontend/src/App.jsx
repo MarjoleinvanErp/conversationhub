@@ -11,6 +11,7 @@ import Dashboard from './pages/dashboard/Dashboard.jsx';
 import Login from './pages/auth/Login.jsx';
 import CreateMeeting from './pages/meeting/CreateMeeting.jsx';
 import MeetingRoom from './pages/meeting/MeetingRoom.jsx';
+import MeetingTypes from './pages/meeting/MeetingTypes.jsx';
 
 // Placeholder components voor nieuwe routes
 const MeetingsPage = () => (
@@ -78,6 +79,7 @@ function App() {
               <Route path="dashboard" element={<Dashboard />} />
               <Route path="meetings/create" element={<CreateMeeting />} />
               <Route path="meetings/:id/room" element={<MeetingRoom />} />
+              <Route path="meeting-types" element={<MeetingTypes />} />
               
               {/* Nieuwe routes */}
               <Route path="meetings" element={<MeetingsPage />} />

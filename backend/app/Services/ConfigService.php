@@ -13,6 +13,8 @@ class ConfigService
             'live_webspeech_enabled' => env('TRANSCRIPTION_LIVE_WEBSPEECH_ENABLED', true),
             'whisper_enabled' => env('TRANSCRIPTION_WHISPER_ENABLED', true),
             'whisper_chunk_duration' => (int) env('TRANSCRIPTION_WHISPER_CHUNK_DURATION', 90),
+            'n8n_transcription_enabled' => env('N8N_TRANSCRIPTION_ENABLED', false),
+            'default_transcription_service' => env('DEFAULT_TRANSCRIPTION_SERVICE', 'auto'), // auto, whisper, n8n
         ];
     }
 
@@ -26,6 +28,9 @@ class ConfigService
             'auto_export_interval_minutes' => (int) env('N8N_AUTO_EXPORT_INTERVAL_MINUTES', 10),
             'webhook_url' => env('N8N_WEBHOOK_URL'),
             'api_key' => env('N8N_API_KEY'),
+            'transcription_enabled' => env('N8N_TRANSCRIPTION_ENABLED', false),
+            'transcription_webhook_url' => env('N8N_TRANSCRIPTION_WEBHOOK_URL'),
+            'timeout_seconds' => (int) env('N8N_TIMEOUT_SECONDS', 60),
         ];
     }
 
@@ -81,10 +86,26 @@ class ConfigService
     }
 
     /**
+     * Check if N8N transcription is enabled
+     */
+    public static function isN8NTranscriptionEnabled(): bool
+    {
+        return filter_var(env('N8N_TRANSCRIPTION_ENABLED', false), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
      * Get N8N auto export interval in minutes
      */
     public static function getN8NAutoExportInterval(): int
     {
         return (int) env('N8N_AUTO_EXPORT_INTERVAL_MINUTES', 10);
+    }
+
+    /**
+     * Get default transcription service
+     */
+    public static function getDefaultTranscriptionService(): string
+    {
+        return env('DEFAULT_TRANSCRIPTION_SERVICE', 'auto');
     }
 }

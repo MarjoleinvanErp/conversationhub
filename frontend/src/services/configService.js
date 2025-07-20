@@ -1,45 +1,10 @@
-/**
- * Configuration Service
- * Simple service to fetch configuration from backend
- */
-
-// Browser-vriendelijke API URL configuratie
-const getApiBaseUrl = () => {
-  // Probeer React env variabele eerst
-  if (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_URL) {
-    return process.env.REACT_APP_API_URL;
-  }
-  
-  // Fallback naar huidige locatie detectie
-  if (typeof window !== 'undefined') {
-    const { protocol, hostname } = window.location;
-    const port = hostname === 'localhost' ? '8000' : window.location.port;
-    return `${protocol}//${hostname}:${port}/api`;
-  }
-  
-  // Ultimate fallback
-  return 'http://localhost:8000/api';
-};
-
-const API_BASE_URL = getApiBaseUrl();
+import apiClient from './apiClient';
 
 class ConfigService {
   constructor() {
     this.config = null;
     this.lastFetch = null;
-    this.cacheTimeout = 5 * 60 * 1000; // 5 minuten cache
-  }
-
-  /**
-   * Get authentication headers
-   */
-  getHeaders() {
-    const token = localStorage.getItem('auth_token');
-    return {
-      'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      ...(token && { 'Authorization': `Bearer ${token}` })
-    };
+    this.cacheTimeout = 5 * 60 * 1000; // 5 minutes
   }
 
   /**
@@ -47,51 +12,58 @@ class ConfigService {
    */
   async fetchConfig() {
     try {
-      // Check cache
-      if (this.config && this.lastFetch && (Date.now() - this.lastFetch < this.cacheTimeout)) {
+      const response = await apiClient.get('/config');
+      
+      if (response.data.success) {
+        this.config = response.data.data;
+        this.lastFetch = Date.now();
         return this.config;
+      } else {
+        throw new Error(response.data.error || 'Failed to fetch config');
       }
-
-      // Try public config first (no authentication required)
-      const response = await fetch(`${API_BASE_URL}/config/public`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Fout bij ophalen configuratie');
-      }
-
-      this.config = data.data;
-      this.lastFetch = Date.now();
-      
-      return this.config;
     } catch (error) {
-      console.error('❌ Config fetch error:', error);
-      
-      // Return default config on error
-      return this.getDefaultConfig();
+      console.error('Failed to fetch config:', error);
+      throw error;
     }
   }
 
   /**
-   * Get default configuration (fallback)
+   * Get all configuration with caching
+   */
+  async getAllConfig() {
+    // Return cached config if it's still fresh
+    if (this.config && this.lastFetch && (Date.now() - this.lastFetch) < this.cacheTimeout) {
+      return this.config;
+    }
+
+    // Fetch fresh config
+    return await this.fetchConfig();
+  }
+
+  /**
+   * Get default configuration values
    */
   getDefaultConfig() {
     return {
       transcription: {
         live_webspeech_enabled: true,
         whisper_enabled: true,
-        whisper_chunk_duration: 90
+        whisper_chunk_duration: 90,
+        n8n_transcription_enabled: false,
+        default_transcription_service: 'auto',
+        available_services: {
+          whisper: false,
+          n8n: false
+        }
       },
       n8n: {
         auto_export_enabled: false,
-        auto_export_interval_minutes: 10
+        auto_export_interval_minutes: 10,
+        webhook_url: null,
+        api_key: null,
+        transcription_enabled: false,
+        transcription_webhook_url: null,
+        timeout_seconds: 60
       },
       privacy: {
         filter_enabled: true,
@@ -108,7 +80,7 @@ class ConfigService {
    * Get transcription configuration
    */
   async getTranscriptionConfig() {
-    const config = await this.fetchConfig();
+    const config = await this.getAllConfig();
     return config.transcription || this.getDefaultConfig().transcription;
   }
 
@@ -116,8 +88,16 @@ class ConfigService {
    * Get N8N configuration
    */
   async getN8NConfig() {
-    const config = await this.fetchConfig();
+    const config = await this.getAllConfig();
     return config.n8n || this.getDefaultConfig().n8n;
+  }
+
+  /**
+   * Get privacy configuration
+   */
+  async getPrivacyConfig() {
+    const config = await this.getAllConfig();
+    return config.privacy || this.getDefaultConfig().privacy;
   }
 
   /**
@@ -137,11 +117,27 @@ class ConfigService {
   }
 
   /**
+   * Check if N8N transcription is enabled
+   */
+  async isN8NTranscriptionEnabled() {
+    const config = await this.getN8NConfig();
+    return config.transcription_enabled;
+  }
+
+  /**
    * Get Whisper chunk duration
    */
   async getWhisperChunkDuration() {
     const config = await this.getTranscriptionConfig();
     return config.whisper_chunk_duration;
+  }
+
+  /**
+   * Get default transcription service
+   */
+  async getDefaultTranscriptionService() {
+    const config = await this.getTranscriptionConfig();
+    return config.default_transcription_service || 'auto';
   }
 
   /**
@@ -161,11 +157,87 @@ class ConfigService {
   }
 
   /**
+   * Check if N8N webhook is configured
+   */
+  async isN8NWebhookConfigured() {
+    const config = await this.getN8NConfig();
+    return !!(config.webhook_url || config.transcription_webhook_url);
+  }
+
+  /**
+   * Get available transcription services
+   */
+  async getAvailableServices() {
+    const config = await this.getTranscriptionConfig();
+    return config.available_services || { whisper: false, n8n: false };
+  }
+
+  /**
+   * Update configuration
+   */
+  async updateConfig(newConfig) {
+    try {
+      const response = await apiClient.post('/config/update', newConfig);
+      
+      if (response.data.success) {
+        // Clear cache to force refresh
+        this.clearCache();
+        return response.data.data;
+      } else {
+        throw new Error(response.data.error || 'Failed to update config');
+      }
+    } catch (error) {
+      console.error('Failed to update config:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Test N8N connection
+   */
+  async testN8NConnection() {
+    try {
+      const response = await apiClient.post('/n8n/test-connection');
+      
+      if (response.data.success) {
+        return response.data.data;
+      } else {
+        throw new Error(response.data.error || 'N8N connection test failed');
+      }
+    } catch (error) {
+      console.error('N8N connection test failed:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Clear cache (force refresh on next fetch)
    */
   clearCache() {
     this.config = null;
     this.lastFetch = null;
+  }
+
+  /**
+   * Get cached config without fetching
+   */
+  getCachedConfig() {
+    return this.config;
+  }
+
+  /**
+   * Check if config is cached and fresh
+   */
+  isCacheFresh() {
+    return this.config && this.lastFetch && (Date.now() - this.lastFetch) < this.cacheTimeout;
+  }
+
+  /**
+   * Force refresh configuration
+   */
+  async refresh() {
+    this.clearCache();
+    return await this.fetchConfig();
   }
 }
 
