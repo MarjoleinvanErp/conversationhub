@@ -4,170 +4,262 @@ class EnhancedLiveTranscriptionService {
   constructor() {
     this.mediaRecorder = null;
     this.audioStream = null;
+    this.recognition = null;
     this.audioChunks = [];
     this.isRecording = false;
     this.isPaused = false;
-    this.recognition = null;
-    this.onTranscriptionCallback = null;
-    this.onErrorCallback = null;
+    this.lastProcessedTime = 0;
+    this.chunkInterval = 5000; // 5 seconds per chunk
+    this.currentSessionId = null;
+    this.preferredService = 'auto';
+    this.useN8N = false;
+    this.serviceConfig = null;
+    
+    // Event handlers
+    this.onTranscriptionReceived = null;
+    this.onServiceStatusChanged = null;
+    this.onError = null;
   }
 
   /**
-   * Start recording with enhanced transcription support
+   * Initialize enhanced transcription service
+   */
+  async initialize(sessionId, options = {}) {
+    try {
+      this.currentSessionId = sessionId;
+      this.preferredService = options.preferredService || 'auto';
+      this.useN8N = options.useN8N || false;
+      
+      // Get service configuration
+      this.serviceConfig = await this.getTranscriptionConfig();
+      
+      console.log('Enhanced transcription service initialized', {
+        sessionId: this.currentSessionId,
+        preferredService: this.preferredService,
+        useN8N: this.useN8N,
+        availableServices: this.serviceConfig?.available_services
+      });
+      
+      return {
+        success: true,
+        sessionId: this.currentSessionId,
+        config: this.serviceConfig
+      };
+      
+    } catch (error) {
+      console.error('Failed to initialize enhanced transcription service:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start recording with enhanced transcription
    */
   async startRecording(options = {}) {
     try {
-      const { sessionId, onTranscription, onError } = options;
-      
-      this.onTranscriptionCallback = onTranscription;
-      this.onErrorCallback = onError;
+      if (this.isRecording) {
+        throw new Error('Recording is already in progress');
+      }
 
-      // Request microphone access
-      this.audioStream = await navigator.mediaDevices.getUserMedia({ 
+      // Get user media
+      this.audioStream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          autoGainControl: true
-        } 
+          autoGainControl: true,
+          sampleRate: 44100
+        }
       });
 
-      // Setup MediaRecorder for chunk processing
+      // Setup MediaRecorder
       this.mediaRecorder = new MediaRecorder(this.audioStream, {
         mimeType: 'audio/webm;codecs=opus'
       });
 
       this.audioChunks = [];
+      this.lastProcessedTime = Date.now();
 
+      // Setup MediaRecorder event handlers
       this.mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           this.audioChunks.push(event.data);
+          this.processAudioChunk(event.data);
         }
+      };
+
+      this.mediaRecorder.onstop = () => {
+        console.log('Recording stopped');
       };
 
       this.mediaRecorder.onerror = (event) => {
         console.error('MediaRecorder error:', event.error);
-        if (this.onErrorCallback) {
-          this.onErrorCallback('MediaRecorder error: ' + event.error.message);
+        if (this.onError) {
+          this.onError(event.error);
         }
       };
 
-      // Setup live speech recognition if supported
+      // Setup browser speech recognition for real-time feedback
       if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        this.setupLiveSpeechRecognition();
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        this.recognition = new SpeechRecognition();
+        
+        this.recognition.continuous = true;
+        this.recognition.interimResults = true;
+        this.recognition.lang = 'nl-NL';
+
+        this.recognition.onresult = (event) => {
+          // This provides immediate visual feedback while waiting for enhanced transcription
+          if (this.onTranscriptionReceived) {
+            const lastResult = event.results[event.results.length - 1];
+            this.onTranscriptionReceived({
+              text: lastResult[0].transcript,
+              isFinal: lastResult.isFinal,
+              source: 'browser_realtime',
+              confidence: lastResult[0].confidence || 0.8
+            });
+          }
+        };
+
+        this.recognition.onerror = (event) => {
+          console.warn('Speech recognition error:', event.error);
+        };
+
+        this.recognition.start();
       }
 
       // Start recording
-      this.mediaRecorder.start(1000); // Collect data every second
+      this.mediaRecorder.start(this.chunkInterval);
       this.isRecording = true;
       this.isPaused = false;
 
-      console.log('🎤 Enhanced recording started');
-
+      console.log('Enhanced recording started successfully');
+      
       return {
         success: true,
-        sessionId: sessionId,
-        features: {
-          mediaRecorder: true,
-          speechRecognition: !!this.recognition,
-          audioStream: true
-        }
+        sessionId: this.currentSessionId,
+        useN8N: this.useN8N,
+        preferredService: this.preferredService
       };
 
     } catch (error) {
-      console.error('Failed to start recording:', error);
-      return {
-        success: false,
-        error: error.message
-      };
+      console.error('Failed to start enhanced recording:', error);
+      throw error;
     }
   }
 
   /**
-   * Setup live speech recognition
+   * Process audio chunk with enhanced transcription services
    */
-  setupLiveSpeechRecognition() {
+  async processAudioChunk(audioBlob) {
     try {
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      this.recognition = new SpeechRecognition();
+      const currentTime = Date.now();
+      
+      // Convert blob to base64
+      const audioData = await this.blobToBase64(audioBlob);
+      
+      console.log('Processing audio chunk with enhanced services', {
+        sessionId: this.currentSessionId,
+        chunkSize: audioBlob.size,
+        preferredService: this.preferredService,
+        useN8N: this.useN8N
+      });
 
-      this.recognition.continuous = true;
-      this.recognition.interimResults = true;
-      this.recognition.lang = 'nl-NL';
+      // Send to enhanced transcription API
+      const response = await apiClient.post('/enhanced-transcription/process-live', {
+        audio_data: audioData.split(',')[1], // Remove data:audio/webm;base64, prefix
+        session_id: this.currentSessionId,
+        preferred_service: this.preferredService,
+        use_n8n: this.useN8N,
+        timestamp: currentTime,
+        chunk_interval: this.chunkInterval
+      });
 
-      this.recognition.onresult = (event) => {
-        let interimTranscript = '';
-        let finalTranscript = '';
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript;
-          const confidence = event.results[i][0].confidence;
-
-          if (event.results[i].isFinal) {
-            finalTranscript += transcript;
-            
-            if (this.onTranscriptionCallback) {
-              this.onTranscriptionCallback({
-                transcript: finalTranscript,
-                confidence: confidence,
+      if (response.data.success) {
+        const result = response.data.data;
+        
+        // Handle multiple transcriptions if available
+        if (result.transcriptions && result.transcriptions.length > 0) {
+          result.transcriptions.forEach(transcription => {
+            if (this.onTranscriptionReceived) {
+              this.onTranscriptionReceived({
+                text: transcription.text,
+                speaker_name: transcription.speaker_name || 'Onbekende spreker',
+                speaker_id: transcription.speaker_id,
+                speaker_color: transcription.speaker_color,
+                confidence: transcription.confidence || 0.8,
+                speaker_confidence: transcription.speaker_confidence || 0.7,
+                source: transcription.source || result.primary_source,
                 isFinal: true,
-                timestamp: new Date()
+                timestamp: transcription.spoken_at || new Date().toISOString(),
+                processing_status: transcription.processing_status || 'completed'
               });
             }
-          } else {
-            interimTranscript += transcript;
+          });
+        } else if (result.transcription) {
+          // Fallback to single transcription
+          if (this.onTranscriptionReceived) {
+            this.onTranscriptionReceived({
+              text: result.transcription.text,
+              speaker_name: result.transcription.speaker_name || 'Onbekende spreker',
+              confidence: result.transcription.confidence || 0.8,
+              source: result.primary_source,
+              isFinal: true,
+              timestamp: result.transcription.spoken_at || new Date().toISOString()
+            });
           }
         }
-      };
 
-      this.recognition.onerror = (event) => {
-        console.error('Speech recognition error:', event.error);
+        // Update service status if callback is available
+        if (this.onServiceStatusChanged && result.session_stats) {
+          this.onServiceStatusChanged({
+            primary_source: result.primary_source,
+            session_stats: result.session_stats,
+            processing_details: result.processing_details || []
+          });
+        }
+
+        this.lastProcessedTime = currentTime;
         
-        // Try to restart recognition if it's not a fatal error
-        if (event.error !== 'aborted' && event.error !== 'no-speech') {
-          setTimeout(() => {
-            if (this.isRecording && !this.isPaused) {
-              try {
-                this.recognition.start();
-              } catch (e) {
-                console.log('Could not restart speech recognition:', e);
-              }
-            }
-          }, 1000);
+      } else {
+        console.error('Enhanced transcription failed:', response.data.error);
+        if (this.onError) {
+          this.onError(new Error(response.data.error));
         }
-      };
-
-      this.recognition.onend = () => {
-        // Restart recognition if we're still recording
-        if (this.isRecording && !this.isPaused) {
-          try {
-            this.recognition.start();
-          } catch (e) {
-            console.log('Could not restart speech recognition:', e);
-          }
-        }
-      };
-
-      this.recognition.start();
-      console.log('🗣️ Live speech recognition started');
+      }
 
     } catch (error) {
-      console.error('Failed to setup speech recognition:', error);
+      console.error('Failed to process audio chunk:', error);
+      if (this.onError) {
+        this.onError(error);
+      }
     }
+  }
+
+  /**
+   * Convert blob to base64
+   */
+  async blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
 
   /**
    * Pause recording
    */
   pauseRecording() {
-    if (this.mediaRecorder && this.isRecording) {
-      this.mediaRecorder.pause();
-      this.isPaused = true;
-
+    if (this.isRecording && !this.isPaused) {
+      if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+        this.mediaRecorder.pause();
+      }
       if (this.recognition) {
         this.recognition.stop();
       }
-
-      console.log('⏸️ Recording paused');
+      this.isPaused = true;
+      console.log('Recording paused');
     }
   }
 
@@ -175,19 +267,15 @@ class EnhancedLiveTranscriptionService {
    * Resume recording
    */
   resumeRecording() {
-    if (this.mediaRecorder && this.isRecording && this.isPaused) {
-      this.mediaRecorder.resume();
-      this.isPaused = false;
-
-      if (this.recognition) {
-        try {
-          this.recognition.start();
-        } catch (e) {
-          console.log('Could not restart speech recognition:', e);
-        }
+    if (this.isRecording && this.isPaused) {
+      if (this.mediaRecorder && this.mediaRecorder.state === 'paused') {
+        this.mediaRecorder.resume();
       }
-
-      console.log('▶️ Recording resumed');
+      if (this.recognition) {
+        this.recognition.start();
+      }
+      this.isPaused = false;
+      console.log('Recording resumed');
     }
   }
 
@@ -195,10 +283,10 @@ class EnhancedLiveTranscriptionService {
    * Stop recording
    */
   stopRecording() {
-    if (this.mediaRecorder && this.isRecording) {
-      this.mediaRecorder.stop();
-      this.isRecording = false;
-      this.isPaused = false;
+    try {
+      if (this.mediaRecorder && this.mediaRecorder.state !== 'inactive') {
+        this.mediaRecorder.stop();
+      }
 
       if (this.recognition) {
         this.recognition.stop();
@@ -210,92 +298,29 @@ class EnhancedLiveTranscriptionService {
         this.audioStream = null;
       }
 
-      console.log('⏹️ Recording stopped');
-    }
-  }
-
-  /**
-   * Get current audio chunk for processing
-   */
-  async getAudioChunk() {
-    if (!this.audioChunks.length) {
-      return null;
-    }
-
-    try {
-      // Create blob from collected chunks
-      const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm;codecs=opus' });
+      this.isRecording = false;
+      this.isPaused = false;
       
-      // Clear chunks for next collection
-      this.audioChunks = [];
-
-      // Convert to base64
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          // Remove data URL prefix to get pure base64
-          const base64 = reader.result.split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(audioBlob);
-      });
-
-    } catch (error) {
-      console.error('Failed to get audio chunk:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Process audio chunk with backend services
-   */
-  async processChunk(options = {}) {
-    try {
-      const { audioData, sessionId, preferredService = 'auto', useN8N = false } = options;
-
-      if (!audioData) {
-        throw new Error('No audio data provided');
-      }
-
-      const response = await apiClient.post('/transcription/live', {
-        audio_data: audioData,
-        session_id: sessionId,
-        preferred_service: preferredService,
-        use_n8n: useN8N
-      });
-
-      if (response.data.success) {
-        return {
-          success: true,
-          transcription: response.data.data.transcription,
-          transcriptions: response.data.data.transcriptions,
-          primary_source: response.data.data.primary_source,
-          session_stats: response.data.data.session_stats,
-          processing_details: response.data.data.processing_details
-        };
-      } else {
-        return {
-          success: false,
-          error: response.data.error
-        };
-      }
-
-    } catch (error) {
-      console.error('Chunk processing failed:', error);
+      console.log('Enhanced recording stopped successfully');
+      
       return {
-        success: false,
-        error: error.response?.data?.error || error.message
+        success: true,
+        chunksProcessed: this.audioChunks.length,
+        sessionId: this.currentSessionId
       };
+
+    } catch (error) {
+      console.error('Failed to stop enhanced recording:', error);
+      throw error;
     }
   }
 
   /**
-   * Get transcription configuration
+   * Get transcription configuration including N8N status
    */
-  async getConfig() {
+  async getTranscriptionConfig() {
     try {
-      const response = await apiClient.get('/transcription/config');
+      const response = await apiClient.get('/enhanced-transcription/config');
       
       if (response.data.success) {
         return response.data.data;
@@ -314,7 +339,7 @@ class EnhancedLiveTranscriptionService {
    */
   async testServices() {
     try {
-      const response = await apiClient.post('/transcription/test-services');
+      const response = await apiClient.post('/enhanced-transcription/test-services');
       
       if (response.data.success) {
         return response.data.data;
@@ -333,12 +358,13 @@ class EnhancedLiveTranscriptionService {
    */
   async setPreferredService(sessionId, service) {
     try {
-      const response = await apiClient.post('/transcription/preferred-service', {
+      const response = await apiClient.post('/enhanced-transcription/preferred-service', {
         session_id: sessionId,
         service: service
       });
       
       if (response.data.success) {
+        this.preferredService = service;
         return response.data.data;
       } else {
         throw new Error(response.data.error);
@@ -355,12 +381,13 @@ class EnhancedLiveTranscriptionService {
    */
   async getPreferredService(sessionId) {
     try {
-      const response = await apiClient.get('/transcription/preferred-service', {
+      const response = await apiClient.get('/enhanced-transcription/preferred-service', {
         params: { session_id: sessionId }
       });
       
       if (response.data.success) {
-        return response.data.data.preferred_service;
+        this.preferredService = response.data.data.preferred_service;
+        return this.preferredService;
       } else {
         throw new Error(response.data.error);
       }
@@ -369,6 +396,14 @@ class EnhancedLiveTranscriptionService {
       console.error('Failed to get preferred service:', error);
       throw error;
     }
+  }
+
+  /**
+   * Enable or disable N8N processing
+   */
+  setN8NEnabled(enabled) {
+    this.useN8N = enabled;
+    console.log('N8N processing', enabled ? 'enabled' : 'disabled');
   }
 
   /**
@@ -388,8 +423,35 @@ class EnhancedLiveTranscriptionService {
       hasAudioStream: !!this.audioStream,
       hasMediaRecorder: !!this.mediaRecorder,
       hasSpeechRecognition: !!this.recognition,
-      audioChunksCount: this.audioChunks.length
+      audioChunksCount: this.audioChunks.length,
+      sessionId: this.currentSessionId,
+      preferredService: this.preferredService,
+      useN8N: this.useN8N
     };
+  }
+
+  /**
+   * Set event handlers
+   */
+  setEventHandlers(handlers) {
+    this.onTranscriptionReceived = handlers.onTranscriptionReceived || null;
+    this.onServiceStatusChanged = handlers.onServiceStatusChanged || null;
+    this.onError = handlers.onError || null;
+  }
+
+  /**
+   * Clean up resources
+   */
+  cleanup() {
+    if (this.isRecording) {
+      this.stopRecording();
+    }
+    
+    this.onTranscriptionReceived = null;
+    this.onServiceStatusChanged = null;
+    this.onError = null;
+    this.serviceConfig = null;
+    this.currentSessionId = null;
   }
 }
 

@@ -137,47 +137,36 @@ Route::middleware('auth:sanctum')->group(function () {
     |--------------------------------------------------------------------------
     */
     
-    // Meeting CRUD
-    Route::apiResource('meetings', \App\Http\Controllers\Api\MeetingController::class);
-    
-    // Meeting actions
+    Route::post('/meetings', [\App\Http\Controllers\Api\MeetingController::class, 'store']);
+    Route::get('/meetings', [\App\Http\Controllers\Api\MeetingController::class, 'index']);
+    Route::get('/meetings/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'show']);
+    Route::put('/meetings/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'update']);
+    Route::delete('/meetings/{meeting}', [\App\Http\Controllers\Api\MeetingController::class, 'destroy']);
     Route::post('/meetings/{meeting}/start', [\App\Http\Controllers\Api\MeetingController::class, 'start']);
-    Route::post('/meetings/{meeting}/stop', [\App\Http\Controllers\Api\MeetingController::class, 'stop']);
+    Route::post('/meetings/{meeting}/end', [\App\Http\Controllers\Api\MeetingController::class, 'end']);
 
     /*
     |--------------------------------------------------------------------------
-    | Participant Routes
+    | Enhanced Live Transcription Routes (NEW - MISSING IN YOUR CURRENT FILE)
     |--------------------------------------------------------------------------
     */
     
-    // Participants (nested under meetings)
-    Route::apiResource('meetings.participants', \App\Http\Controllers\Api\ParticipantController::class);
-
-    /*
-    |--------------------------------------------------------------------------
-    | Audio Processing Routes (Rate Limited)
-    |--------------------------------------------------------------------------
-    */
-    
-    Route::middleware('throttle:audio')->group(function () {
-        Route::post('/audio/upload', [\App\Http\Controllers\Api\AudioController::class, 'upload']);
-        Route::get('/audio/list', [\App\Http\Controllers\Api\AudioController::class, 'list']);
-        Route::delete('/audio/{filename}', [\App\Http\Controllers\Api\AudioController::class, 'delete']);
+    Route::prefix('enhanced-transcription')->middleware('throttle:transcription')->group(function () {
+        // Main transcription processing with service selection and N8N support
+        Route::post('/process-live', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'processLiveTranscription']);
+        
+        // Configuration and service management
+        Route::get('/config', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'getConfig']);
+        Route::post('/test-services', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'testServices']);
+        
+        // Service preference management
+        Route::post('/preferred-service', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'setPreferredService']);
+        Route::get('/preferred-service', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'getPreferredService']);
     });
 
     /*
     |--------------------------------------------------------------------------
-    | Speech Processing Routes (Rate Limited)
-    |--------------------------------------------------------------------------
-    */
-    
-    Route::middleware('throttle:speech')->group(function () {
-        Route::post('/speech/transcribe', [\App\Http\Controllers\Api\SpeechController::class, 'transcribe']);
-    });
-
-    /*
-    |--------------------------------------------------------------------------
-    | Enhanced Live Transcription Routes (Rate Limited)
+    | Live Transcription Routes (Existing)
     |--------------------------------------------------------------------------
     */
     
@@ -221,8 +210,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/meetings/{meetingId}/agenda/{agendaItemId}/status', [AgendaController::class, 'updateStatus']);
     Route::delete('/meetings/{meetingId}/agenda/{agendaItemId}', [AgendaController::class, 'destroy']);
 
-
-
 /*
 |--------------------------------------------------------------------------
 | Report Routes (N8N writes via SQL, API reads/edits only)
@@ -243,13 +230,6 @@ Route::prefix('meetings/{meeting}/reports')->group(function () {
     Route::get('/{report}/export/html', [ReportController::class, 'exportHtml']);
 });
 
-
-
-
-
-
-
-
     /*
     |--------------------------------------------------------------------------
     | Privacy Routes
@@ -269,6 +249,3 @@ Route::prefix('meeting-types')->group(function () {
     Route::get('/{id}/default-agenda', [App\Http\Controllers\Api\MeetingTypeController::class, 'getDefaultAgenda']);
     Route::post('/{id}/test-privacy-filters', [App\Http\Controllers\Api\MeetingTypeController::class, 'testPrivacyFilters']);
 });
-
-
-

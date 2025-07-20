@@ -4,22 +4,28 @@ namespace App\Services;
 
 use App\Services\VoiceFingerprintService;
 use App\Services\AzureWhisperService;
+use App\Services\N8NTranscriptionService;
+use App\Services\ConfigService;
 use App\Models\Transcription;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\Cache;
 
 class EnhancedLiveTranscriptionService
 {
     private $voiceService;
     private $whisperService;
+    private $n8nService;
     private $sessionPrefix = 'enhanced_session:';
 
     public function __construct(
         VoiceFingerprintService $voiceService,
-        AzureWhisperService $whisperService
+        AzureWhisperService $whisperService,
+        N8NTranscriptionService $n8nService
     ) {
         $this->voiceService = $voiceService;
         $this->whisperService = $whisperService;
+        $this->n8nService = $n8nService;
     }
 
     /**
@@ -58,6 +64,440 @@ class EnhancedLiveTranscriptionService
                 'session_id' => $sessionId,
                 'error' => $e->getMessage()
             ]);
+        }
+    }
+
+    /**
+     * NEW: Get transcription configuration including N8N status
+     */
+    public function getTranscriptionConfig(): array
+    {
+        try {
+            // Test service availability
+            $availableServices = ['browser']; // Always available
+            $serviceStatus = [];
+
+            // Check Whisper availability
+            $whisperAvailable = ConfigService::isWhisperEnabled();
+            $allConfig = ConfigService::getAllConfig();
+            if ($whisperAvailable) {
+                $availableServices[] = 'whisper';
+                $serviceStatus['whisper'] = [
+                    'available' => true,
+                    'configured' => $allConfig['azure']['whisper_configured'] ?? false,
+                    'service_type' => 'azure_whisper'
+                ];
+            } else {
+                $serviceStatus['whisper'] = [
+                    'available' => false,
+                    'configured' => false,
+                    'missing_config' => 'Whisper service disabled or not configured'
+                ];
+            }
+
+            // Check N8N availability
+            $n8nConfig = ConfigService::getN8NConfig();
+            $n8nAvailable = !empty($n8nConfig['webhook_url']);
+            if ($n8nAvailable) {
+                $availableServices[] = 'n8n';
+                $serviceStatus['n8n'] = [
+                    'available' => true,
+                    'configured' => true,
+                    'webhook_url' => $n8nConfig['webhook_url'],
+                    'has_api_key' => !empty($n8nConfig['api_key'])
+                ];
+            } else {
+                $serviceStatus['n8n'] = [
+                    'available' => false,
+                    'configured' => false,
+                    'missing_config' => 'Webhook URL missing'
+                ];
+            }
+
+            // Browser is always available
+            $serviceStatus['browser'] = [
+                'available' => true,
+                'configured' => true,
+                'note' => 'Browser Web Speech API - always available as fallback'
+            ];
+
+            $config = [
+                'available_services' => $availableServices,
+                'service_status' => $serviceStatus,
+                'default_service' => count($availableServices) > 1 ? 'auto' : $availableServices[0],
+                'supports_multi_service' => count($availableServices) > 1,
+                'supports_n8n' => $n8nAvailable,
+                'supports_whisper' => $whisperAvailable,
+                'supports_voice_profiles' => true, // Your existing feature
+                'processing_options' => [
+                    'chunk_interval_ms' => 5000,
+                    'audio_format' => 'webm',
+                    'language' => 'nl-NL',
+                    'speaker_diarization' => true, // Your existing feature
+                    'voice_identification' => true // Your existing feature
+                ]
+            ];
+
+            Log::info('Transcription configuration retrieved', [
+                'available_services' => $availableServices,
+                'n8n_available' => $n8nAvailable,
+                'whisper_available' => $whisperAvailable
+            ]);
+
+            return $config;
+
+        } catch (\Exception $e) {
+            Log::error('Failed to get transcription configuration', [
+                'error' => $e->getMessage()
+            ]);
+
+            // Return minimal fallback config
+            return [
+                'available_services' => ['browser'],
+                'service_status' => [
+                    'browser' => ['available' => true, 'configured' => true]
+                ],
+                'default_service' => 'browser',
+                'supports_multi_service' => false,
+                'supports_n8n' => false,
+                'supports_whisper' => false,
+                'error' => 'Configuration retrieval failed'
+            ];
+        }
+    }
+
+    /**
+     * NEW: Test available transcription services
+     */
+    public function testServices(): array
+    {
+        $results = [];
+        
+        try {
+            // Test Whisper service
+            $whisperAvailable = ConfigService::isWhisperEnabled();
+            $allConfig = ConfigService::getAllConfig();
+            
+            if ($whisperAvailable) {
+                try {
+                    // Simple test - check if service is configured
+                    $results['whisper'] = [
+                        'available' => true,
+                        'configured' => $allConfig['azure']['whisper_configured'] ?? false,
+                        'tested_at' => now()->toISOString(),
+                        'service_type' => 'azure_whisper',
+                        'note' => 'Configuration validated - Whisper enabled'
+                    ];
+                } catch (\Exception $e) {
+                    $results['whisper'] = [
+                        'available' => false,
+                        'tested_at' => now()->toISOString(),
+                        'error' => $e->getMessage()
+                    ];
+                }
+            } else {
+                $results['whisper'] = [
+                    'available' => false,
+                    'error' => 'Whisper service disabled'
+                ];
+            }
+
+            // Test N8N service
+            $n8nConfig = ConfigService::getN8NConfig();
+            if (!empty($n8nConfig['webhook_url'])) {
+                try {
+                    // Test N8N service availability
+                    $testResult = $this->n8nService->transcribeAudioChunk('test', 'test-session', 1);
+                    
+                    $results['n8n'] = [
+                        'available' => $testResult !== null,
+                        'tested_at' => now()->toISOString(),
+                        'webhook_url' => $n8nConfig['webhook_url'],
+                        'has_api_key' => !empty($n8nConfig['api_key']),
+                        'test_result' => $testResult ? 'Connection successful' : 'Connection failed'
+                    ];
+                } catch (\Exception $e) {
+                    $results['n8n'] = [
+                        'available' => false,
+                        'tested_at' => now()->toISOString(),
+                        'error' => $e->getMessage()
+                    ];
+                }
+            } else {
+                $results['n8n'] = [
+                    'available' => false,
+                    'error' => 'N8N webhook URL not configured'
+                ];
+            }
+
+            // Browser is always available
+            $results['browser'] = [
+                'available' => true,
+                'tested_at' => now()->toISOString(),
+                'note' => 'Browser Web Speech API is always available'
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Service testing failed', [
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        return $results;
+    }
+
+    /**
+     * NEW: Set preferred service for a session
+     */
+    public function setPreferredService(string $sessionId, string $service): bool
+    {
+        try {
+            Cache::put("preferred_service_{$sessionId}", $service, now()->addHours(24));
+            
+            Log::info('Preferred service set for session', [
+                'session_id' => $sessionId,
+                'service' => $service
+            ]);
+            
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Failed to set preferred service', [
+                'session_id' => $sessionId,
+                'service' => $service,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * NEW: Get preferred service for a session
+     */
+    public function getPreferredService(string $sessionId): string
+    {
+        try {
+            return Cache::get("preferred_service_{$sessionId}", 'auto');
+        } catch (\Exception $e) {
+            Log::warning('Failed to get preferred service, using default', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage()
+            ]);
+            return 'auto';
+        }
+    }
+
+    /**
+     * NEW: Process live transcription with service selection (enhanced version)
+     */
+    public function processLiveTranscription(string $audioData, string $sessionId, array $options = []): array
+    {
+        try {
+            $preferredService = $options['preferred_service'] ?? 'auto';
+            $useN8N = $options['use_n8n'] ?? false;
+            
+            Log::info('Enhanced live transcription processing started', [
+                'session_id' => $sessionId,
+                'audio_size' => strlen($audioData),
+                'preferred_service' => $preferredService,
+                'use_n8n' => $useN8N
+            ]);
+
+            $sessionData = $this->getSession($sessionId);
+            if (!$sessionData) {
+                // Create minimal session if it doesn't exist
+                $sessionData = [
+                    'meeting_id' => 1, // Fallback
+                    'started_at' => now()->toISOString(),
+                    'participants' => [],
+                    'transcriptions' => [],
+                    'chunk_counter' => 0,
+                ];
+                $this->saveSession($sessionId, $sessionData);
+            }
+
+            $sessionData['chunk_counter']++;
+            $chunkNumber = $sessionData['chunk_counter'];
+
+            $transcriptions = [];
+            $primaryResult = null;
+            $primarySource = 'browser';
+            $processingDetails = [];
+
+            // Try N8N first if enabled and available
+            if ($useN8N && in_array($preferredService, ['n8n', 'auto'])) {
+                try {
+                    Log::info('Attempting N8N transcription', [
+                        'session_id' => $sessionId,
+                        'chunk_number' => $chunkNumber
+                    ]);
+
+                    $n8nResult = $this->n8nService->transcribeAudioChunk($audioData, $sessionId, $chunkNumber);
+                    
+                    if ($n8nResult && $n8nResult['success']) {
+                        if (isset($n8nResult['transcriptions'])) {
+                            $transcriptions = array_merge($transcriptions, $n8nResult['transcriptions']);
+                        }
+                        $primaryResult = $n8nResult;
+                        $primarySource = 'n8n';
+                        
+                        $processingDetails[] = [
+                            'service' => 'n8n',
+                            'success' => true,
+                            'transcriptions_count' => count($n8nResult['transcriptions'] ?? []),
+                            'processing_time_ms' => $n8nResult['n8n_metadata']['processing_time'] ?? 0
+                        ];
+
+                        Log::info('N8N transcription successful', [
+                            'session_id' => $sessionId,
+                            'transcriptions_count' => count($transcriptions)
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('N8N transcription failed, will try other services', [
+                        'session_id' => $sessionId,
+                        'error' => $e->getMessage()
+                    ]);
+                    
+                    $processingDetails[] = [
+                        'service' => 'n8n',
+                        'success' => false,
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            // Try Whisper if N8N failed or wasn't preferred
+            if (empty($transcriptions) && in_array($preferredService, ['whisper', 'auto'])) {
+                try {
+                    Log::info('Attempting Whisper transcription', [
+                        'session_id' => $sessionId,
+                        'chunk_number' => $chunkNumber
+                    ]);
+
+                    // Create temporary file for Whisper
+                    $tempFile = tempnam(storage_path('app/temp'), 'whisper_chunk_');
+                    file_put_contents($tempFile, $audioData);
+
+                    $uploadedFile = new \Illuminate\Http\UploadedFile(
+                        $tempFile,
+                        'chunk.webm',
+                        'audio/webm',
+                        null,
+                        true
+                    );
+
+                    $whisperResult = $this->whisperService->transcribeAudio($uploadedFile);
+                    
+                    if ($whisperResult['success']) {
+                        $whisperTranscription = [
+                            'id' => uniqid('whisper_', true),
+                            'text' => $whisperResult['text'],
+                            'speaker_name' => 'Onbekende spreker',
+                            'speaker_id' => 'unknown_speaker',
+                            'speaker_color' => '#6B7280',
+                            'confidence' => 0.9,
+                            'speaker_confidence' => 0.0,
+                            'spoken_at' => now()->toISOString(),
+                            'source' => 'whisper',
+                            'processing_status' => 'completed'
+                        ];
+
+                        $transcriptions[] = $whisperTranscription;
+                        
+                        if (!$primaryResult) {
+                            $primaryResult = ['transcription' => $whisperTranscription];
+                            $primarySource = 'whisper';
+                        }
+
+                        $processingDetails[] = [
+                            'service' => 'whisper',
+                            'success' => true,
+                            'transcriptions_count' => 1,
+                            'language' => $whisperResult['language'] ?? 'nl'
+                        ];
+
+                        Log::info('Whisper transcription successful', [
+                            'session_id' => $sessionId,
+                            'text_length' => strlen($whisperResult['text'])
+                        ]);
+                    }
+
+                    // Clean up temp file
+                    if (file_exists($tempFile)) {
+                        unlink($tempFile);
+                    }
+
+                } catch (\Exception $e) {
+                    Log::warning('Whisper transcription failed', [
+                        'session_id' => $sessionId,
+                        'error' => $e->getMessage()
+                    ]);
+                    
+                    $processingDetails[] = [
+                        'service' => 'whisper',
+                        'success' => false,
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            // Fallback to browser/default transcription if all else fails
+            if (empty($transcriptions)) {
+                Log::info('Using browser fallback transcription', [
+                    'session_id' => $sessionId
+                ]);
+
+                $fallbackTranscription = [
+                    'id' => uniqid('browser_', true),
+                    'text' => '[Audio processed - browser transcription would be handled by frontend]',
+                    'speaker_name' => 'Onbekende spreker',
+                    'speaker_id' => 'unknown_speaker',
+                    'speaker_color' => '#6B7280',
+                    'confidence' => 0.7,
+                    'speaker_confidence' => 0.0,
+                    'spoken_at' => now()->toISOString(),
+                    'source' => 'browser',
+                    'processing_status' => 'completed'
+                ];
+
+                $transcriptions[] = $fallbackTranscription;
+                $primaryResult = ['transcription' => $fallbackTranscription];
+                $primarySource = 'browser';
+
+                $processingDetails[] = [
+                    'service' => 'browser',
+                    'success' => true,
+                    'note' => 'Fallback service - actual transcription handled by frontend'
+                ];
+            }
+
+            // Update session data
+            foreach ($transcriptions as $transcription) {
+                $sessionData['transcriptions'][] = $transcription;
+            }
+            $this->saveSession($sessionId, $sessionData);
+
+            return [
+                'success' => true,
+                'transcription' => $primaryResult['transcription'] ?? $transcriptions[0],
+                'transcriptions' => $transcriptions,
+                'primary_source' => $primarySource,
+                'session_stats' => $this->getSessionStats($sessionId),
+                'processing_details' => $processingDetails
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Enhanced live transcription failed', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return [
+                'success' => false,
+                'error' => 'Transcription processing failed: ' . $e->getMessage(),
+                'session_stats' => $this->getSessionStats($sessionId)
+            ];
         }
     }
 
@@ -163,9 +603,9 @@ class EnhancedLiveTranscriptionService
     }
 
     /**
-     * Process live transcription with automatic speaker detection
+     * Process live transcription with automatic speaker detection (ORIGINAL METHOD - PRESERVED)
      */
-    public function processLiveTranscription(
+    public function processLiveTranscriptionOriginal(
         string $sessionId, 
         string $liveText,
         $audioSample = null,
@@ -402,7 +842,7 @@ class EnhancedLiveTranscriptionService
                 'speaker_color' => $transcription['speaker_color'] ?? '#6B7280',
                 'text' => $transcription['text'] ?? '',
                 'confidence' => $transcription['text_confidence'] ?? 0.8,
-                'source' => $source, // FIXED: Now uses dynamic source determination
+                'source' => $source,
                 'is_final' => true,
                 'spoken_at' => $transcription['timestamp'] ?? now()->toISOString(),
                 'metadata' => json_encode([
@@ -457,6 +897,11 @@ class EnhancedLiveTranscriptionService
             return 'whisper_verified';
         }
 
+        // Check for N8N source
+        if (isset($transcription['source']) && $transcription['source'] === 'n8n') {
+            return 'n8n';
+        }
+
         // Check original type
         if (isset($transcription['type'])) {
             switch ($transcription['type']) {
@@ -506,6 +951,7 @@ class EnhancedLiveTranscriptionService
             'processing' => 0,
             'verified' => 0,
             'error' => 0,
+            'completed' => 0,
         ];
 
         foreach ($sessionData['transcriptions'] as $transcription) {
