@@ -1,0 +1,1 @@
+{"success":true,"message":"Login successful","data":{"user":{"id":1,"name":"Admin","email":"test@conversationhub.nl","email_verified_at":null,"role":"user","privacy_consent":false,"privacy_consent_at":null,"created_at":"2025-07-03T05:10:34.000000Z","updated_at":"2025-07-03T05:10:34.000000Z"},"token":"13|v32K6U72owGUWmqIpWFEt0QRfHR0ySRMDTVmiBjx2a99eb71"}}

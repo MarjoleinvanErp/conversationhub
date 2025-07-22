@@ -1,4 +1,4 @@
-import apiClient from './apiClient';
+import apiClient from './api.js';
 
 class ConfigService {
   constructor() {
@@ -161,85 +161,26 @@ class ConfigService {
    */
   async isN8NWebhookConfigured() {
     const config = await this.getN8NConfig();
-    return !!(config.webhook_url || config.transcription_webhook_url);
+    return !!config.webhook_url;
   }
 
   /**
-   * Get available transcription services
+   * Test transcription services
    */
-  async getAvailableServices() {
-    const config = await this.getTranscriptionConfig();
-    return config.available_services || { whisper: false, n8n: false };
-  }
-
-  /**
-   * Update configuration
-   */
-  async updateConfig(newConfig) {
+  async testServices() {
     try {
-      const response = await apiClient.post('/config/update', newConfig);
+      const response = await apiClient.post('/transcription/test-services');
       
-      if (response.data.success) {
-        // Clear cache to force refresh
-        this.clearCache();
+      if (response.data && response.data.success) {
         return response.data.data;
       } else {
-        throw new Error(response.data.error || 'Failed to update config');
+        throw new Error(response.data?.error || 'Failed to test services');
       }
     } catch (error) {
-      console.error('Failed to update config:', error);
+      console.error('Failed to test services:', error);
       throw error;
     }
-  }
-
-  /**
-   * Test N8N connection
-   */
-  async testN8NConnection() {
-    try {
-      const response = await apiClient.post('/n8n/test-connection');
-      
-      if (response.data.success) {
-        return response.data.data;
-      } else {
-        throw new Error(response.data.error || 'N8N connection test failed');
-      }
-    } catch (error) {
-      console.error('N8N connection test failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Clear cache (force refresh on next fetch)
-   */
-  clearCache() {
-    this.config = null;
-    this.lastFetch = null;
-  }
-
-  /**
-   * Get cached config without fetching
-   */
-  getCachedConfig() {
-    return this.config;
-  }
-
-  /**
-   * Check if config is cached and fresh
-   */
-  isCacheFresh() {
-    return this.config && this.lastFetch && (Date.now() - this.lastFetch) < this.cacheTimeout;
-  }
-
-  /**
-   * Force refresh configuration
-   */
-  async refresh() {
-    this.clearCache();
-    return await this.fetchConfig();
   }
 }
 
-// Export singleton instance
 export default new ConfigService();
