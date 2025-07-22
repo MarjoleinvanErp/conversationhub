@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AgendaController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\AIAgentController;
+use App\Http\Controllers\Api\ConfigController;
 
 /*
 |--------------------------------------------------------------------------
@@ -25,6 +26,9 @@ use App\Http\Controllers\Api\AIAgentController;
 
 // Health check endpoint
 Route::get('/health', [\App\Http\Controllers\Api\HealthController::class, 'check']);
+
+// Config routes
+Route::get('/config', [ConfigController::class, 'getConfig']);
 
 // Speech test endpoint (public for debugging)
 Route::get('/speech/test', [\App\Http\Controllers\Api\SpeechController::class, 'test']);
@@ -127,7 +131,7 @@ Route::middleware('auth:sanctum')->group(function () {
     */
     
     // Full configuration (with sensitive data)
-    Route::get('/config', [\App\Http\Controllers\Api\ConfigController::class, 'index']);
+    Route::get('/config', [\App\Http\Controllers\Api\ConfigController::class, 'getConfig']);
     Route::get('/config/transcription', [\App\Http\Controllers\Api\ConfigController::class, 'transcription']);
     Route::get('/config/n8n', [\App\Http\Controllers\Api\ConfigController::class, 'n8n']);
 

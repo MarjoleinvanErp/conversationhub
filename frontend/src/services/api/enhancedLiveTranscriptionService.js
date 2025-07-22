@@ -132,114 +132,126 @@ class EnhancedLiveTranscriptionService {
     }
   }
 
-  /**
-   * Process Whisper verification with real-time updates
-   */
-  async processWhisperVerification(liveTranscriptionId, audioChunk) {
-    if (!this.currentSession) {
-      throw new Error('No active session');
-    }
 
-    try {
-      console.log('🤖 Starting Whisper verification:', {
+/**
+ * Process Whisper verification with real-time updates - FIXED
+ */
+async processWhisperVerification(liveTranscriptionId, audioChunk) {
+  if (!this.currentSession) {
+    throw new Error('No active session');
+  }
+
+  try {
+    console.log('🤖 Starting Whisper verification:', {
+      session_id: this.currentSession.session_id,
+      live_transcription_id: liveTranscriptionId,
+      chunk_size: audioChunk.size,
+      chunk_type: audioChunk.type
+    });
+
+    // Notify start of processing
+    this.notifyWhisperUpdate({
+      type: 'processing_start',
+      message: 'Whisper verwerking gestart...',
+      timestamp: new Date().toISOString()
+    });
+
+    // Convert audio chunk to base64 - FIXED
+    const audioBase64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // Remove data URL prefix to get pure base64
+        const base64 = reader.result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(audioChunk);
+    });
+
+    // Send as JSON with base64 audio data
+    const response = await fetch(`${API_BASE_URL}/api/live-transcription/verify-whisper`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${authService.getToken()}`,
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+      },
+      body: JSON.stringify({
         session_id: this.currentSession.session_id,
-        live_transcription_id: liveTranscriptionId,
-        chunk_size: audioChunk.size,
-        chunk_type: audioChunk.type
-      });
+        transcription_id: liveTranscriptionId,
+        audio_data: audioBase64  // FIXED: Send as base64 string
+      })
+    });
 
-      // Notify start of processing
-      this.notifyWhisperUpdate({
-        type: 'processing_start',
-        message: 'Whisper verwerking gestart...',
-        timestamp: new Date().toISOString()
-      });
+    console.log('🤖 Whisper API response status:', response.status);
 
-      const formData = new FormData();
-      formData.append('session_id', this.currentSession.session_id);
-      formData.append('live_transcription_id', liveTranscriptionId);
-      
-      // Ensure proper audio file format
-      const audioFile = new File([audioChunk], `chunk_${Date.now()}.webm`, {
-        type: 'audio/webm',
-        lastModified: Date.now()
-      });
-      
-      formData.append('audio_chunk', audioFile);
-
-      const response = await fetch(`${API_BASE_URL}/api/live-transcription/verify-whisper`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${authService.getToken()}`,
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: formData,
-      });
-
-      console.log('🤖 Whisper API response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ Whisper API error response:', errorText);
-        
-        // Notify error
-        this.notifyWhisperUpdate({
-          type: 'processing_error',
-          error: `HTTP ${response.status}: ${errorText}`,
-          message: 'Whisper API fout',
-          timestamp: new Date().toISOString()
-        });
-        
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
-        console.log('✅ Whisper verification completed:', {
-          success: result.success,
-          original_id: liveTranscriptionId,
-          whisper_text: result.transcription?.text?.substring(0, 50) + '...',
-          database_saved: result.transcription?.database_saved
-        });
-
-        // Notify successful completion
-        this.notifyWhisperUpdate({
-          type: 'transcription_completed',
-          transcription: {
-            ...result.transcription,
-            database_saved: result.transcription?.database_saved || false
-          },
-          message: result.transcription?.database_saved 
-            ? 'Whisper transcriptie opgeslagen in database' 
-            : 'Whisper transcriptie verwerkt',
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        // Notify processing error
-        this.notifyWhisperUpdate({
-          type: 'processing_error',
-          error: result.error,
-          message: 'Whisper verwerking mislukt',
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      return result;
-    } catch (error) {
-      console.error('❌ Whisper verification failed:', error);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Whisper API error response:', errorText);
       
       // Notify error
       this.notifyWhisperUpdate({
         type: 'processing_error',
-        error: error.message,
-        message: 'Fout bij Whisper verwerking',
+        error: `HTTP ${response.status}: ${errorText}`,
+        message: 'Whisper API fout',
         timestamp: new Date().toISOString()
       });
       
-      return { success: false, error: error.message };
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
     }
+
+    const result = await response.json();
+    
+    if (result.success) {
+      console.log('✅ Whisper verification completed:', {
+        success: result.success,
+        original_id: liveTranscriptionId,
+        whisper_text: result.transcription?.text?.substring(0, 50) + '...',
+        database_saved: result.transcription?.database_saved
+      });
+
+      // Notify successful completion
+      this.notifyWhisperUpdate({
+        type: 'transcription_completed',
+        transcription: {
+          ...result.transcription,
+          database_saved: result.transcription?.database_saved || false
+        },
+        message: result.transcription?.database_saved 
+          ? 'Transcriptie voltooid en opgeslagen'
+          : 'Transcriptie voltooid',
+        timestamp: new Date().toISOString()
+      });
+
+    } else {
+      console.error('❌ Whisper verification failed:', result.error);
+      
+      // Notify failure
+      this.notifyWhisperUpdate({
+        type: 'processing_error',
+        error: result.error,
+        message: 'Whisper verwerking mislukt',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    return result;
+    
+  } catch (error) {
+    console.error('❌ Whisper verification failed:', error);
+    
+    // Notify error to callback
+    this.notifyWhisperUpdate({
+      type: 'processing_error',
+      error: error.message,
+      message: 'Whisper verwerking mislukt',
+      timestamp: new Date().toISOString()
+    });
+    
+    throw error;
   }
+}
+
 
   /**
    * Get Whisper transcriptions from database

@@ -1,4 +1,5 @@
 import apiClient from './api.js';
+import authService from './api/authService.js';
 
 class ConfigService {
   constructor() {
@@ -8,29 +9,53 @@ class ConfigService {
   }
 
   /**
-   * Fetch configuration from backend
+   * Fetch configuration from backend with authentication
    */
   async fetchConfig() {
     try {
+      // Check if user is authenticated
+      if (!authService.isAuthenticated()) {
+        console.warn('User not authenticated, using default config');
+        return this.getDefaultConfig();
+      }
+
+      console.log('📡 Fetching config with auth token...');
       const response = await apiClient.get('/config');
       
-      if (response.data.success) {
+      if (response.data && response.data.success) {
         this.config = response.data.data;
         this.lastFetch = Date.now();
+        console.log('✅ Config loaded successfully:', this.config);
         return this.config;
       } else {
-        throw new Error(response.data.error || 'Failed to fetch config');
+        console.warn('Config response not successful, using default');
+        return this.getDefaultConfig();
       }
     } catch (error) {
       console.error('Failed to fetch config:', error);
-      throw error;
+      
+      // If it's a 401 (unauthorized), use default config instead of throwing
+      if (error.message.includes('401') || error.message.includes('Unauthorized')) {
+        console.warn('Authentication failed, using default config');
+        return this.getDefaultConfig();
+      }
+      
+      // For other errors, also use default config to prevent app crash
+      console.warn('Using default config due to error:', error.message);
+      return this.getDefaultConfig();
     }
   }
 
   /**
-   * Get all configuration with caching
+   * Get all configuration with caching and auth check
    */
   async getAllConfig() {
+    // If user is not authenticated, return default config
+    if (!authService.isAuthenticated()) {
+      console.log('User not authenticated, returning default config');
+      return this.getDefaultConfig();
+    }
+
     // Return cached config if it's still fresh
     if (this.config && this.lastFetch && (Date.now() - this.lastFetch) < this.cacheTimeout) {
       return this.config;
@@ -46,13 +71,13 @@ class ConfigService {
   getDefaultConfig() {
     return {
       transcription: {
-        live_webspeech_enabled: true,
+        live_webspeech_enabled: false, // Safer default
         whisper_enabled: true,
         whisper_chunk_duration: 90,
         n8n_transcription_enabled: false,
-        default_transcription_service: 'auto',
+        default_transcription_service: 'whisper',
         available_services: {
-          whisper: false,
+          whisper: true, // Assume available by default
           n8n: false
         }
       },
@@ -71,7 +96,7 @@ class ConfigService {
         auto_delete_audio: true
       },
       azure: {
-        whisper_configured: false
+        whisper_configured: true // Assume configured by default
       }
     };
   }
@@ -80,24 +105,39 @@ class ConfigService {
    * Get transcription configuration
    */
   async getTranscriptionConfig() {
-    const config = await this.getAllConfig();
-    return config.transcription || this.getDefaultConfig().transcription;
+    try {
+      const config = await this.getAllConfig();
+      return config.transcription || this.getDefaultConfig().transcription;
+    } catch (error) {
+      console.warn('Failed to get transcription config, using default');
+      return this.getDefaultConfig().transcription;
+    }
   }
 
   /**
    * Get N8N configuration
    */
   async getN8NConfig() {
-    const config = await this.getAllConfig();
-    return config.n8n || this.getDefaultConfig().n8n;
+    try {
+      const config = await this.getAllConfig();
+      return config.n8n || this.getDefaultConfig().n8n;
+    } catch (error) {
+      console.warn('Failed to get N8N config, using default');
+      return this.getDefaultConfig().n8n;
+    }
   }
 
   /**
    * Get privacy configuration
    */
   async getPrivacyConfig() {
-    const config = await this.getAllConfig();
-    return config.privacy || this.getDefaultConfig().privacy;
+    try {
+      const config = await this.getAllConfig();
+      return config.privacy || this.getDefaultConfig().privacy;
+    } catch (error) {
+      console.warn('Failed to get privacy config, using default');
+      return this.getDefaultConfig().privacy;
+    }
   }
 
   /**
@@ -137,7 +177,7 @@ class ConfigService {
    */
   async getDefaultTranscriptionService() {
     const config = await this.getTranscriptionConfig();
-    return config.default_transcription_service || 'auto';
+    return config.default_transcription_service || 'whisper';
   }
 
   /**
@@ -169,6 +209,10 @@ class ConfigService {
    */
   async testServices() {
     try {
+      if (!authService.isAuthenticated()) {
+        throw new Error('Authentication required');
+      }
+
       const response = await apiClient.post('/transcription/test-services');
       
       if (response.data && response.data.success) {
@@ -180,6 +224,14 @@ class ConfigService {
       console.error('Failed to test services:', error);
       throw error;
     }
+  }
+
+  /**
+   * Clear cached config (useful after login/logout)
+   */
+  clearCache() {
+    this.config = null;
+    this.lastFetch = null;
   }
 }
 
