@@ -151,22 +151,27 @@ Route::middleware('auth:sanctum')->group(function () {
 
     /*
     |--------------------------------------------------------------------------
-    | Enhanced Live Transcription Routes (NEW - MISSING IN YOUR CURRENT FILE)
+    | Enhanced Live Transcription Routes (FIXED - Now points to correct controller)
     |--------------------------------------------------------------------------
     */
     
-    Route::prefix('enhanced-transcription')->middleware('throttle:transcription')->group(function () {
-        // Main transcription processing with service selection and N8N support
-        Route::post('/process-live', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'processLiveTranscription']);
+    Route::prefix('enhanced-transcription')->group(function () {
+        // Main transcription processing - FIXED: Now points to LiveTranscriptionController
+        Route::post('/process-live', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'processAudioChunk']);
         
         // Configuration and service management
-        Route::get('/config', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'getConfig']);
-        Route::post('/test-services', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'testServices']);
-        
-        // Service preference management
-        Route::post('/preferred-service', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'setPreferredService']);
-        Route::get('/preferred-service', [\App\Http\Controllers\Api\EnhancedLiveTranscriptionController::class, 'getPreferredService']);
+        Route::get('/config', [\App\Http\Controllers\Api\ConfigController::class, 'getConfig']);
+        Route::post('/test-services', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'testServices']);
     });
+
+    /*
+    |--------------------------------------------------------------------------
+    | Alternative Transcription Route (for unified API)
+    |--------------------------------------------------------------------------
+    */
+    
+    // This is the endpoint we fixed - both should work now
+    Route::post('/transcription/live', [\App\Http\Controllers\Api\LiveTranscriptionController::class, 'processAudioChunk']);
 
     /*
     |--------------------------------------------------------------------------
@@ -214,25 +219,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/meetings/{meetingId}/agenda/{agendaItemId}/status', [AgendaController::class, 'updateStatus']);
     Route::delete('/meetings/{meetingId}/agenda/{agendaItemId}', [AgendaController::class, 'destroy']);
 
-/*
-|--------------------------------------------------------------------------
-| Report Routes (N8N writes via SQL, API reads/edits only)
-|--------------------------------------------------------------------------
-*/
+    /*
+    |--------------------------------------------------------------------------
+    | Report Routes (N8N writes via SQL, API reads/edits only)
+    |--------------------------------------------------------------------------
+    */
 
-Route::prefix('meetings/{meeting}/reports')->group(function () {
-    // Read operations (voor meetingroom pagina)
-    Route::get('/', [ReportController::class, 'index']);
-    Route::get('/stats', [ReportController::class, 'getReportStats']);
-    Route::get('/{report}', [ReportController::class, 'show']);
-    
-    // User editing operations (sectie-per-sectie bewerking)
-    Route::put('/{report}/sections/{section}', [ReportController::class, 'updateSection']);
-    Route::post('/{report}/privacy-toggle', [ReportController::class, 'togglePrivacyFiltering']);
-    
-    // Export operations
-    Route::get('/{report}/export/html', [ReportController::class, 'exportHtml']);
-});
+    Route::prefix('meetings/{meeting}/reports')->group(function () {
+        // Read operations (voor meetingroom pagina)
+        Route::get('/', [ReportController::class, 'index']);
+        Route::get('/stats', [ReportController::class, 'getReportStats']);
+        Route::get('/{report}', [ReportController::class, 'show']);
+        
+        // User editing operations (sectie-per-sectie bewerking)
+        Route::put('/{report}/sections/{section}', [ReportController::class, 'updateSection']);
+        Route::post('/{report}/privacy-toggle', [ReportController::class, 'togglePrivacyFiltering']);
+        
+        // Export operations
+        Route::get('/{report}/export/html', [ReportController::class, 'exportHtml']);
+    });
 
     /*
     |--------------------------------------------------------------------------

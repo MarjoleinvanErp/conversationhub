@@ -1,47 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import meetingTypeService from '../../services/api/meetingTypeService.js';
 
 const MeetingTypes = () => {
   const [meetingTypes, setMeetingTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [showModal, setShowModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [editingType, setEditingType] = useState(null);
-  const [showTestModal, setShowTestModal] = useState(false);
-  const [testingType, setTestingType] = useState(null);
-
-  // Form state voor meeting type
   const [formData, setFormData] = useState({
     name: '',
-    display_name: '',
     description: '',
-    auto_anonymize: false,
-    auto_generate_report: true,
-    estimated_duration_minutes: 60,
-    is_active: true,
-    privacy_filters: {
-      medical_terms: [],
-      personal_data: [],
-      sensitive_topics: []
-    },
-    participant_filters: {
-      exclude_from_report: [],
-      anonymize_roles: []
-    },
-    default_agenda_items: [],
-    allowed_participant_roles: [],
-    privacy_levels_by_role: {},
-    report_template: {
-      sections: {},
-      tone: 'professional_neutral',
-      exclude_personal_details: false
-    },
-    metadata: {}
+    category: 'general',
+    privacy_level: 'standard',
+    auto_transcription: true,
+    privacy_filters: []
   });
 
-  // Test modal state
-  const [testText, setTestText] = useState('');
-  const [testResult, setTestResult] = useState(null);
+  // Privacy filter options
+  const privacyFilterOptions = [
+    { value: 'names', label: 'Namen filteren' },
+    { value: 'addresses', label: 'Adressen filteren' },
+    { value: 'phone_numbers', label: 'Telefoonnummers filteren' },
+    { value: 'email_addresses', label: 'E-mailadressen filteren' },
+    { value: 'bsn', label: 'BSN-nummers filteren' },
+    { value: 'financial', label: 'Financiële gegevens filteren' }
+  ];
+
+  const categoryOptions = [
+    { value: 'general', label: 'Algemeen' },
+    { value: 'participation', label: 'Participatie' },
+    { value: 'care', label: 'Zorg' },
+    { value: 'education', label: 'Onderwijs' }
+  ];
+
+  const privacyLevelOptions = [
+    { value: 'low', label: 'Laag - Basis filtering' },
+    { value: 'standard', label: 'Standaard - Gemiddelde filtering' },
+    { value: 'high', label: 'Hoog - Uitgebreide filtering' },
+    { value: 'strict', label: 'Strikt - Maximale filtering' }
+  ];
 
   useEffect(() => {
     loadMeetingTypes();
@@ -50,674 +47,546 @@ const MeetingTypes = () => {
   const loadMeetingTypes = async () => {
     try {
       setLoading(true);
-      const types = await meetingTypeService.getAllMeetingTypes();
-      setMeetingTypes(types);
-    } catch (err) {
-      setError('Fout bij laden meeting types: ' + err.message);
+      // Mock data - replace with actual API call
+      const mockData = [
+        {
+          id: 1,
+          name: 'Intake Gesprek',
+          description: 'Eerste kennismaking met nieuwe cliënten',
+          category: 'general',
+          privacy_level: 'high',
+          auto_transcription: true,
+          privacy_filters: ['names', 'addresses', 'phone_numbers']
+        },
+        {
+          id: 2,
+          name: 'Participatie Overleg',
+          description: 'Overleg over participatie trajecten',
+          category: 'participation',
+          privacy_level: 'strict',
+          auto_transcription: true,
+          privacy_filters: ['names', 'addresses', 'phone_numbers', 'bsn', 'financial']
+        },
+        {
+          id: 3,
+          name: 'Zorgoverleg',
+          description: 'Multidisciplinair zorgoverleg',
+          category: 'care',
+          privacy_level: 'strict',
+          auto_transcription: false,
+          privacy_filters: ['names', 'addresses', 'phone_numbers', 'bsn']
+        }
+      ];
+      
+      setMeetingTypes(mockData);
+    } catch (error) {
+      setError('Er ging iets mis bij het laden van de meeting types');
+      console.error('Error loading meeting types:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleCreate = () => {
-    setEditingType(null);
+  const handleCreateNew = () => {
     setFormData({
       name: '',
-      display_name: '',
       description: '',
-      auto_anonymize: false,
-      auto_generate_report: true,
-      estimated_duration_minutes: 60,
-      is_active: true,
-      privacy_filters: {
-        medical_terms: [],
-        personal_data: [],
-        sensitive_topics: []
-      },
-      participant_filters: {
-        exclude_from_report: [],
-        anonymize_roles: []
-      },
-      default_agenda_items: [],
-      allowed_participant_roles: [],
-      privacy_levels_by_role: {},
-      report_template: {
-        sections: {},
-        tone: 'professional_neutral',
-        exclude_personal_details: false
-      },
-      metadata: {}
+      category: 'general',
+      privacy_level: 'standard',
+      auto_transcription: true,
+      privacy_filters: []
     });
-    setShowModal(true);
+    setShowCreateModal(true);
   };
 
   const handleEdit = (meetingType) => {
     setEditingType(meetingType);
     setFormData({
-      ...meetingType,
-      privacy_filters: meetingType.privacy_filters || {
-        medical_terms: [],
-        personal_data: [],
-        sensitive_topics: []
-      },
-      participant_filters: meetingType.participant_filters || {
-        exclude_from_report: [],
-        anonymize_roles: []
-      },
-      default_agenda_items: meetingType.default_agenda_items || [],
-      allowed_participant_roles: meetingType.allowed_participant_roles || [],
-      privacy_levels_by_role: meetingType.privacy_levels_by_role || {},
-      report_template: meetingType.report_template || {
-        sections: {},
-        tone: 'professional_neutral',
-        exclude_personal_details: false
-      },
-      metadata: meetingType.metadata || {}
+      name: meetingType.name,
+      description: meetingType.description,
+      category: meetingType.category,
+      privacy_level: meetingType.privacy_level,
+      auto_transcription: meetingType.auto_transcription,
+      privacy_filters: meetingType.privacy_filters || []
     });
-    setShowModal(true);
+    setShowEditModal(true);
   };
 
-  const handleSave = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
     try {
       if (editingType) {
-        await meetingTypeService.updateMeetingType(editingType.id, formData);
+        // Update existing
+        console.log('Updating meeting type:', editingType.id, formData);
       } else {
-        await meetingTypeService.createMeetingType(formData);
+        // Create new
+        console.log('Creating new meeting type:', formData);
       }
-      setShowModal(false);
+      
+      // Close modals and reload data
+      setShowCreateModal(false);
+      setShowEditModal(false);
+      setEditingType(null);
       loadMeetingTypes();
-    } catch (err) {
-      setError('Fout bij opslaan: ' + err.message);
+    } catch (error) {
+      setError('Er ging iets mis bij het opslaan');
     }
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Weet je zeker dat je dit meeting type wilt deactiveren?')) {
+    if (window.confirm('Weet je zeker dat je dit meeting type wilt verwijderen?')) {
       try {
-        await meetingTypeService.deleteMeetingType(id);
+        // Mock API call - replace with actual implementation
+        console.log('Deleting meeting type:', id);
         loadMeetingTypes();
-      } catch (err) {
-        setError('Fout bij verwijderen: ' + err.message);
+      } catch (error) {
+        setError('Er ging iets mis bij het verwijderen');
       }
     }
   };
 
-  const handleTestPrivacy = (meetingType) => {
-    setTestingType(meetingType);
-    setTestText('');
-    setTestResult(null);
-    setShowTestModal(true);
+  const getCategoryLabel = (category) => {
+    const categories = {
+      general: 'Algemeen',
+      participation: 'Participatie',
+      care: 'Zorg',
+      education: 'Onderwijs'
+    };
+    return categories[category] || category;
   };
 
-  const runPrivacyTest = async () => {
-    try {
-      const result = await meetingTypeService.testPrivacyFilters(testingType.id, testText);
-      setTestResult(result);
-    } catch (err) {
-      setError('Fout bij testen privacy filters: ' + err.message);
-    }
+  const getPrivacyLevelColor = (level) => {
+    const colors = {
+      low: 'bg-green-100 text-green-800',
+      standard: 'bg-blue-100 text-blue-800',
+      high: 'bg-orange-100 text-orange-800',
+      strict: 'bg-red-100 text-red-800'
+    };
+    return colors[level] || 'bg-gray-100 text-gray-800';
   };
 
-  const addArrayItem = (field, subfield = null) => {
-    if (subfield) {
-      setFormData(prev => ({
-        ...prev,
-        [field]: {
-          ...prev[field],
-          [subfield]: [...(prev[field][subfield] || []), '']
-        }
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        [field]: [...(prev[field] || []), '']
-      }));
-    }
+  const getPrivacyLevelLabel = (level) => {
+    const labels = {
+      low: 'Laag',
+      standard: 'Standaard',
+      high: 'Hoog',
+      strict: 'Strikt'
+    };
+    return labels[level] || level;
   };
 
-  const updateArrayItem = (field, index, value, subfield = null) => {
-    if (subfield) {
-      const newArray = [...(formData[field][subfield] || [])];
-      newArray[index] = value;
-      setFormData(prev => ({
-        ...prev,
-        [field]: {
-          ...prev[field],
-          [subfield]: newArray
-        }
-      }));
-    } else {
-      const newArray = [...(formData[field] || [])];
-      newArray[index] = value;
-      setFormData(prev => ({
-        ...prev,
-        [field]: newArray
-      }));
-    }
-  };
-
-  const removeArrayItem = (field, index, subfield = null) => {
-    if (subfield) {
-      const newArray = [...(formData[field][subfield] || [])];
-      newArray.splice(index, 1);
-      setFormData(prev => ({
-        ...prev,
-        [field]: {
-          ...prev[field],
-          [subfield]: newArray
-        }
-      }));
-    } else {
-      const newArray = [...(formData[field] || [])];
-      newArray.splice(index, 1);
-      setFormData(prev => ({
-        ...prev,
-        [field]: newArray
-      }));
-    }
-  };
-
-  const addAgendaItem = () => {
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
     setFormData(prev => ({
       ...prev,
-      default_agenda_items: [
-        ...(prev.default_agenda_items || []),
-        { title: '', estimated_duration: 10 }
-      ]
+      [name]: type === 'checkbox' ? checked : value
     }));
   };
 
-  const updateAgendaItem = (index, field, value) => {
-    const newItems = [...(formData.default_agenda_items || [])];
-    newItems[index] = { ...newItems[index], [field]: value };
+  const handlePrivacyFilterChange = (filterValue) => {
     setFormData(prev => ({
       ...prev,
-      default_agenda_items: newItems
+      privacy_filters: prev.privacy_filters.includes(filterValue)
+        ? prev.privacy_filters.filter(f => f !== filterValue)
+        : [...prev.privacy_filters, filterValue]
     }));
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Meeting types laden...</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-7xl mx-auto p-6">
-      {/* Header */}
+      {/* Page Header */}
       <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">
-              🎯 Meeting Types Configuratie
-            </h1>
-            <p className="text-gray-600">
-              Beheer de verschillende soorten gesprekken en hun instellingen
-            </p>
-          </div>
-          <button
-            onClick={handleCreate}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center space-x-2"
-          >
-            <span>➕</span>
-            <span>Nieuw Meeting Type</span>
-          </button>
-        </div>
+        <h1 className="text-3xl font-bold text-slate-900 mb-2">Meeting Types</h1>
+        <p className="text-slate-600">
+          Beheer verschillende types gesprekken met specifieke privacy-instellingen
+        </p>
       </div>
 
-      {/* Error Message */}
+      {/* Actions */}
+      <div className="mb-6">
+        <button
+          onClick={handleCreateNew}
+          className="bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 flex items-center space-x-2"
+        >
+          <span>+</span>
+          <span>Nieuw Meeting Type</span>
+        </button>
+      </div>
+
+      {/* Error Alert */}
       {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center space-x-2">
-            <span className="text-red-500">⚠️</span>
-            <span className="text-red-700">{error}</span>
-          </div>
-        </div>
-      )}
-
-      {/* Meeting Types Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-        {meetingTypes.map((type) => (
-          <div key={type.id} data-testid="meeting-type-card" className="bg-white rounded-lg shadow-md border border-gray-200 overflow-hidden">
-            <div className="p-6">
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-xl font-semibold text-gray-900 mb-1">
-                    {type.display_name}
-                  </h3>
-                  <p className="text-sm text-gray-500 font-mono">
-                    {type.name}
-                  </p>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    type.is_active 
-                      ? 'bg-green-100 text-green-800' 
-                      : 'bg-gray-100 text-gray-800'
-                  }`}>
-                    {type.is_active ? 'Actief' : 'Inactief'}
-                  </span>
-                </div>
-              </div>
-
-              <p className="text-gray-600 text-sm mb-4 line-clamp-2">
-                {type.description || 'Geen beschrijving'}
-              </p>
-
-              {/* Quick Stats */}
-              <div className="space-y-2 mb-4">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">⏱️ Geschatte duur:</span>
-                  <span className="text-gray-900">
-                    {type.estimated_duration_minutes || 60} min
-                  </span>
-                </div>
-                
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">🔐 Auto anonymiseren:</span>
-                  <span className={type.auto_anonymize ? 'text-green-600' : 'text-gray-400'}>
-                    {type.auto_anonymize ? '✅ Ja' : '❌ Nee'}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">📝 Auto rapport:</span>
-                  <span className={type.auto_generate_report ? 'text-green-600' : 'text-gray-400'}>
-                    {type.auto_generate_report ? '✅ Ja' : '❌ Nee'}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-500">📋 Standaard agenda:</span>
-                  <span className="text-gray-900">
-                    {(type.default_agenda_items || []).length} items
-                  </span>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => handleEdit(type)}
-                  className="flex-1 bg-blue-50 text-blue-700 px-3 py-2 rounded hover:bg-blue-100 transition-colors text-sm font-medium"
-                >
-                  ✏️ Bewerken
-                </button>
-                
-                <button
-                  onClick={() => handleTestPrivacy(type)}
-                  className="flex-1 bg-purple-50 text-purple-700 px-3 py-2 rounded hover:bg-purple-100 transition-colors text-sm font-medium"
-                >
-                  🧪 Test Privacy
-                </button>
-                
-                <button
-                  onClick={() => handleDelete(type.id)}
-                  className="bg-red-50 text-red-700 px-3 py-2 rounded hover:bg-red-100 transition-colors text-sm font-medium"
-                >
-                  🗑️
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Geen meeting types */}
-      {meetingTypes.length === 0 && (
-        <div className="text-center py-12">
-          <div className="text-6xl mb-4">🎯</div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">
-            Nog geen meeting types
-          </h3>
-          <p className="text-gray-600 mb-6">
-            Maak je eerste meeting type aan om te beginnen
-          </p>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+          {error}
           <button
-            onClick={handleCreate}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors"
+            onClick={() => setError('')}
+            className="float-right text-red-500 hover:text-red-700"
           >
-            ➕ Eerste Meeting Type Aanmaken
+            ×
           </button>
         </div>
       )}
 
-      {/* Edit/Create Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-4xl w-full max-h-screen overflow-y-auto">
-            <div className="p-6 border-b border-gray-200 sticky top-0 bg-white">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {editingType ? '✏️ Meeting Type Bewerken' : '➕ Nieuw Meeting Type'}
-                </h2>
-                <button
-                  onClick={() => setShowModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            <div className="p-6 space-y-6">
-              {/* Basis Informatie */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">📋 Basis Informatie</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Systeemnaam (slug)
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="bijv: wmo_keukentafel"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Weergavenaam
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.display_name}
-                      onChange={(e) => setFormData(prev => ({ ...prev, display_name: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      placeholder="bijv: WMO Keukentafelgesprek"
-                    />
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Beschrijving
-                  </label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    rows={3}
-                    placeholder="Beschrijf waar dit meeting type voor wordt gebruikt..."
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Geschatte duur (minuten)
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.estimated_duration_minutes}
-                      onChange={(e) => setFormData(prev => ({ ...prev, estimated_duration_minutes: parseInt(e.target.value) || 60 }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      min="5"
-                      max="480"
-                    />
-                  </div>
-
-                  <div className="flex items-center space-x-4 pt-6">
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.auto_anonymize}
-                        onChange={(e) => setFormData(prev => ({ ...prev, auto_anonymize: e.target.checked }))}
-                        className="rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">
-                        🔐 Auto anonymiseren
+      {/* Meeting Types Table */}
+      <div className="bg-white shadow-sm border border-slate-200 rounded-lg overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left py-3 px-4 font-medium text-slate-900">Naam</th>
+                <th className="text-left py-3 px-4 font-medium text-slate-900">Categorie</th>
+                <th className="text-left py-3 px-4 font-medium text-slate-900">Privacy Level</th>
+                <th className="text-left py-3 px-4 font-medium text-slate-900">Auto Transcriptie</th>
+                <th className="text-left py-3 px-4 font-medium text-slate-900">Privacy Filters</th>
+                <th className="text-right py-3 px-4 font-medium text-slate-900">Acties</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200">
+              {loading ? (
+                // Loading skeletons
+                [...Array(3)].map((_, index) => (
+                  <tr key={index}>
+                    <td className="py-4 px-4">
+                      <div className="animate-pulse bg-slate-200 h-4 rounded"></div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="animate-pulse bg-slate-200 h-4 rounded"></div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="animate-pulse bg-slate-200 h-4 rounded"></div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="animate-pulse bg-slate-200 h-4 rounded"></div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="animate-pulse bg-slate-200 h-4 rounded"></div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="animate-pulse bg-slate-200 h-4 rounded"></div>
+                    </td>
+                  </tr>
+                ))
+              ) : meetingTypes.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="py-8 px-4 text-center text-slate-500">
+                    Geen meeting types gevonden
+                  </td>
+                </tr>
+              ) : (
+                meetingTypes.map((type) => (
+                  <tr key={type.id} className="hover:bg-slate-50">
+                    <td className="py-4 px-4">
+                      <div>
+                        <div className="font-medium text-slate-900">{type.name}</div>
+                        <div className="text-sm text-slate-500">{type.description}</div>
+                      </div>
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className="inline-block bg-slate-100 text-slate-800 px-2 py-1 rounded-full text-sm">
+                        {getCategoryLabel(type.category)}
                       </span>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center space-x-4 pt-6">
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={formData.auto_generate_report}
-                        onChange={(e) => setFormData(prev => ({ ...prev, auto_generate_report: e.target.checked }))}
-                        className="rounded border-gray-300 focus:ring-2 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">
-                        📝 Auto rapport genereren
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className={`inline-block px-2 py-1 rounded-full text-sm ${getPrivacyLevelColor(type.privacy_level)}`}>
+                        {getPrivacyLevelLabel(type.privacy_level)}
                       </span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Privacy Filters */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">🔐 Privacy Filters</h3>
-                
-                {/* Medical Terms */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Medische termen (worden gefilterd)
-                  </label>
-                  <div className="space-y-2">
-                    {(formData.privacy_filters.medical_terms || []).map((term, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={term}
-                          onChange={(e) => updateArrayItem('privacy_filters', index, e.target.value, 'medical_terms')}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="bijv: diagnose, medicatie"
-                        />
+                    </td>
+                    <td className="py-4 px-4">
+                      <span className={`inline-block px-2 py-1 rounded-full text-sm ${
+                        type.auto_transcription 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {type.auto_transcription ? 'Actief' : 'Inactief'}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4">
+                      <div className="text-sm text-slate-600">
+                        {type.privacy_filters && type.privacy_filters.length > 0 
+                          ? `${type.privacy_filters.length} filter(s)` 
+                          : 'Geen filters'
+                        }
+                      </div>
+                    </td>
+                    <td className="py-4 px-4 text-right">
+                      <div className="flex justify-end space-x-2">
                         <button
-                          onClick={() => removeArrayItem('privacy_filters', index, 'medical_terms')}
-                          className="text-red-600 hover:text-red-800"
+                          onClick={() => handleEdit(type)}
+                          className="text-blue-600 hover:text-blue-900 p-1"
+                          title="Bewerken"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          onClick={() => handleDelete(type.id)}
+                          className="text-red-600 hover:text-red-900 p-1"
+                          title="Verwijderen"
                         >
                           🗑️
                         </button>
                       </div>
-                    ))}
-                    <button
-                      onClick={() => addArrayItem('privacy_filters', 'medical_terms')}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      ➕ Medische term toevoegen
-                    </button>
-                  </div>
-                </div>
-
-                {/* Personal Data */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Persoonlijke gegevens (worden gefilterd)
-                  </label>
-                  <div className="space-y-2">
-                    {(formData.privacy_filters.personal_data || []).map((term, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={term}
-                          onChange={(e) => updateArrayItem('privacy_filters', index, e.target.value, 'personal_data')}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="bijv: bsn, sofinummer"
-                        />
-                        <button
-                          onClick={() => removeArrayItem('privacy_filters', index, 'personal_data')}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => addArrayItem('privacy_filters', 'personal_data')}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      ➕ Persoonlijk gegeven toevoegen
-                    </button>
-                  </div>
-                </div>
-
-                {/* Sensitive Topics */}
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Gevoelige onderwerpen (worden gefilterd)
-                  </label>
-                  <div className="space-y-2">
-                    {(formData.privacy_filters.sensitive_topics || []).map((term, index) => (
-                      <div key={index} className="flex items-center space-x-2">
-                        <input
-                          type="text"
-                          value={term}
-                          onChange={(e) => updateArrayItem('privacy_filters', index, e.target.value, 'sensitive_topics')}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="bijv: schulden, financiële problemen"
-                        />
-                        <button
-                          onClick={() => removeArrayItem('privacy_filters', index, 'sensitive_topics')}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          🗑️
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      onClick={() => addArrayItem('privacy_filters', 'sensitive_topics')}
-                      className="text-blue-600 hover:text-blue-800 text-sm"
-                    >
-                      ➕ Gevoelig onderwerp toevoegen
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Standaard Agenda */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">📋 Standaard Agenda Items</h3>
-                <div className="space-y-3">
-                  {(formData.default_agenda_items || []).map((item, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <input
-                        type="text"
-                        value={item.title || ''}
-                        onChange={(e) => updateAgendaItem(index, 'title', e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="Agendapunt titel"
-                      />
-                      <input
-                        type="number"
-                        value={item.estimated_duration || 10}
-                        onChange={(e) => updateAgendaItem(index, 'estimated_duration', parseInt(e.target.value) || 10)}
-                        className="w-20 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        min="1"
-                        max="120"
-                      />
-                      <span className="text-sm text-gray-500">min</span>
-                      <button
-                        onClick={() => removeArrayItem('default_agenda_items', index)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    onClick={addAgendaItem}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
-                  >
-                    ➕ Agendapunt toevoegen
-                  </button>
-                </div>
-              </div>
-
-              {/* Toegestane Participant Rollen */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">👥 Toegestane Participant Rollen</h3>
-                <div className="space-y-2">
-                  {(formData.allowed_participant_roles || []).map((role, index) => (
-                    <div key={index} className="flex items-center space-x-2">
-                      <input
-                        type="text"
-                        value={role}
-                        onChange={(e) => updateArrayItem('allowed_participant_roles', index, e.target.value)}
-                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="bijv: client, casemanager, begeleider"
-                      />
-                      <button
-                        onClick={() => removeArrayItem('allowed_participant_roles', index)}
-                        className="text-red-600 hover:text-red-800"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    onClick={() => addArrayItem('allowed_participant_roles')}
-                    className="text-blue-600 hover:text-blue-800 text-sm"
-                  >
-                    ➕ Rol toevoegen
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-6 border-t border-gray-200 bg-gray-50 flex justify-end space-x-4">
-              <button
-                onClick={() => setShowModal(false)}
-                className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
-              >
-                Annuleren
-              </button>
-              <button
-                onClick={handleSave}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                {editingType ? 'Bijwerken' : 'Aanmaken'}
-              </button>
-            </div>
-          </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
+      </div>
 
-      {/* Privacy Test Modal */}
-      {showTestModal && testingType && (
+      {/* Create Modal */}
+      {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg max-w-2xl w-full">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">
-                  🧪 Privacy Filter Test - {testingType.display_name}
-                </h2>
-                <button
-                  onClick={() => setShowTestModal(false)}
-                  className="text-gray-400 hover:text-gray-600"
-                >
-                  ✕
-                </button>
-              </div>
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-900">Nieuw Meeting Type</h2>
             </div>
-
-            <div className="p-6 space-y-4">
+            
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Test tekst invoeren
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Naam
                 </label>
-                <textarea
-                  value={testText}
-                  onChange={(e) => setTestText(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  rows={4}
-                  placeholder="Voer hier een testtekst in om te zien of privacy filters worden toegepast..."
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
                 />
               </div>
 
-              <button
-                onClick={runPrivacyTest}
-                disabled={!testText.trim()}
-                className="w-full bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Beschrijving
+                </label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Categorie
+                </label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {categoryOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Privacy Level
+                </label>
+                <select
+                  name="privacy_level"
+                  value={formData.privacy_level}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {privacyLevelOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    name="auto_transcription"
+                    checked={formData.auto_transcription}
+                    onChange={handleInputChange}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="text-sm font-medium text-slate-700">
+                    Auto-transcriptie inschakelen
+                  </span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Privacy Filters
+                </label>
+                <div className="space-y-2">
+                  {privacyFilterOptions.map(option => (
+                    <label key={option.value} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={formData.privacy_filters.includes(option.value)}
+                        onChange={() => handlePrivacyFilterChange(option.value)}
+                        className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-700">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 py-2 text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50"
+                >
+                  Annuleren
+                </button>
+                <button
+                  type="submit"
+                  className="w-full bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Meeting Type Aanmaken
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-200">
+              <h2 className="text-xl font-bold text-slate-900">Meeting Type Bewerken</h2>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Naam
+                </label>
+                <input
+                  type="text"
+                  name="name"
+                  value={formData.name}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Beschrijving
+                </label>
+                <textarea
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  rows="3"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Categorie
+                </label>
+                <select
+                  name="category"
+                  value={formData.category}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {categoryOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Privacy Level
+                </label>
+                <select
+                  name="privacy_level"
+                  value={formData.privacy_level}
+                  onChange={handleInputChange}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  {privacyLevelOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    name="auto_transcription"
+                    checked={formData.auto_transcription}
+                    onChange={handleInputChange}
+                    className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                  />
+                  <span className="text-sm font-medium text-slate-700">
+                    Auto-transcriptie inschakelen
+                  </span>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Privacy Filters
+                </label>
+                <div className="space-y-2">
+                  {privacyFilterOptions.map(option => (
+                    <label key={option.value} className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={formData.privacy_filters.includes(option.value)}
+                        onChange={() => handlePrivacyFilterChange(option.value)}
+                        className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <span className="text-sm text-slate-700">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end space-x-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 text-slate-600 border border-slate-300 rounded-md hover:bg-slate-50"
+                >
+                  Annuleren
+                </button>
+                <button
+                  type="submit"
+                  className="w-full bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Wijzigingen Opslaan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MeetingTypes;

@@ -1,0 +1,8 @@
+ 
+// UPDATE IMPORTS in MeetingRoomTabs.jsx: 
+ 
+// OUDE IMPORT (vervang deze): 
+import EnhancedLiveTranscription from '../../../components/recording/EnhancedLiveTranscription.jsx'; 
+ 
+// NIEUWE IMPORT (gebruik deze): 
+import EnhancedLiveTranscription from '../../../components/recording/EnhancedLiveTranscription'; 

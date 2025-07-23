@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\EnhancedLiveTranscriptionService;
+use App\Services\ConfigService;  // TOEGEVOEGD: Missing import
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
@@ -259,11 +260,19 @@ class LiveTranscriptionController extends Controller
                 ], 422);
             }
 
+            // Get default service from configuration
+            $defaultService = ConfigService::getDefaultTranscriptionService();
+            $n8nEnabled = ConfigService::isN8NTranscriptionEnabled();
+            $whisperEnabled = ConfigService::isWhisperEnabled();
+
             Log::info('Processing 90-second audio chunk', [
                 'session_id' => $request->session_id,
                 'chunk_number' => $request->chunk_number,
                 'audio_size' => strlen($request->audio_data),
-                'preferred_service' => $request->preferred_service ?? 'auto'
+                'preferred_service' => $request->preferred_service,
+                'default_service' => $defaultService,
+                'n8n_enabled' => $n8nEnabled,
+                'whisper_enabled' => $whisperEnabled
             ]);
 
             // Decode audio data
@@ -276,20 +285,77 @@ class LiveTranscriptionController extends Controller
                 ], 400);
             }
 
+            // Determine which service to use - THIS IS THE FIX!
+            $requestedService = $request->preferred_service ?? $defaultService;
+            
+            // Handle 'auto' service selection
+            if ($requestedService === 'auto') {
+                if ($n8nEnabled) {
+                    $selectedService = 'n8n';
+                } elseif ($whisperEnabled) {
+                    $selectedService = 'whisper';
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'error' => 'No transcription service available'
+                    ], 503);
+                }
+            } else {
+                $selectedService = $requestedService;
+            }
+
+            // Validate selected service is available
+            if ($selectedService === 'n8n' && !$n8nEnabled) {
+                Log::warning('N8N service requested but not enabled', [
+                    'session_id' => $request->session_id,
+                    'n8n_enabled' => $n8nEnabled
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'N8N transcription service is not available'
+                ], 503);
+            }
+
+            if ($selectedService === 'whisper' && !$whisperEnabled) {
+                Log::warning('Whisper service requested but not enabled', [
+                    'session_id' => $request->session_id,
+                    'whisper_enabled' => $whisperEnabled
+                ]);
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Whisper transcription service is not available'
+                ], 503);
+            }
+
             $options = [
                 'session_id' => $request->session_id,
                 'chunk_number' => $request->chunk_number ?? 1,
                 'timestamp' => $request->timestamp ?? now()->toISOString(),
-                'preferred_service' => $request->preferred_service ?? 'auto',
-                'use_n8n' => $request->preferred_service === 'n8n',
+                'preferred_service' => $selectedService,
+                'use_n8n' => $selectedService === 'n8n',
                 'source' => 'audio_chunk_90s'
             ];
 
-            // Process based on preferred service
-            if ($options['preferred_service'] === 'n8n' || $options['use_n8n']) {
+            Log::info('Service selection made', [
+                'session_id' => $request->session_id,
+                'requested_service' => $requestedService,
+                'selected_service' => $selectedService,
+                'will_use_n8n' => $options['use_n8n']
+            ]);
+
+            // Process based on selected service
+            if ($selectedService === 'n8n') {
+                Log::info('🎯 Processing chunk with N8N workflow', [
+                    'session_id' => $request->session_id,
+                    'chunk_number' => $request->chunk_number
+                ]);
                 // Send to N8N workflow for processing
                 $result = $this->liveTranscriptionService->processWithN8N($audioContent, $options);
             } else {
+                Log::info('🎯 Processing chunk with Whisper service', [
+                    'session_id' => $request->session_id,
+                    'chunk_number' => $request->chunk_number
+                ]);
                 // Use Whisper for transcription
                 $transcriptionId = 'chunk_' . $request->session_id . '_' . ($request->chunk_number ?? time());
                 $result = $this->liveTranscriptionService->processWhisperVerification($transcriptionId, $audioContent);
@@ -299,24 +365,108 @@ class LiveTranscriptionController extends Controller
                 Log::info('Audio chunk processed successfully', [
                     'session_id' => $request->session_id,
                     'chunk_number' => $request->chunk_number,
-                    'service_used' => $options['preferred_service'],
+                    'service_used' => $selectedService,
                     'transcription_length' => strlen($result['transcription']['text'] ?? '')
                 ]);
+
+                // Return standardized response format
+                return response()->json([
+                    'success' => true,
+                    'data' => [
+                        'transcription' => $result['transcription'] ?? null,
+                        'transcriptions' => $result['transcriptions'] ?? [],
+                        'session_stats' => [
+                            'total_chunks' => $request->chunk_number ?? 1,
+                            'service_used' => $selectedService,
+                            'processing_time' => $result['processing_details']['processing_time'] ?? null
+                        ],
+                        'primary_source' => $selectedService,
+                        'processing_details' => $result['processing_details'] ?? []
+                    ]
+                ]);
+            } else {
+                Log::error('Audio chunk processing failed', [
+                    'session_id' => $request->session_id,
+                    'chunk_number' => $request->chunk_number,
+                    'service_used' => $selectedService,
+                    'error' => $result['error'] ?? 'Unknown error'
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'error' => $result['error'] ?? 'Processing failed',
+                    'service_used' => $selectedService
+                ], 500);
             }
 
-            return response()->json($result);
-
         } catch (\Exception $e) {
-            Log::error('Audio chunk processing failed', [
-                'session_id' => $request->input('session_id'),
-                'chunk_number' => $request->input('chunk_number'),
+            Log::error('Audio chunk processing exception', [
+                'session_id' => $request->session_id ?? 'unknown',
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
             return response()->json([
                 'success' => false,
-                'error' => 'Audio chunk processing failed: ' . $e->getMessage()
+                'error' => 'Internal server error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * TOEGEVOEGD: Test availability of transcription services
+     */
+    public function testServices(Request $request): JsonResponse
+    {
+        try {
+            Log::info('Testing transcription services availability');
+
+            $results = [
+                'whisper' => [
+                    'available' => ConfigService::isWhisperEnabled(),
+                    'status' => ConfigService::isWhisperEnabled() ? 'Available' : 'Disabled in configuration'
+                ],
+                'n8n' => [
+                    'available' => ConfigService::isN8NTranscriptionEnabled(),
+                    'status' => ConfigService::isN8NTranscriptionEnabled() ? 'Available' : 'Disabled in configuration'
+                ]
+            ];
+
+            // Test N8N connectivity if enabled
+            if ($results['n8n']['available']) {
+                try {
+                    $n8nConfig = ConfigService::getN8NConfig();
+                    if (empty($n8nConfig['webhook_url'])) {
+                        $results['n8n']['available'] = false;
+                        $results['n8n']['status'] = 'No webhook URL configured';
+                    } else {
+                        // Test connection (simple ping)
+                        $results['n8n']['status'] = 'Connected';
+                        $results['n8n']['webhook_url'] = $n8nConfig['webhook_url'];
+                    }
+                } catch (\Exception $e) {
+                    $results['n8n']['available'] = false;
+                    $results['n8n']['status'] = 'Connection failed: ' . $e->getMessage();
+                }
+            }
+
+            Log::info('Service test results', $results);
+
+            return response()->json([
+                'success' => true,
+                'services' => $results,
+                'default_service' => ConfigService::getDefaultTranscriptionService()
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Service test failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Service test failed: ' . $e->getMessage()
             ], 500);
         }
     }
