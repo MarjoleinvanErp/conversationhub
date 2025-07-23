@@ -28,13 +28,17 @@ import type {
  */
 const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProps> = ({
   meetingId,
-  participants,
+  conversationId,
+  participants = [],
   onTranscriptionUpdate,
   onWhisperUpdate,
   onSessionStatsUpdate,
   autoStart = false,
   useVoiceSetup = false
 }) => {
+  // Use conversationId if provided, otherwise use meetingId
+  const effectiveMeetingId = conversationId || meetingId;
+
   // Configuration state
   const [config, setConfig] = useState<SessionConfig>({
     live_webspeech_enabled: false,
@@ -54,8 +58,8 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
 
   // Hooks initialization
   const { sessionState, startSession, stopSession, clearError: clearSessionError } = useSessionManager({
-    meetingId,
-    participants,
+    meetingId: effectiveMeetingId,
+    participants: participants || [],
     config
   });
 
@@ -94,7 +98,7 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
         }
         return [transcription, ...prev];
       });
-      onWhisperReceived?.(transcription);
+      onWhisperUpdate?.(transcription);
     }, [onWhisperUpdate])
   });
 
@@ -371,7 +375,7 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
           <TranscriptionOutput
             transcriptions={transcriptions}
             isLoading={audioProcessingState.isProcessingBackground}
-            error={audioProcessingState.processingError}
+            error={audioProcessingState.processingError || undefined}
             showConfidence={true}
             showSpeakerDetection={true}
           />

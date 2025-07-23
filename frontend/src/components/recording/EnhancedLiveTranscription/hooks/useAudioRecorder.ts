@@ -127,7 +127,7 @@ export const useAudioRecorder = ({
       console.log('🎤 Starting audio recording for session:', sessionId);
 
       // Start recording via service
-      const result = await enhancedLiveTranscriptionService.startEnhancedRecording({
+const result = await enhancedLiveTranscriptionService.startRecording({
         sessionId,
         useN8N: true
       });

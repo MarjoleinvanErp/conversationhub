@@ -10,8 +10,8 @@ import type {
 } from '../types';
 
 export interface UseSessionManagerProps {
-  meetingId: string;
-  participants: Participant[];
+  meetingId?: any;
+  participants?: Participant[]; 
   config: SessionConfig;
 }
 
@@ -135,7 +135,7 @@ export const useSessionManager = ({
       console.log('🛑 Stopping session:', sessionState.sessionId);
       
       if (sessionState.sessionId) {
-        await enhancedLiveTranscriptionService.stopEnhancedRecording();
+        await enhancedLiveTranscriptionService.stopRecording();
       }
       
       setSessionState({

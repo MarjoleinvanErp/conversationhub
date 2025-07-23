@@ -21,6 +21,17 @@ export interface SessionConfig {
   available_services: {
     whisper: boolean;
     n8n: boolean;
+  success?: boolean;
+  sessionId?: any;
+  useN8N?: boolean;
+  preferredService?: string;
+  features?: {
+    mediaRecorder: boolean;
+    speechRecognition: boolean;
+    audioStream: boolean;
+  };
+  error?: string;
+
   };
 }
 
@@ -127,14 +138,16 @@ export interface TranscriptionResponse {
 
 // Component Props Types
 export interface EnhancedLiveTranscriptionProps {
-  meetingId: string;
-  participants: Participant[];
+  meetingId?: any;
+  conversationId?: number;
+  participants?: Participant[];
   onTranscriptionUpdate?: (transcription: LiveTranscription) => void;
   onWhisperUpdate?: (transcription: LiveTranscription) => void;
   onSessionStatsUpdate?: (stats: SessionStats) => void;
   autoStart?: boolean;
   useVoiceSetup?: boolean;
 }
+
 
 export interface SessionSetupProps {
   participants: Participant[];

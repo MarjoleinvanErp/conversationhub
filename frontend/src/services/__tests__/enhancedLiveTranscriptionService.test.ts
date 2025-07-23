@@ -1,5 +1,3 @@
-// frontend/src/services/__tests__/enhancedLiveTranscriptionService.test.ts
-
 import { jest } from '@jest/globals';
 import enhancedLiveTranscriptionService from '../enhancedLiveTranscriptionService';
 import apiClient from '../apiClient';
@@ -11,7 +9,17 @@ import type {
 } from '../../types/n8n';
 
 // Mock the API client
-jest.mock('../apiClient');
+jest.mock('../apiClient', () => ({
+  __esModule: true,
+  default: {
+    post: jest.fn(),
+    get: jest.fn(),
+    put: jest.fn(),
+    delete: jest.fn()
+  }
+}));
+
+import apiClient from '../apiClient';
 const mockApiClient = apiClient as jest.Mocked<typeof apiClient>;
 
 // Mock browser APIs

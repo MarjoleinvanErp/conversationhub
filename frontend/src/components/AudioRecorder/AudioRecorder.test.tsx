@@ -151,7 +151,9 @@ describe('AudioRecorder Component', () => {
     
     await waitFor(() => {
       if (mockMediaRecorder.ondataavailable) {
-        mockMediaRecorder.ondataavailable(mockEvent);
+        if (mockMediaRecorder.ondataavailable) {
+  mockMediaRecorder.ondataavailable(mockEvent);
+}
       }
     });
     
@@ -241,7 +243,9 @@ describe('AudioRecorder Component', () => {
     
     await waitFor(() => {
       if (mockMediaRecorder.onerror) {
-        mockMediaRecorder.onerror(mockError);
+        if (mockMediaRecorder.onerror) {
+  mockMediaRecorder.onerror(mockError);
+}
       }
     });
     
