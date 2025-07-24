@@ -232,81 +232,52 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
   /**
    * Get current error message
    */
-  const getCurrentError = (): string | null => {
+  const getCurrentError = () => {
     return sessionState.error || 
            recordingState.error || 
            audioProcessingState.processingError || 
-           voiceSetupState.voiceSetupError || 
-           null;
+           voiceSetupState.voiceSetupError;
   };
 
   /**
-   * Cleanup on unmount
-   */
-  useEffect(() => {
-    return () => {
-      if (recordingState.isRecording) {
-        stopRecording().catch(console.error);
-      }
-      
-      if (voiceSetupState.isRecordingVoice) {
-        stopVoiceRecording();
-      }
-      
-      cleanupProcessor();
-    };
-  }, [recordingState.isRecording, voiceSetupState.isRecordingVoice, stopRecording, stopVoiceRecording, cleanupProcessor]);
-
-  /**
-   * Loading state
+   * Show loading state while config loads
    */
   if (!configLoaded) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" p={4}>
-        <CircularProgress size={24} sx={{ mr: 2 }} />
-        <Typography>Configuratie laden...</Typography>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
+        <CircularProgress />
+        <Typography variant="body2" sx={{ ml: 2 }}>
+          Loading transcription configuration...
+        </Typography>
       </Box>
     );
   }
 
-  /**
-   * Error state
-   */
-  const currentError = getCurrentError();
-
   return (
-    <Box className="enhanced-live-transcription space-y-6">
+    <Box className="enhanced-live-transcription" sx={{ p: 2 }}>
       {/* Error Display */}
-      {currentError && (
-        <Alert 
-          severity="error" 
-          onClose={clearAllErrors}
-          sx={{ mb: 2 }}
-          data-testid="error-alert"
-        >
-          <Typography variant="body2">
-            <strong>Fout:</strong> {currentError}
-          </Typography>
+      {getCurrentError() && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={clearAllErrors}>
+          {getCurrentError()}
         </Alert>
       )}
 
-      {/* Session Setup Phase */}
+      {/* Session Setup */}
       {!sessionState.sessionActive && (
         <SessionSetup
           participants={participants}
           voiceSetupState={voiceSetupState}
           sessionState={sessionState}
           onStartSession={handleStartSession}
-          onVoiceSetupNext={voiceSetupState.setupPhase === 'voice_setup' ? recordVoiceProfile : nextSpeaker}
+          onVoiceSetupNext={nextSpeaker}
           onVoiceSetupSkip={skipVoiceSetup}
-          onRetry={() => handleStartSession(false)}
+          onRetry={() => handleStartSession(useVoiceSetup)}
         />
       )}
 
-      {/* Active Session Interface */}
+      {/* Recording Controls */}
       {sessionState.sessionActive && (
         <>
-          {/* Recording Controls */}
           <RecordingControls
             recordingState={recordingState}
             sessionState={sessionState}
@@ -314,7 +285,6 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
             onStopRecording={stopRecording}
             onPauseRecording={pauseRecording}
             onResumeRecording={resumeRecording}
-            disabled={voiceSetupState.setupPhase === 'voice_setup'}
           />
 
           {/* Recording Status */}
@@ -325,73 +295,27 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
             config={config}
           />
 
-          {/* Voice Setup Progress (if active) */}
-          {voiceSetupState.setupPhase === 'voice_setup' && (
-            <Box className="modern-card p-6" data-testid="voice-setup">
-              <Typography variant="h6" gutterBottom>
-                🎤 Stem Profiel Instellen
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Spreker {voiceSetupState.currentSetupSpeaker + 1} van {participants.length}: {participants[voiceSetupState.currentSetupSpeaker]?.name}
-              </Typography>
-              
-              {voiceSetupState.isRecordingVoice ? (
-                <Box display="flex" alignItems="center" gap={2}>
-                  <CircularProgress size={20} />
-                  <Typography variant="body2">
-                    Opname actief... Zeg enkele zinnen voor stemherkenning
-                  </Typography>
-                </Box>
-              ) : (
-                <Box display="flex" gap={2}>
-                  <button
-                    onClick={recordVoiceProfile}
-                    className="btn-primary px-4 py-2"
-                    disabled={voiceSetupState.isRecordingVoice}
-                    data-testid="record-voice-button"
-                  >
-                    Start Stem Opname
-                  </button>
-                  <button
-                    onClick={nextSpeaker}
-                    className="btn-neutral px-4 py-2"
-                    data-testid="voice-setup-next-button"
-                  >
-                    Volgende
-                  </button>
-                  <button
-                    onClick={skipVoiceSetup}
-                    className="btn-neutral px-4 py-2"
-                    data-testid="voice-setup-skip-button"
-                  >
-                    Overslaan
-                  </button>
-                </Box>
-              )}
-            </Box>
-          )}
-
           {/* Transcription Output */}
           <TranscriptionOutput
             transcriptions={transcriptions}
             isLoading={audioProcessingState.isProcessingBackground}
-            error={audioProcessingState.processingError || undefined}
+            error={audioProcessingState.processingError}
             showConfidence={true}
             showSpeakerDetection={true}
           />
-
-          {/* Session Controls */}
-          <Box display="flex" justifyContent="center" mt={4}>
-            <button
-              onClick={handleStopSession}
-              className="btn-danger px-6 py-3"
-              disabled={sessionState.isStartingSession}
-              data-testid="stop-session-button"
-            >
-              🛑 Session Beëindigen
-            </button>
-          </Box>
         </>
+      )}
+
+      {/* Session Stop Button */}
+      {sessionState.sessionActive && (
+        <Box sx={{ mt: 2, textAlign: 'center' }}>
+          <button
+            onClick={handleStopSession}
+            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-md"
+          >
+            Stop Session
+          </button>
+        </Box>
       )}
     </Box>
   );

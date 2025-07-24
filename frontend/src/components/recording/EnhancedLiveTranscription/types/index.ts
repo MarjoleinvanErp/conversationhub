@@ -3,7 +3,53 @@
  * ConversationHub - Complete Type System
  */
 
-// Session Management Types
+// ===== COMPONENT PROPS INTERFACES =====
+
+export interface EnhancedLiveTranscriptionProps {
+  meetingId?: any;
+  conversationId?: number; // Support both prop names for backward compatibility
+  participants?: Participant[];
+  onTranscriptionUpdate?: (transcription: LiveTranscription) => void;
+  onWhisperUpdate?: (transcription: LiveTranscription) => void;
+  onSessionStatsUpdate?: (stats: SessionStats) => void;
+  autoStart?: boolean;
+  useVoiceSetup?: boolean;
+}
+
+// ===== CORE DATA TYPES =====
+
+export interface Participant {
+  id?: string;
+  name: string;
+  color?: string;
+  role?: 'host' | 'participant' | 'observer';
+  email?: string;
+}
+
+export interface ProcessedParticipant {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface LiveTranscription {
+  id: string;
+  text: string;
+  speaker_name: string;
+  speaker_id: string;
+  speaker_color: string;
+  confidence: number;
+  spoken_at: string;
+  source: TranscriptionSource;
+  processing_status: ProcessingStatus;
+}
+
+export type TranscriptionSource = 'live' | 'whisper' | 'n8n' | 'background';
+export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type TranscriptionService = 'auto' | 'whisper' | 'n8n';
+
+// ===== SESSION MANAGEMENT TYPES =====
+
 export interface SessionState {
   sessionActive: boolean;
   sessionId: string | null;
@@ -21,6 +67,8 @@ export interface SessionConfig {
   available_services: {
     whisper: boolean;
     n8n: boolean;
+  };
+  // Additional service response fields
   success?: boolean;
   sessionId?: any;
   useN8N?: boolean;
@@ -31,25 +79,10 @@ export interface SessionConfig {
     audioStream: boolean;
   };
   error?: string;
-
-  };
 }
 
-export interface Participant {
-  id?: string;
-  name: string;
-  color?: string;
-  role?: 'host' | 'participant' | 'observer';
-  email?: string;
-}
+// ===== RECORDING MANAGEMENT TYPES =====
 
-export interface ProcessedParticipant {
-  id: string;
-  name: string;
-  color: string;
-}
-
-// Recording Management Types
 export interface RecordingState {
   isRecording: boolean;
   isPaused: boolean;
@@ -66,7 +99,8 @@ export interface AudioProcessingState {
   processingError: string | null;
 }
 
-// Voice Setup Types
+// ===== VOICE SETUP TYPES =====
+
 export interface VoiceSetupState {
   setupPhase: VoiceSetupPhase;
   currentSetupSpeaker: number;
@@ -84,24 +118,8 @@ export interface VoiceProfile {
   setupComplete: boolean;
 }
 
-// Transcription Types
-export interface LiveTranscription {
-  id: string;
-  text: string;
-  speaker_name: string;
-  speaker_id: string;
-  speaker_color: string;
-  confidence: number;
-  spoken_at: string;
-  source: TranscriptionSource;
-  processing_status: ProcessingStatus;
-}
+// ===== SESSION STATISTICS TYPES =====
 
-export type TranscriptionSource = 'live' | 'whisper' | 'n8n' | 'background';
-export type ProcessingStatus = 'pending' | 'processing' | 'completed' | 'failed';
-export type TranscriptionService = 'auto' | 'whisper' | 'n8n';
-
-// Session Statistics Types
 export interface SessionStats {
   totalDuration: number;
   chunksProcessed: number;
@@ -112,7 +130,8 @@ export interface SessionStats {
   errorCount: number;
 }
 
-// API Response Types
+// ===== API RESPONSE TYPES =====
+
 export interface SessionStartResponse {
   success: boolean;
   session_id?: string;
@@ -136,18 +155,7 @@ export interface TranscriptionResponse {
   };
 }
 
-// Component Props Types
-export interface EnhancedLiveTranscriptionProps {
-  meetingId?: any;
-  conversationId?: number;
-  participants?: Participant[];
-  onTranscriptionUpdate?: (transcription: LiveTranscription) => void;
-  onWhisperUpdate?: (transcription: LiveTranscription) => void;
-  onSessionStatsUpdate?: (stats: SessionStats) => void;
-  autoStart?: boolean;
-  useVoiceSetup?: boolean;
-}
-
+// ===== COMPONENT PROPS TYPES =====
 
 export interface SessionSetupProps {
   participants: Participant[];
@@ -184,7 +192,8 @@ export interface TranscriptionOutputProps {
   showSpeakerDetection?: boolean;
 }
 
-// Hook Return Types
+// ===== HOOK RETURN TYPES =====
+
 export interface UseSessionManagerReturn {
   sessionState: SessionState;
   startSession: (useVoiceSetup?: boolean) => Promise<{ success: boolean; sessionId?: string; error?: string }>;
@@ -199,6 +208,7 @@ export interface UseAudioRecorderReturn {
   pauseRecording: () => Promise<void>;
   resumeRecording: () => Promise<void>;
   clearError: () => void;
+  processAudioChunk: () => Promise<void>;
 }
 
 export interface UseTranscriptionProcessorReturn {
@@ -222,7 +232,8 @@ export interface UseVoiceSetupReturn {
   stopVoiceRecording: () => void;
 }
 
-// Event Types
+// ===== EVENT TYPES =====
+
 export interface TranscriptionUpdateEvent {
   transcription: LiveTranscription;
   sessionId: string;
@@ -235,14 +246,16 @@ export interface SessionStatsUpdateEvent {
   timestamp: number;
 }
 
-// Error Types
+// ===== ERROR TYPES =====
+
 export interface TranscriptionError extends Error {
   code?: string;
   details?: Record<string, any>;
   retryable?: boolean;
 }
 
-// Utility Types
+// ===== UTILITY TYPES =====
+
 export type RecordingStateKey = keyof RecordingState;
 export type SessionStateKey = keyof SessionState;
 export type AudioProcessingStateKey = keyof AudioProcessingState;

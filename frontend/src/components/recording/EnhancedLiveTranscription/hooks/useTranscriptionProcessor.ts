@@ -3,30 +3,32 @@ import enhancedLiveTranscriptionService from '@/services/api/enhancedLiveTranscr
 import type { 
   AudioProcessingState, 
   SessionStats, 
-  UseTranscriptionProcessorReturn,
   SessionConfig,
   LiveTranscription,
-  TranscriptionService
+  TranscriptionService,
+  UseTranscriptionProcessorReturn 
 } from '../types';
 
-export interface UseTranscriptionProcessorProps {
+interface UseTranscriptionProcessorProps {
   sessionId: string | null;
   config: SessionConfig;
-  onTranscriptionReceived: (transcription: LiveTranscription) => void;
-  onWhisperReceived: (transcription: LiveTranscription) => void;
+  onTranscriptionReceived?: (transcription: LiveTranscription) => void;
+  onWhisperReceived?: (transcription: LiveTranscription) => void;
+  onStatsUpdate?: (stats: SessionStats) => void;
 }
 
 /**
- * Transcription Processing Hook
- * Handles audio chunk processing, service coordination, and statistics
+ * Custom hook for transcription processing
+ * Handles audio chunk processing, statistics, and transcription results
  */
 export const useTranscriptionProcessor = ({
   sessionId,
   config,
   onTranscriptionReceived,
-  onWhisperReceived
+  onWhisperReceived,
+  onStatsUpdate
 }: UseTranscriptionProcessorProps): UseTranscriptionProcessorReturn => {
-  
+
   // Processing state
   const [audioProcessingState, setAudioProcessingState] = useState<AudioProcessingState>({
     isProcessingBackground: false,
@@ -47,46 +49,15 @@ export const useTranscriptionProcessor = ({
   });
 
   // Processing refs
-  const chunkCounterRef = useRef<number>(0);
+  const chunkCounterRef = useRef(0);
   const confidenceScoresRef = useRef<number[]>([]);
-  const processingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
-   * Convert blob to base64 for API transmission
-   */
-  const blobToBase64 = useCallback((blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result as string;
-        // Remove data URL prefix (data:audio/webm;base64,)
-        const base64 = result.split(',')[1];
-        resolve(base64);
-      };
-      reader.onerror = () => reject(new Error('Failed to convert blob to base64'));
-      reader.readAsDataURL(blob);
-    });
-  }, []);
-
-  /**
-   * Determine best transcription service based on config and availability
-   */
-  const getBestService = useCallback((): TranscriptionService => {
-    if (config.default_transcription_service === 'auto') {
-      // Auto-select based on availability
-      if (config.available_services.n8n) return 'n8n';
-      if (config.available_services.whisper) return 'whisper';
-      return 'whisper'; // fallback
-    }
-    return config.default_transcription_service;
-  }, [config]);
-
-  /**
-   * Process single audio chunk
+   * Process audio chunk for transcription
    */
   const processAudioChunk = useCallback(async (audioBlob: Blob) => {
     if (!sessionId) {
-      console.warn('No active session - cannot process audio chunk');
+      console.warn('No session ID available for chunk processing');
       return;
     }
 
@@ -97,85 +68,111 @@ export const useTranscriptionProcessor = ({
         processingError: null
       }));
 
-      const chunkNumber = ++chunkCounterRef.current;
-      const timestamp = Date.now();
-      
-      console.log('🎵 Processing audio chunk:', { 
-        chunkNumber, 
-        size: audioBlob.size, 
-        sessionId 
+      // Convert blob to base64
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1]; // Remove data URL prefix
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
       });
 
-      // Convert audio to base64
-      const audioData = await blobToBase64(audioBlob);
-      
-      // Determine service to use
-      const serviceToUse = getBestService();
-      
-      // Prepare request payload
+      chunkCounterRef.current += 1;
+
+      // Prepare request payload matching interface
       const requestPayload = {
-        session_id: sessionId,
-        chunk_number: chunkNumber,
-        audio_data: audioData,
-        timestamp: new Date(timestamp).toISOString(),
-        source: 'conversationhub',
-        format: 'webm',
-        processing_options: {
-          speaker_diarization: true,
-          language: 'nl',
-          return_segments: true,
-          service: serviceToUse
-        }
+        audioData: base64Audio,
+        sessionId: sessionId,
+        preferredService: config.default_transcription_service,
+        useN8N: config.n8n_transcription_enabled
       };
 
-      // Process with enhanced service
+      console.log('🔄 Processing audio chunk:', {
+        chunkNumber: chunkCounterRef.current,
+        audioSize: audioBlob.size,
+        sessionId,
+        service: requestPayload.preferredService
+      });
+
       const result = await enhancedLiveTranscriptionService.processChunk(requestPayload);
 
-      if (result.success && result.transcription) {
-        // Update statistics
-        const confidence = result.transcription.confidence || 0;
-        confidenceScoresRef.current.push(confidence);
-        
-        const averageConfidence = confidenceScoresRef.current.reduce((a, b) => a + b, 0) / confidenceScoresRef.current.length;
-
-        setSessionStats(prev => ({
-          ...prev,
-          chunksProcessed: chunkNumber,
-          transcriptionsReceived: prev.transcriptionsReceived + 1,
-          whisperCalls: serviceToUse === 'whisper' ? prev.whisperCalls + 1 : prev.whisperCalls,
-          averageConfidence: averageConfidence,
-          activeService: serviceToUse
-        }));
-
+      if (result.success) {
+        // Update processing state
         setAudioProcessingState(prev => ({
           ...prev,
-          chunksProcessed: chunkNumber,
-          lastChunkTime: timestamp,
-          isProcessingBackground: false
+          isProcessingBackground: false,
+          chunksProcessed: prev.chunksProcessed + 1,
+          lastChunkTime: Date.now()
         }));
 
-        // Send to appropriate callback
-        if (result.transcription.source === 'whisper') {
-          onWhisperReceived(result.transcription);
-        } else {
-          onTranscriptionReceived(result.transcription);
-        }
+        // Update statistics
+        setSessionStats(prev => {
+          const newStats = {
+            ...prev,
+            chunksProcessed: prev.chunksProcessed + 1,
+            whisperCalls: prev.whisperCalls + 1
+          };
 
-        console.log('✅ Audio chunk processed successfully:', {
-          chunkNumber,
-          service: serviceToUse,
-          confidence: confidence,
-          textPreview: result.transcription.text.substring(0, 50)
+          // Handle transcription results
+          if (result.transcription) {
+            newStats.transcriptionsReceived += 1;
+            
+            // Track confidence scores
+            if (result.transcription.confidence) {
+              confidenceScoresRef.current.push(result.transcription.confidence);
+              newStats.averageConfidence = 
+                confidenceScoresRef.current.reduce((sum, conf) => sum + conf, 0) / 
+                confidenceScoresRef.current.length;
+            }
+
+            // Call transcription callback
+            if (onTranscriptionReceived) {
+              onTranscriptionReceived(result.transcription);
+            }
+          }
+
+          // Handle multiple transcriptions
+          if (result.transcriptions && result.transcriptions.length > 0) {
+            newStats.transcriptionsReceived += result.transcriptions.length;
+            
+            result.transcriptions.forEach(transcription => {
+              if (transcription.confidence) {
+                confidenceScoresRef.current.push(transcription.confidence);
+              }
+              
+              if (onTranscriptionReceived) {
+                onTranscriptionReceived(transcription);
+              }
+            });
+
+            // Recalculate average confidence
+            if (confidenceScoresRef.current.length > 0) {
+              newStats.averageConfidence = 
+                confidenceScoresRef.current.reduce((sum, conf) => sum + conf, 0) / 
+                confidenceScoresRef.current.length;
+            }
+          }
+
+          // Update stats callback
+          if (onStatsUpdate) {
+            onStatsUpdate(newStats);
+          }
+
+          return newStats;
         });
 
+        console.log('✅ Audio chunk processed successfully');
+
       } else {
-        throw new Error(result.error || 'Transcription processing failed');
+        throw new Error(result.error || 'Processing failed');
       }
 
     } catch (error) {
       console.error('❌ Failed to process audio chunk:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : 'Unknown processing error';
+      const errorMessage = error instanceof Error ? error.message : 'Processing failed';
       
       setAudioProcessingState(prev => ({
         ...prev,
@@ -187,28 +184,13 @@ export const useTranscriptionProcessor = ({
         ...prev,
         errorCount: prev.errorCount + 1
       }));
-
-      // Clear error after delay
-      if (processingTimeoutRef.current) {
-        clearTimeout(processingTimeoutRef.current);
-      }
-      
-      processingTimeoutRef.current = setTimeout(() => {
-        setAudioProcessingState(prev => ({
-          ...prev,
-          processingError: null
-        }));
-      }, 10000); // Clear error after 10 seconds
     }
-  }, [sessionId, getBestService, blobToBase64, onTranscriptionReceived, onWhisperReceived]);
+  }, [sessionId, config, onTranscriptionReceived, onStatsUpdate]);
 
   /**
-   * Reset all statistics
+   * Reset statistics
    */
   const resetStats = useCallback(() => {
-    chunkCounterRef.current = 0;
-    confidenceScoresRef.current = [];
-    
     setSessionStats({
       totalDuration: 0,
       chunksProcessed: 0,
@@ -226,11 +208,12 @@ export const useTranscriptionProcessor = ({
       processingError: null
     });
 
-    console.log('📊 Transcription statistics reset');
+    chunkCounterRef.current = 0;
+    confidenceScoresRef.current = [];
   }, [config.default_transcription_service]);
 
   /**
-   * Clear processing error
+   * Clear error state
    */
   const clearError = useCallback(() => {
     setAudioProcessingState(prev => ({
@@ -240,23 +223,28 @@ export const useTranscriptionProcessor = ({
   }, []);
 
   /**
-   * Update total duration (called from parent timer)
+   * Update duration from recording timer
    */
   const updateDuration = useCallback((seconds: number) => {
     setSessionStats(prev => ({
       ...prev,
-      totalDuration: seconds
+      totalDuration: Math.floor(seconds / 1000)
     }));
   }, []);
 
   /**
-   * Cleanup on unmount
+   * Cleanup processing resources
    */
   const cleanup = useCallback(() => {
-    if (processingTimeoutRef.current) {
-      clearTimeout(processingTimeoutRef.current);
-      processingTimeoutRef.current = null;
-    }
+    setAudioProcessingState({
+      isProcessingBackground: false,
+      chunksProcessed: 0,
+      lastChunkTime: null,
+      processingError: null
+    });
+
+    chunkCounterRef.current = 0;
+    confidenceScoresRef.current = [];
   }, []);
 
   return {

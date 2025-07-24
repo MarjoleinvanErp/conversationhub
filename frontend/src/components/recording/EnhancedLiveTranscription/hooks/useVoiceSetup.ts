@@ -1,26 +1,27 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import enhancedLiveTranscriptionService from '@/services/api/enhancedLiveTranscriptionService';
 import type { 
   VoiceSetupState, 
-  UseVoiceSetupReturn, 
+  VoiceProfile, 
   Participant,
-  VoiceProfile 
+  VoiceSetupPhase,
+  UseVoiceSetupReturn 
 } from '../types';
 
-export interface UseVoiceSetupProps {
+interface UseVoiceSetupProps {
   participants: Participant[];
   sessionId: string | null;
 }
 
 /**
- * Voice Setup Hook
- * Handles voice profile recording and speaker identification setup
+ * Custom hook for voice profile setup
+ * Handles voice recording and speaker identification setup
  */
-export const useVoiceSetup = ({ 
-  participants, 
-  sessionId 
+export const useVoiceSetup = ({
+  participants,
+  sessionId
 }: UseVoiceSetupProps): UseVoiceSetupReturn => {
-  
+
   // Voice setup state
   const [voiceSetupState, setVoiceSetupState] = useState<VoiceSetupState>({
     setupPhase: 'initial',
@@ -29,12 +30,6 @@ export const useVoiceSetup = ({
     voiceSetupError: '',
     voiceProfiles: []
   });
-
-  // Recording refs
-  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
-  const voiceStreamRef = useRef<MediaStream | null>(null);
-  const voiceChunksRef = useRef<Blob[]>([]);
-  const voiceRecordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
    * Start voice setup process
@@ -52,29 +47,21 @@ export const useVoiceSetup = ({
       ...prev,
       setupPhase: 'voice_setup',
       currentSetupSpeaker: 0,
-      voiceSetupError: '',
-      voiceProfiles: []
+      voiceSetupError: ''
     }));
 
-    console.log('🎤 Starting voice setup for', participants.length, 'participants');
+    console.log('🎙️ Starting voice setup for', participants.length, 'participants');
   }, [participants]);
 
   /**
    * Record voice profile for current speaker
    */
   const recordVoiceProfile = useCallback(async () => {
-    if (!sessionId) {
+    const currentSpeaker = participants[voiceSetupState.currentSetupSpeaker];
+    if (!currentSpeaker || !sessionId) {
       setVoiceSetupState(prev => ({
         ...prev,
-        voiceSetupError: 'No active session for voice recording'
-      }));
-      return;
-    }
-
-    if (voiceSetupState.currentSetupSpeaker >= participants.length) {
-      setVoiceSetupState(prev => ({
-        ...prev,
-        voiceSetupError: 'All participants already completed voice setup'
+        voiceSetupError: 'No speaker selected or session not available'
       }));
       return;
     }
@@ -86,137 +73,75 @@ export const useVoiceSetup = ({
         voiceSetupError: ''
       }));
 
-      const currentParticipant = participants[voiceSetupState.currentSetupSpeaker];
-      
-      console.log('🎙️ Starting voice recording for:', currentParticipant.name);
+      console.log('🎤 Recording voice profile for:', currentSpeaker.name);
 
-      // Get microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          sampleRate: 44100
-        } 
+      // Record voice sample (5 seconds)
+      const voiceBlob = await enhancedLiveTranscriptionService.recordVoiceSample(5000);
+      
+      const speakerId = currentSpeaker.id || 
+        `participant_${currentSpeaker.name.toLowerCase().replace(/\s+/g, '_')}_${voiceSetupState.currentSetupSpeaker}`;
+
+      // Setup voice profile with single config object
+      const result = await enhancedLiveTranscriptionService.setupVoiceProfile({
+        speakerId,
+        speakerName: currentSpeaker.name,
+        voiceBlob,
+        sessionId
       });
-      
-      voiceStreamRef.current = stream;
-      voiceChunksRef.current = [];
 
-      // Setup MediaRecorder for voice profile
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-      
-      voiceRecorderRef.current = mediaRecorder;
+      setVoiceSetupState(prev => ({
+        ...prev,
+        isRecordingVoice: false
+      }));
 
-      // Collect audio chunks
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          voiceChunksRef.current.push(event.data);
-        }
-      };
+      if (result.success) {
+        // Add voice profile to state
+        const newProfile: VoiceProfile = {
+          speakerId,
+          speakerName: currentSpeaker.name,
+          audioBlob: voiceBlob,
+          setupComplete: true
+        };
 
-      // Handle recording completion
-      mediaRecorder.onstop = async () => {
-        try {
-          console.log('🎤 Voice recording completed, processing...');
-          
-          // Create voice profile blob
-          const voiceBlob = new Blob(voiceChunksRef.current, { type: 'audio/webm' });
-          
-          if (voiceBlob.size === 0) {
-            throw new Error('No audio data recorded');
-          }
-
-          // Send voice profile to service
-          const result = await enhancedLiveTranscriptionService.setupVoiceProfile(
-            currentParticipant.id || currentParticipant.name,
-            voiceBlob
-          );
-
-          if (result.success) {
-            const voiceProfile: VoiceProfile = {
-              speakerId: currentParticipant.id || currentParticipant.name,
-              speakerName: currentParticipant.name,
-              audioBlob: voiceBlob,
-              setupComplete: true
-            };
-
-            setVoiceSetupState(prev => ({
-              ...prev,
-              isRecordingVoice: false,
-              voiceProfiles: [...prev.voiceProfiles, voiceProfile]
-            }));
-
-            console.log('✅ Voice profile setup completed for:', currentParticipant.name);
-
-          } else {
-            throw new Error(result.error || 'Failed to setup voice profile');
-          }
-
-        } catch (error) {
-          console.error('❌ Voice profile setup failed:', error);
-          setVoiceSetupState(prev => ({
-            ...prev,
-            isRecordingVoice: false,
-            voiceSetupError: error instanceof Error ? error.message : 'Voice setup failed'
-          }));
-        } finally {
-          // Cleanup
-          if (voiceStreamRef.current) {
-            voiceStreamRef.current.getTracks().forEach(track => track.stop());
-            voiceStreamRef.current = null;
-          }
-          voiceRecorderRef.current = null;
-        }
-      };
-
-      mediaRecorder.onerror = (event) => {
-        console.error('Voice MediaRecorder error:', event);
         setVoiceSetupState(prev => ({
           ...prev,
-          isRecordingVoice: false,
-          voiceSetupError: 'Voice recording failed'
+          voiceProfiles: [...prev.voiceProfiles, newProfile],
+          voiceSetupError: ''
         }));
-      };
 
-      // Start recording
-      mediaRecorder.start();
-
-      // Auto-stop after 10 seconds
-      voiceRecordingTimeoutRef.current = setTimeout(() => {
-        if (voiceRecorderRef.current && voiceRecorderRef.current.state === 'recording') {
-          voiceRecorderRef.current.stop();
-        }
-      }, 10000);
+        console.log('✅ Voice profile recorded successfully for:', currentSpeaker.name);
+      } else {
+        throw new Error(result.error || 'Voice profile setup failed');
+      }
 
     } catch (error) {
-      console.error('❌ Failed to start voice recording:', error);
-      
-      const errorMessage = error instanceof Error ? error.message : 'Failed to access microphone';
+      console.error('❌ Failed to record voice profile:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Voice recording failed';
       
       setVoiceSetupState(prev => ({
         ...prev,
         isRecordingVoice: false,
         voiceSetupError: errorMessage
       }));
-
-      // Cleanup on error
-      if (voiceStreamRef.current) {
-        voiceStreamRef.current.getTracks().forEach(track => track.stop());
-        voiceStreamRef.current = null;
-      }
     }
-  }, [sessionId, voiceSetupState.currentSetupSpeaker, participants]);
+  }, [participants, voiceSetupState.currentSetupSpeaker, sessionId]);
 
   /**
-   * Move to next speaker or complete setup
+   * Move to next speaker
    */
   const nextSpeaker = useCallback(async () => {
     const nextIndex = voiceSetupState.currentSetupSpeaker + 1;
     
-    if (nextIndex >= participants.length) {
-      // All participants completed
+    if (nextIndex < participants.length) {
+      setVoiceSetupState(prev => ({
+        ...prev,
+        currentSetupSpeaker: nextIndex,
+        voiceSetupError: ''
+      }));
+      
+      console.log('➡️ Moving to next speaker:', participants[nextIndex]?.name);
+    } else {
+      // All speakers completed
       setVoiceSetupState(prev => ({
         ...prev,
         setupPhase: 'ready',
@@ -224,67 +149,27 @@ export const useVoiceSetup = ({
       }));
       
       console.log('✅ Voice setup completed for all participants');
-    } else {
-      // Move to next participant
-      setVoiceSetupState(prev => ({
-        ...prev,
-        currentSetupSpeaker: nextIndex,
-        voiceSetupError: ''
-      }));
-      
-      console.log('➡️ Moving to next speaker:', participants[nextIndex].name);
     }
   }, [voiceSetupState.currentSetupSpeaker, participants]);
 
   /**
-   * Skip voice setup entirely
+   * Skip voice setup
    */
   const skipVoiceSetup = useCallback(() => {
-    // Stop any active recording
-    if (voiceRecorderRef.current && voiceRecorderRef.current.state === 'recording') {
-      voiceRecorderRef.current.stop();
-    }
-
-    if (voiceStreamRef.current) {
-      voiceStreamRef.current.getTracks().forEach(track => track.stop());
-      voiceStreamRef.current = null;
-    }
-
-    if (voiceRecordingTimeoutRef.current) {
-      clearTimeout(voiceRecordingTimeoutRef.current);
-      voiceRecordingTimeoutRef.current = null;
-    }
-
     setVoiceSetupState(prev => ({
       ...prev,
       setupPhase: 'ready',
-      isRecordingVoice: false,
       currentSetupSpeaker: 0,
       voiceSetupError: ''
     }));
-
+    
     console.log('⏭️ Voice setup skipped');
   }, []);
 
   /**
-   * Reset voice setup to initial state
+   * Reset voice setup
    */
   const resetVoiceSetup = useCallback(() => {
-    // Stop any active recording
-    if (voiceRecorderRef.current && voiceRecorderRef.current.state === 'recording') {
-      voiceRecorderRef.current.stop();
-    }
-
-    if (voiceStreamRef.current) {
-      voiceStreamRef.current.getTracks().forEach(track => track.stop());
-      voiceStreamRef.current = null;
-    }
-
-    if (voiceRecordingTimeoutRef.current) {
-      clearTimeout(voiceRecordingTimeoutRef.current);
-      voiceRecordingTimeoutRef.current = null;
-    }
-
     setVoiceSetupState({
       setupPhase: 'initial',
       currentSetupSpeaker: 0,
@@ -292,8 +177,8 @@ export const useVoiceSetup = ({
       voiceSetupError: '',
       voiceProfiles: []
     });
-
-    console.log('🔄 Voice setup reset to initial state');
+    
+    console.log('🔄 Voice setup reset');
   }, []);
 
   /**
@@ -307,17 +192,15 @@ export const useVoiceSetup = ({
   }, []);
 
   /**
-   * Stop current voice recording manually
+   * Stop voice recording
    */
   const stopVoiceRecording = useCallback(() => {
-    if (voiceRecorderRef.current && voiceRecorderRef.current.state === 'recording') {
-      voiceRecorderRef.current.stop();
-    }
-
-    if (voiceRecordingTimeoutRef.current) {
-      clearTimeout(voiceRecordingTimeoutRef.current);
-      voiceRecordingTimeoutRef.current = null;
-    }
+    setVoiceSetupState(prev => ({
+      ...prev,
+      isRecordingVoice: false
+    }));
+    
+    console.log('⏹️ Voice recording stopped');
   }, []);
 
   return {

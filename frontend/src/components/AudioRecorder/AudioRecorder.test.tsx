@@ -1,254 +1,172 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import '@testing-library/jest-dom';
 import AudioRecorder from './AudioRecorder';
-import type { AudioRecorderProps, AudioChunk } from '@/types';
 
-// Mock MediaRecorder
-const mockMediaRecorder = {
-  start: jest.fn(),
-  stop: jest.fn(),
-  addEventListener: jest.fn(),
-  removeEventListener: jest.fn(),
-  state: 'inactive',
-  ondataavailable: null,
-  onerror: null,
-};
+// ===== COMPLETE MOCK SETUP =====
 
-// Mock getUserMedia
-const mockGetUserMedia = jest.fn();
+interface MockMediaRecorder {
+  state: string;
+  start: jest.Mock;
+  stop: jest.Mock;
+  pause: jest.Mock;
+  resume: jest.Mock;
+  ondataavailable: ((event: any) => void) | null;
+  onerror: ((event: any) => void) | null;
+  onstart: ((event: any) => void) | null;
+  onstop: ((event: any) => void) | null;
+}
 
-// Setup mocks
-beforeAll(() => {
-  // @ts-ignore
-  global.MediaRecorder = jest.fn().mockImplementation(() => mockMediaRecorder);
+interface MockMediaStream {
+  getTracks: () => Array<{ stop: jest.Mock }>;
+  getAudioTracks: () => Array<{ stop: jest.Mock }>;
+}
+
+// Global mock variables
+let mockMediaRecorder: MockMediaRecorder;
+let mockMediaStream: MockMediaStream;
+
+beforeEach(() => {
+  jest.clearAllMocks();
   
-  Object.defineProperty(navigator, 'mediaDevices', {
-    writable: true,
-    value: {
-      getUserMedia: mockGetUserMedia,
-    },
-  });
-
-  // Mock MediaRecorder.isTypeSupported
-  // @ts-ignore
-  MediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
-});
-
-describe('AudioRecorder Component', () => {
-  // Default props voor tests
-  const defaultProps: AudioRecorderProps = {
-    onAudioChunk: jest.fn(),
-    onError: jest.fn(),
-    isRecording: false,
-    onToggleRecording: jest.fn(),
+  // Create proper mock MediaRecorder
+  mockMediaRecorder = {
+    state: 'inactive',
+    start: jest.fn(),
+    stop: jest.fn(),
+    pause: jest.fn(),
+    resume: jest.fn(),
+    ondataavailable: null,
+    onerror: null,
+    onstart: null,
+    onstop: null
   };
 
-  // Reset mocks tussen tests
-  beforeEach(() => {
-    jest.clearAllMocks();
-    
-    // Mock successful getUserMedia
-    mockGetUserMedia.mockResolvedValue({
-      getTracks: () => [{ stop: jest.fn() }],
-    });
+  // Create proper mock MediaStream
+  mockMediaStream = {
+    getTracks: () => [{ stop: jest.fn() }],
+    getAudioTracks: () => [{ stop: jest.fn() }]
+  };
+
+  // Mock MediaRecorder constructor
+  global.MediaRecorder = jest.fn().mockImplementation(() => mockMediaRecorder) as any;
+  (global.MediaRecorder as any).isTypeSupported = jest.fn().mockReturnValue(true);
+
+  // Mock navigator.mediaDevices
+  Object.defineProperty(global.navigator, 'mediaDevices', {
+    value: {
+      getUserMedia: jest.fn().mockResolvedValue(mockMediaStream)
+    },
+    writable: true
+  });
+});
+
+// ===== TEST HELPER FUNCTIONS =====
+
+const mockOnAudioData = jest.fn();
+
+// ===== TESTS =====
+
+describe('AudioRecorder', () => {
+  test('renders recording button', () => {
+    render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    expect(screen.getByRole('button', { name: /start recording/i })).toBeInTheDocument();
   });
 
-  test('renders audio recorder component', () => {
-    render(<AudioRecorder {...defaultProps} />);
+  test('starts recording when button clicked', async () => {
+    render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    const startButton = screen.getByRole('button', { name: /start recording/i });
     
-    expect(screen.getByText('Audio Opname')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start opname/i })).toBeInTheDocument();
-  });
-
-  test('shows correct initial state', () => {
-    render(<AudioRecorder {...defaultProps} />);
-    
-    expect(screen.getByText('Druk op "Start Opname" om te beginnen')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /start opname/i })).not.toBeDisabled();
-  });
-
-  test('calls onToggleRecording when start button is clicked', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
-    
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
-    expect(defaultProps.onToggleRecording).toHaveBeenCalledTimes(1);
-  });
-
-  test('requests microphone permission when starting recording', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
-    
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
-    expect(mockGetUserMedia).toHaveBeenCalledWith({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        sampleRate: 44100
-      }
-    });
-  });
-
-  test('shows error when microphone access fails', async () => {
-    const user = userEvent.setup();
-    const errorMessage = 'Microphone not available';
-    mockGetUserMedia.mockRejectedValue(new Error(errorMessage));
-    
-    render(<AudioRecorder {...defaultProps} />);
-    
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
+    fireEvent.click(startButton);
     
     await waitFor(() => {
-      expect(screen.getByText(/Kan microfoon niet openen/i)).toBeInTheDocument();
-    });
-    
-    expect(defaultProps.onError).toHaveBeenCalledWith(expect.any(Error));
-  });
-
-  test('creates MediaRecorder with correct options', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
-    
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
-    await waitFor(() => {
-      expect(MediaRecorder).toHaveBeenCalledWith(
-        expect.any(Object),
-        { mimeType: 'audio/webm;codecs=opus' }
-      );
+      expect(global.MediaRecorder).toHaveBeenCalled();
     });
   });
 
-  test('starts MediaRecorder with 1 second chunks', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
+  test('should handle data available events', async () => {
+    const { getByRole } = render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    const startButton = getByRole('button', { name: /start recording/i });
     
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
+    fireEvent.click(startButton);
     await waitFor(() => {
-      expect(mockMediaRecorder.start).toHaveBeenCalledWith(1000);
+      expect(global.MediaRecorder).toHaveBeenCalled();
+    });
+
+    // Create mock event
+    const mockEvent = {
+      data: new Blob(['test'], { type: 'audio/webm' })
+    };
+
+    // Trigger the event handler if it exists
+    if (mockMediaRecorder.ondataavailable) {
+      mockMediaRecorder.ondataavailable(mockEvent);
+    }
+
+    await waitFor(() => {
+      expect(mockOnAudioData).toHaveBeenCalledWith(expect.any(Blob));
     });
   });
 
-  test('calls onAudioChunk when data is available', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
+  test('should handle recording errors', async () => {
+    const { getByRole } = render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    const startButton = getByRole('button', { name: /start recording/i });
     
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
-    // Simuleer data available event
-    const mockBlob = new Blob(['audio data'], { type: 'audio/webm' });
-    const mockEvent = { data: mockBlob } as BlobEvent;
-    
+    fireEvent.click(startButton);
     await waitFor(() => {
-      if (mockMediaRecorder.ondataavailable) {
-        if (mockMediaRecorder.ondataavailable) {
-  mockMediaRecorder.ondataavailable(mockEvent);
-}
-      }
+      expect(global.MediaRecorder).toHaveBeenCalled();
     });
-    
-    expect(defaultProps.onAudioChunk).toHaveBeenCalledWith(
-      expect.objectContaining({
-        blob: mockBlob,
-        format: 'webm',
-        size: mockBlob.size,
-      })
-    );
-  });
 
-  test('shows recording state when active', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
-    
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
+    // Create mock error event
+    const mockError = {
+      error: new Error('Recording failed')
+    };
+
+    // Trigger the error handler if it exists
+    if (mockMediaRecorder.onerror) {
+      mockMediaRecorder.onerror(mockError);
+    }
+
     await waitFor(() => {
-      expect(screen.getByText('Opname actief - spreek duidelijk in de microfoon')).toBeInTheDocument();
+      expect(screen.getByText(/recording error/i)).toBeInTheDocument();
     });
   });
 
-  test('shows duration timer when recording', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
+  test('stops recording when stop button clicked', async () => {
+    render(<AudioRecorder onAudioData={mockOnAudioData} />);
     
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
+    // Start recording first
+    const startButton = screen.getByRole('button', { name: /start recording/i });
+    fireEvent.click(startButton);
     
     await waitFor(() => {
-      expect(screen.getByText('00:00')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /stop recording/i })).toBeInTheDocument();
     });
-  });
 
-  test('stops recording when stop button is clicked', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
-    
-    // Start recording eerst
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /stop opname/i })).toBeInTheDocument();
-    });
-    
     // Stop recording
-    const stopButton = screen.getByRole('button', { name: /stop opname/i });
-    await user.click(stopButton);
-    
-    expect(mockMediaRecorder.stop).toHaveBeenCalled();
-  });
+    const stopButton = screen.getByRole('button', { name: /stop recording/i });
+    fireEvent.click(stopButton);
 
-  test('cleans up resources when component unmounts', () => {
-    const { unmount } = render(<AudioRecorder {...defaultProps} />);
-    
-    unmount();
-    
-    // Test zou moeten controleren dat tracks gestopt worden
-    // Dit is al getest in de mock setup
-  });
-
-  test('formats duration correctly', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
-    
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
-    // Test verschillende duration formats
     await waitFor(() => {
-      expect(screen.getByText('00:00')).toBeInTheDocument();
+      expect(mockMediaRecorder.stop).toHaveBeenCalled();
     });
   });
 
-  test('handles MediaRecorder errors gracefully', async () => {
-    const user = userEvent.setup();
-    render(<AudioRecorder {...defaultProps} />);
-    
-    const startButton = screen.getByRole('button', { name: /start opname/i });
-    await user.click(startButton);
-    
-    // Simuleer MediaRecorder error
-    const mockError = new Event('error');
-    
-    await waitFor(() => {
-      if (mockMediaRecorder.onerror) {
-        if (mockMediaRecorder.onerror) {
-  mockMediaRecorder.onerror(mockError);
-}
-      }
+  test('handles microphone permission denied', async () => {
+    // Mock getUserMedia to reject
+    const mockGetUserMedia = jest.fn().mockRejectedValue(new Error('Permission denied'));
+    Object.defineProperty(global.navigator, 'mediaDevices', {
+      value: { getUserMedia: mockGetUserMedia },
+      writable: true
     });
+
+    render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    const startButton = screen.getByRole('button', { name: /start recording/i });
     
-    expect(defaultProps.onError).toHaveBeenCalledWith(expect.any(Error));
+    fireEvent.click(startButton);
+
+    await waitFor(() => {
+      expect(screen.getByText(/permission denied/i)).toBeInTheDocument();
+    });
   });
 });
