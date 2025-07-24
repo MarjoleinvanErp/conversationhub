@@ -86,179 +86,175 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
     onTranscriptionReceived: useCallback((transcription: LiveTranscription) => {
       setTranscriptions(prev => [transcription, ...prev]);
       onTranscriptionUpdate?.(transcription);
-    }, [onTranscriptionUpdate]),
-    onWhisperReceived: useCallback((transcription: LiveTranscription) => {
-      // Update existing transcription or add new one
-      setTranscriptions(prev => {
-        const existingIndex = prev.findIndex(t => t.id === transcription.id);
-        if (existingIndex >= 0) {
-          const updated = [...prev];
-          updated[existingIndex] = transcription;
-          return updated;
-        }
-        return [transcription, ...prev];
-      });
-      onWhisperUpdate?.(transcription);
-    }, [onWhisperUpdate])
+    }, [onTranscriptionUpdate])
   });
 
-  const { 
-    voiceSetupState, 
-    startVoiceSetup, 
-    recordVoiceProfile, 
-    nextSpeaker, 
-    skipVoiceSetup, 
-    resetVoiceSetup, 
-    clearError: clearVoiceError,
-    stopVoiceRecording
-  } = useVoiceSetup({
-    participants,
+  // FIXED: Voice setup hook initialization
+  const voiceSetupHook = useVoiceSetup({
+    participants: participants || [],
     sessionId: sessionState.sessionId
   });
 
-  /**
-   * Load configuration on mount
-   */
+  // Extract voice setup functions and state
+  const {
+    voiceSetupState,
+    startVoiceSetup,
+    recordVoiceProfile,
+    nextSpeaker,
+    skipVoiceSetup,
+    resetVoiceSetup,
+    clearError: clearVoiceSetupError,
+    stopVoiceRecording
+  } = voiceSetupHook;
+
+  // Load configuration on mount
   useEffect(() => {
     const loadConfig = async () => {
       try {
-        const transcriptionConfig = await configService.getTranscriptionConfig();
-        setConfig(transcriptionConfig);
+        const configData = await configService.getTranscriptionConfig();
+        setConfig(configData);
         setConfigLoaded(true);
-        console.log('📋 Transcription config loaded:', transcriptionConfig);
+        console.log('📋 Transcription config loaded:', configData);
       } catch (error) {
-        console.error('❌ Failed to load transcription config:', error);
-        setConfigLoaded(true); // Use defaults
+        console.error('❌ Failed to load config:', error);
+        setConfigLoaded(true); // Continue with defaults
       }
     };
 
     loadConfig();
   }, []);
 
-  /**
-   * Auto-start session if requested
-   */
+  // Auto-start session if enabled
   useEffect(() => {
-    if (configLoaded && autoStart && !sessionState.sessionActive && !sessionState.isStartingSession) {
+    if (configLoaded && autoStart && !sessionState.sessionActive && effectiveMeetingId) {
       console.log('🚀 Auto-starting session...');
       handleStartSession(useVoiceSetup);
     }
-  }, [configLoaded, autoStart, sessionState.sessionActive, sessionState.isStartingSession, useVoiceSetup]);
+  }, [configLoaded, autoStart, sessionState.sessionActive, effectiveMeetingId, useVoiceSetup]);
 
-  /**
-   * Update session stats callback
-   */
+  // Update session stats
   useEffect(() => {
-    if (onSessionStatsUpdate) {
+    if (sessionStats && onSessionStatsUpdate) {
       onSessionStatsUpdate(sessionStats);
     }
   }, [sessionStats, onSessionStatsUpdate]);
 
-  /**
-   * Update duration from recording timer
-   */
-  useEffect(() => {
-    if (recordingState.isRecording) {
-      updateDuration(recordingState.recordingTime);
-    }
-  }, [recordingState.recordingTime, recordingState.isRecording, updateDuration]);
-
-  /**
-   * Handle session start
-   */
-  const handleStartSession = useCallback(async (withVoiceSetup: boolean = false) => {
+  // Session management functions
+  const handleStartSession = useCallback(async (useVoice: boolean = false) => {
     try {
-      if (withVoiceSetup) {
-        startVoiceSetup();
-      }
-
-      const result = await startSession(withVoiceSetup);
-      
+      const result = await startSession(useVoice);
       if (result.success) {
         resetStats();
-        setTranscriptions([]);
+        if (useVoice && participants.length > 0) {
+          startVoiceSetup();
+        }
+        console.log('✅ Session started successfully');
+      } else {
+        console.error('❌ Session start failed:', result.error);
       }
     } catch (error) {
-      console.error('❌ Failed to start session:', error);
+      console.error('❌ Session start exception:', error);
     }
-  }, [startSession, startVoiceSetup, resetStats]);
+  }, [startSession, resetStats, participants.length, startVoiceSetup]);
 
-  /**
-   * Handle session stop
-   */
   const handleStopSession = useCallback(async () => {
     try {
-      if (recordingState.isRecording) {
-        await stopRecording();
-      }
-      
-      // Stop voice recording if active
-      if (voiceSetupState.isRecordingVoice) {
-        stopVoiceRecording();
-      }
-      
+      await stopRecording();
       await stopSession();
-      resetVoiceSetup();
-      setTranscriptions([]);
       cleanupProcessor();
-      
+      stopVoiceRecording();
+      setTranscriptions([]);
+      console.log('🛑 Session stopped');
     } catch (error) {
-      console.error('❌ Failed to stop session:', error);
+      console.error('❌ Session stop error:', error);
     }
-  }, [stopSession, stopRecording, recordingState.isRecording, resetVoiceSetup, voiceSetupState.isRecordingVoice, stopVoiceRecording, cleanupProcessor]);
+  }, [stopRecording, stopSession, cleanupProcessor, stopVoiceRecording]);
 
-  /**
-   * Handle voice setup completion
-   */
-  const handleVoiceSetupComplete = useCallback(async () => {
+  // Recording management functions
+  const handleStartRecording = useCallback(async () => {
+    if (!sessionState.sessionActive) {
+      console.warn('⚠️ Cannot start recording: no active session');
+      return;
+    }
+
     try {
-      console.log('✅ Voice setup completed, starting recording...');
       await startRecording();
+      console.log('🎤 Recording started');
     } catch (error) {
-      console.error('❌ Failed to start recording after voice setup:', error);
+      console.error('❌ Recording start failed:', error);
     }
-  }, [startRecording]);
+  }, [sessionState.sessionActive, startRecording]);
 
-  /**
-   * Clear all errors
-   */
-  const clearAllErrors = useCallback(() => {
+  const handleStopRecording = useCallback(async () => {
+    try {
+      await stopRecording();
+      console.log('⏹️ Recording stopped');
+    } catch (error) {
+      console.error('❌ Recording stop failed:', error);
+    }
+  }, [stopRecording]);
+
+  const handlePauseRecording = useCallback(async () => {
+    try {
+      await pauseRecording();
+      console.log('⏸️ Recording paused');
+    } catch (error) {
+      console.error('❌ Recording pause failed:', error);
+    }
+  }, [pauseRecording]);
+
+  const handleResumeRecording = useCallback(async () => {
+    try {
+      await resumeRecording();
+      console.log('▶️ Recording resumed');
+    } catch (error) {
+      console.error('❌ Recording resume failed:', error);
+    }
+  }, [resumeRecording]);
+
+  // Voice setup functions
+  const handleVoiceSetupNext = useCallback(async () => {
+    try {
+      await nextSpeaker();
+    } catch (error) {
+      console.error('❌ Voice setup next failed:', error);
+    }
+  }, [nextSpeaker]);
+
+  const handleVoiceSetupSkip = useCallback(() => {
+    skipVoiceSetup();
+  }, [skipVoiceSetup]);
+
+  const handleRetry = useCallback(() => {
     clearSessionError();
     clearRecordingError();
     clearProcessingError();
-    clearVoiceError();
-  }, [clearSessionError, clearRecordingError, clearProcessingError, clearVoiceError]);
+    clearVoiceSetupError();
+  }, [clearSessionError, clearRecordingError, clearProcessingError, clearVoiceSetupError]);
 
-  /**
-   * Get current error message
-   */
-  const getCurrentError = () => {
-    return sessionState.error || 
-           recordingState.error || 
-           audioProcessingState.processingError || 
-           voiceSetupState.voiceSetupError;
-  };
+  // Error handling
+  const hasError = sessionState.error || recordingState.error || audioProcessingState.processingError || voiceSetupState.voiceSetupError;
 
-  /**
-   * Show loading state while config loads
-   */
+  // Loading state
   if (!configLoaded) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight={200}>
+      <Box display="flex" justifyContent="center" alignItems="center" minHeight="200px">
         <CircularProgress />
-        <Typography variant="body2" sx={{ ml: 2 }}>
-          Loading transcription configuration...
+        <Typography variant="body1" sx={{ ml: 2 }}>
+          Laden van configuratie...
         </Typography>
       </Box>
     );
   }
 
   return (
-    <Box className="enhanced-live-transcription" sx={{ p: 2 }}>
+    <Box sx={{ width: '100%', maxWidth: '1200px', mx: 'auto', p: 2 }}>
       {/* Error Display */}
-      {getCurrentError() && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={clearAllErrors}>
-          {getCurrentError()}
+      {hasError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={handleRetry}>
+          <Typography variant="body2">
+            {sessionState.error || recordingState.error || audioProcessingState.processingError || voiceSetupState.voiceSetupError}
+          </Typography>
         </Alert>
       )}
 
@@ -269,22 +265,23 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
           voiceSetupState={voiceSetupState}
           sessionState={sessionState}
           onStartSession={handleStartSession}
-          onVoiceSetupNext={nextSpeaker}
-          onVoiceSetupSkip={skipVoiceSetup}
-          onRetry={() => handleStartSession(useVoiceSetup)}
+          onVoiceSetupNext={handleVoiceSetupNext}
+          onVoiceSetupSkip={handleVoiceSetupSkip}
+          onRetry={handleRetry}
         />
       )}
 
-      {/* Recording Controls */}
+      {/* Active Session Interface */}
       {sessionState.sessionActive && (
-        <>
+        <Box>
+          {/* Recording Controls */}
           <RecordingControls
             recordingState={recordingState}
             sessionState={sessionState}
-            onStartRecording={startRecording}
-            onStopRecording={stopRecording}
-            onPauseRecording={pauseRecording}
-            onResumeRecording={resumeRecording}
+            onStartRecording={handleStartRecording}
+            onStopRecording={handleStopRecording}
+            onPauseRecording={handlePauseRecording}
+            onResumeRecording={handleResumeRecording}
           />
 
           {/* Recording Status */}
@@ -299,22 +296,10 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
           <TranscriptionOutput
             transcriptions={transcriptions}
             isLoading={audioProcessingState.isProcessingBackground}
-            error={audioProcessingState.processingError}
+            error={audioProcessingState.processingError || undefined}
             showConfidence={true}
             showSpeakerDetection={true}
           />
-        </>
-      )}
-
-      {/* Session Stop Button */}
-      {sessionState.sessionActive && (
-        <Box sx={{ mt: 2, textAlign: 'center' }}>
-          <button
-            onClick={handleStopSession}
-            className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-md"
-          >
-            Stop Session
-          </button>
         </Box>
       )}
     </Box>

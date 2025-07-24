@@ -2,79 +2,78 @@ import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
 import AudioRecorder from './AudioRecorder';
+import type { AudioChunk } from '@/types';
 
-// ===== COMPLETE MOCK SETUP =====
+// ===== MOCKS =====
 
-interface MockMediaRecorder {
-  state: string;
-  start: jest.Mock;
-  stop: jest.Mock;
-  pause: jest.Mock;
-  resume: jest.Mock;
-  ondataavailable: ((event: any) => void) | null;
-  onerror: ((event: any) => void) | null;
-  onstart: ((event: any) => void) | null;
-  onstop: ((event: any) => void) | null;
-}
+const mockMediaRecorder = {
+  start: jest.fn(),
+  stop: jest.fn(),
+  pause: jest.fn(),
+  resume: jest.fn(),
+  ondataavailable: null as ((event: any) => void) | null,
+  onerror: null as ((event: any) => void) | null,
+  onstop: null as ((event: any) => void) | null,
+  state: 'inactive' as RecordingState,
+  mimeType: 'audio/webm;codecs=opus'
+};
 
-interface MockMediaStream {
-  getTracks: () => Array<{ stop: jest.Mock }>;
-  getAudioTracks: () => Array<{ stop: jest.Mock }>;
-}
+const mockStream = {
+  getTracks: () => [{ stop: jest.fn() }],
+  getAudioTracks: () => [{ stop: jest.fn() }]
+};
 
-// Global mock variables
-let mockMediaRecorder: MockMediaRecorder;
-let mockMediaStream: MockMediaStream;
+// Setup global mocks
+beforeAll(() => {
+  // Mock MediaRecorder with all required static methods
+  const MockMediaRecorder = jest.fn().mockImplementation(() => mockMediaRecorder);
+  MockMediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+  global.MediaRecorder = MockMediaRecorder as any;
 
-beforeEach(() => {
-  jest.clearAllMocks();
-  
-  // Create proper mock MediaRecorder
-  mockMediaRecorder = {
-    state: 'inactive',
-    start: jest.fn(),
-    stop: jest.fn(),
-    pause: jest.fn(),
-    resume: jest.fn(),
-    ondataavailable: null,
-    onerror: null,
-    onstart: null,
-    onstop: null
-  };
-
-  // Create proper mock MediaStream
-  mockMediaStream = {
-    getTracks: () => [{ stop: jest.fn() }],
-    getAudioTracks: () => [{ stop: jest.fn() }]
-  };
-
-  // Mock MediaRecorder constructor
-  global.MediaRecorder = jest.fn().mockImplementation(() => mockMediaRecorder) as any;
-  (global.MediaRecorder as any).isTypeSupported = jest.fn().mockReturnValue(true);
-
-  // Mock navigator.mediaDevices
+  // Mock getUserMedia
   Object.defineProperty(global.navigator, 'mediaDevices', {
     value: {
-      getUserMedia: jest.fn().mockResolvedValue(mockMediaStream)
+      getUserMedia: jest.fn().mockResolvedValue(mockStream)
     },
     writable: true
   });
 });
 
-// ===== TEST HELPER FUNCTIONS =====
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockMediaRecorder.state = 'inactive';
+});
 
-const mockOnAudioData = jest.fn();
+// ===== MOCK FUNCTIONS =====
+
+const mockOnAudioChunk = jest.fn();
+const mockOnError = jest.fn();
+const mockOnToggleRecording = jest.fn();
 
 // ===== TESTS =====
 
 describe('AudioRecorder', () => {
   test('renders recording button', () => {
-    render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    render(
+      <AudioRecorder 
+        onAudioChunk={mockOnAudioChunk}
+        onError={mockOnError}
+        isRecording={false}
+        onToggleRecording={mockOnToggleRecording}
+      />
+    );
     expect(screen.getByRole('button', { name: /start recording/i })).toBeInTheDocument();
   });
 
   test('starts recording when button clicked', async () => {
-    render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    render(
+      <AudioRecorder 
+        onAudioChunk={mockOnAudioChunk}
+        onError={mockOnError}
+        isRecording={false}
+        onToggleRecording={mockOnToggleRecording}
+      />
+    );
     const startButton = screen.getByRole('button', { name: /start recording/i });
     
     fireEvent.click(startButton);
@@ -85,7 +84,14 @@ describe('AudioRecorder', () => {
   });
 
   test('should handle data available events', async () => {
-    const { getByRole } = render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    const { getByRole } = render(
+      <AudioRecorder 
+        onAudioChunk={mockOnAudioChunk}
+        onError={mockOnError}
+        isRecording={false}
+        onToggleRecording={mockOnToggleRecording}
+      />
+    );
     const startButton = getByRole('button', { name: /start recording/i });
     
     fireEvent.click(startButton);
@@ -104,12 +110,19 @@ describe('AudioRecorder', () => {
     }
 
     await waitFor(() => {
-      expect(mockOnAudioData).toHaveBeenCalledWith(expect.any(Blob));
+      expect(mockOnAudioChunk).toHaveBeenCalledWith(expect.any(Blob));
     });
   });
 
   test('should handle recording errors', async () => {
-    const { getByRole } = render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    const { getByRole } = render(
+      <AudioRecorder 
+        onAudioChunk={mockOnAudioChunk}
+        onError={mockOnError}
+        isRecording={false}
+        onToggleRecording={mockOnToggleRecording}
+      />
+    );
     const startButton = getByRole('button', { name: /start recording/i });
     
     fireEvent.click(startButton);
@@ -133,11 +146,14 @@ describe('AudioRecorder', () => {
   });
 
   test('stops recording when stop button clicked', async () => {
-    render(<AudioRecorder onAudioData={mockOnAudioData} />);
-    
-    // Start recording first
-    const startButton = screen.getByRole('button', { name: /start recording/i });
-    fireEvent.click(startButton);
+    render(
+      <AudioRecorder 
+        onAudioChunk={mockOnAudioChunk}
+        onError={mockOnError}
+        isRecording={true}
+        onToggleRecording={mockOnToggleRecording}
+      />
+    );
     
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /stop recording/i })).toBeInTheDocument();
@@ -160,7 +176,14 @@ describe('AudioRecorder', () => {
       writable: true
     });
 
-    render(<AudioRecorder onAudioData={mockOnAudioData} />);
+    render(
+      <AudioRecorder 
+        onAudioChunk={mockOnAudioChunk}
+        onError={mockOnError}
+        isRecording={false}
+        onToggleRecording={mockOnToggleRecording}
+      />
+    );
     const startButton = screen.getByRole('button', { name: /start recording/i });
     
     fireEvent.click(startButton);

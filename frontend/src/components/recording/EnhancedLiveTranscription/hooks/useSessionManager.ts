@@ -86,25 +86,23 @@ export const useSessionManager = ({
 
       const processedParticipants = processParticipants(participantList);
 
-      // Start enhanced session with single config object
-      const result = await enhancedLiveTranscriptionService.startEnhancedSession({
+      // Start enhanced session
+      const result = await enhancedLiveTranscriptionService.startEnhancedSession(
         meetingId,
-        participants: processedParticipants,
-        config,
-        useVoiceSetup
-      });
+        processedParticipants
+      );
 
-      if (result.success && result.sessionId) {
+      if (result.success && result.session_id) {
         setSessionState(prev => ({
           ...prev,
           sessionActive: true,
-          sessionId: result.sessionId,
+          sessionId: result.session_id,
           isStartingSession: false,
           startupProgress: 'Session started!',
           error: null
         }));
 
-        console.log('✅ Enhanced session started successfully:', result.sessionId);
+        console.log('✅ Enhanced session started successfully:', result.session_id);
         
         // Clear progress message after delay
         setTimeout(() => {
@@ -113,7 +111,7 @@ export const useSessionManager = ({
         
         return {
           success: true,
-          sessionId: result.sessionId
+          sessionId: result.session_id
         };
       } else {
         throw new Error(result.error || 'Failed to start session');
