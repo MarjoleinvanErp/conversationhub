@@ -358,7 +358,48 @@ class LiveTranscriptionController extends Controller
                 ]);
                 // Use Whisper for transcription
                 $transcriptionId = 'chunk_' . $request->session_id . '_' . ($request->chunk_number ?? time());
-                $result = $this->liveTranscriptionService->processWhisperVerification($transcriptionId, $audioContent);
+                // Check configuration for service selection
+$defaultService = ConfigService::getDefaultTranscriptionService();
+$n8nEnabled = ConfigService::isN8NTranscriptionEnabled();
+
+// Determine which service to use
+if ($defaultService === 'n8n' && $n8nEnabled) {
+    Log::info('🎯 Processing chunk with N8N workflow via verifyWithWhisper');
+    
+    $options = [
+        'session_id' => $request->session_id ?? 'verify_session_' . time(),
+        'chunk_number' => 1,
+        'timestamp' => now()->toISOString(),
+    ];
+    
+    $result = $this->liveTranscriptionService->processWithN8N($audioContent, $options);
+} else {
+    Log::info('🎯 Processing chunk with Whisper service via verifyWithWhisper');
+    
+// Check configuration for service selection
+$defaultService = ConfigService::getDefaultTranscriptionService();
+$n8nEnabled = ConfigService::isN8NTranscriptionEnabled();
+
+// Determine which service to use
+if ($defaultService === 'n8n' && $n8nEnabled) {
+    Log::info('🎯 Processing chunk with N8N workflow via verifyWithWhisper');
+    
+    $options = [
+        'session_id' => $request->session_id ?? 'verify_session_' . time(),
+        'chunk_number' => 1,
+        'timestamp' => now()->toISOString(),
+    ];
+    
+    $result = $this->liveTranscriptionService->processWithN8N($audioContent, $options);
+} else {
+    Log::info('🎯 Processing chunk with Whisper service via verifyWithWhisper');
+    
+    $result = $this->liveTranscriptionService->processWhisperVerification(
+        $request->transcription_id ?? 'chunk_' . time(),
+        $audioContent
+    );
+}
+}
             }
 
             if ($result['success']) {

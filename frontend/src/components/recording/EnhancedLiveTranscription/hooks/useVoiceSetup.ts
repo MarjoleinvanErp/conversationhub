@@ -172,7 +172,7 @@ export const useVoiceSetup = ({
         `participant_${currentSpeaker.name.toLowerCase().replace(/\s+/g, '_')}_${voiceSetupState.currentSetupSpeaker}`;
 
       // Setup voice profile with service (only two parameters)
-      const result = await enhancedLiveTranscriptionService.setupVoiceProfile(speakerId, voiceBlob);
+      const result = await enhancedLiveTranscriptionService.setupVoiceProfile(voiceBlob);
 
       setVoiceSetupState(prev => ({
         ...prev,

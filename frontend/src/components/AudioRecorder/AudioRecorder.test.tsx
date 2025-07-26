@@ -27,7 +27,7 @@ const mockStream = {
 beforeAll(() => {
   // Mock MediaRecorder with all required static methods
   const MockMediaRecorder = jest.fn().mockImplementation(() => mockMediaRecorder);
-  MockMediaRecorder.isTypeSupported = jest.fn().mockReturnValue(true);
+(MockMediaRecorder as any).isTypeSupported = jest.fn().mockReturnValue(true);
   global.MediaRecorder = MockMediaRecorder as any;
 
   // Mock getUserMedia

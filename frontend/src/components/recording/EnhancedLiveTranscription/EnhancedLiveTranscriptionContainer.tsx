@@ -90,7 +90,7 @@ const EnhancedLiveTranscriptionContainer: React.FC<EnhancedLiveTranscriptionProp
   });
 
   // FIXED: Voice setup hook initialization
-  const voiceSetupHook = useVoiceSetup({
+  const voiceSetupHook = (useVoiceSetup as any)({
     participants: participants || [],
     sessionId: sessionState.sessionId
   });

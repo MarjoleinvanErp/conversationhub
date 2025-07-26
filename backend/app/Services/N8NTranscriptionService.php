@@ -16,7 +16,7 @@ class N8NTranscriptionService
     public function __construct()
     {
         $config = ConfigService::getN8NConfig();
-        $this->webhookUrl = $config['webhook_url'];
+	$this->webhookUrl = $config['transcription_webhook_url'];
         $this->apiKey = $config['api_key'];
         $this->enabled = !empty($this->webhookUrl);
     }
