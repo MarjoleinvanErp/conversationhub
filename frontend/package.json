@@ -14,7 +14,15 @@
     "e2e": "playwright test",
     "e2e:ui": "playwright test --ui",
     "e2e:headed": "playwright test --headed",
-    "test:setup": "playwright install"
+    "test:setup": "playwright install",
+    "test:recording": "jest src/components/recording/clean/__tests__",
+    "test:recording:watch": "jest src/components/recording/clean/__tests__ --watch",
+    "test:recording:coverage": "jest src/components/recording/clean/__tests__ --coverage",
+    "e2e:recording": "playwright test e2e/meeting/auto-recording.spec.ts",
+    "e2e:recording:debug": "playwright test e2e/meeting/auto-recording.spec.ts --debug",
+    "e2e:recording:headed": "playwright test e2e/meeting/auto-recording.spec.ts --headed",
+    "test:all:recording": "npm run test:recording && npm run e2e:recording",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@emotion/react": "^11.11.1",
@@ -23,6 +31,7 @@
     "@mui/material": "^5.15.1",
     "@tanstack/react-query": "^5.12.2",
     "axios": "^1.6.2",
+    "lucide-react": "^0.525.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.20.1"
@@ -32,6 +41,7 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^14.3.1",
     "@testing-library/user-event": "^14.6.1",
+    "@types/dom-mediacapture-record": "^1.0.22",
     "@types/jest": "^29.5.14",
     "@types/node": "^20.19.2",
     "@types/react": "^18.2.43",

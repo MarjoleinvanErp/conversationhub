@@ -6,12 +6,11 @@ import enhancedLiveTranscriptionService from '../../services/api/enhancedLiveTra
 import { agendaService } from '../../services/agendaService';
 import { useMeetingHandlers } from './hooks/useMeetingHandlers.js';
 import { getSpeakerColor } from './utils/meetingUtils.js';
-
+import MeetingRoomTabs from './components/MeetingRoomTabs.jsx';
 
 // Import alle components
 import {
   MeetingHeader,
-  RecordingPanel,
   LiveTranscriptionPanel,
   WhisperTranscriptionPanel,
   AgendaPanel,
@@ -691,30 +690,16 @@ const loadMeetingData = async () => {
         <div className="grid grid-cols-12 gap-6">
           {/* Left Column - Main Panels (8 columns) */}
           <div className="col-span-8 space-y-6">
-            
-            {/* 1. Recording Panel */}
-            {SHOW_RECORDING_PANEL && (
-              <RecordingPanel
-                isExpanded={expandedPanels.recording}
-                onToggle={() => togglePanel('recording')}
-                recordingMode={recordingMode}
-                onSelectRecordingMode={selectRecordingMode}
-                isRecording={isRecording}
-                recordingTime={recordingTime}
-                recordingStartTime={recordingStartTime}
-                onStartManualRecording={startManualRecording}
-                onStartAutoTranscription={startAutoTranscription}
-                onPauseRecording={pauseRecording}
-                onStopRecording={stopRecording}
-                onLiveTranscriptionReceived={handleLiveTranscriptionReceived}
-                onWhisperTranscriptionReceived={handleWhisperUpdate} // UPDATED
-                meetingId={id}
-                meeting={meeting}
-                formatTime={formatTime}
-                onRefresh={refreshPanelData}
-                isRefreshing={refreshingPanels.recording}
-              />
-            )}
+
+            {/* 1. Meeting Room Tabs met AutoRecordingPanel */}
+            <MeetingRoomTabs
+              meeting={meeting}
+              onUpdateMeeting={setMeeting}
+              currentAgendaIndex={currentAgendaIndex}
+              agendaStartTimes={agendaStartTimes}
+              transcriptionData={liveTranscriptions}
+              whisperData={whisperTranscriptions}
+            />            
 
             {/* 2. Report Panel - MOVED FROM SIDEBAR TO MAIN COLUMN */}
 <ReportPanel

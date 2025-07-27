@@ -1,170 +1,232 @@
-import React from 'react';
-import EnhancedLiveTranscription from '../../../components/recording/EnhancedLiveTranscription.jsx';
-import SimpleAudioRecorder from '../../../components/recording/AudioRecorder/SimpleAudioRecorder.jsx';
-import AudioUploadRecorder from '../../../components/recording/AudioRecorder/AudioUploadRecorder.jsx';
-import SpeakerDetection from '../../../components/recording/VoiceAnalytics/SpeakerDetection.jsx';
-import { formatSpeakingTime, calculateAgendaProgress, formatTimestamp, getSpeakerColor } from '../utils/meetingUtils.js';
+import React, { useState, useEffect } from 'react';
+import { Clock, Users, FileText, Mic2 } from 'lucide-react';
 
+// Import nieuwe clean AutoRecordingPanel
+import { AutoRecordingPanel } from '../../../components/recording/clean';
 
-export const MeetingRoomTabs = ({
-  activeTab,
-  meetingId,
-  meeting,
-  currentSpeaker,
-  availableSpeakers,
-  speakerStats,
-  showAudioUploader,
-  setShowAudioUploader,
-  currentAgendaIndex,
-  agendaStartTimes,
-  handlers
+const MeetingRoomTabs = ({ 
+  meeting, 
+  onUpdateMeeting, 
+  currentAgendaIndex = 0, 
+  agendaStartTimes = {},
+  transcriptionData = [],
+  whisperData = []
 }) => {
+  // State voor active tab
+  const [activeTab, setActiveTab] = useState('recording');
+  const [expandedPanels, setExpandedPanels] = useState({
+    recording: true,
+    transcription: false,
+    participants: false,
+    agenda: false
+  });
 
-  // Tab: Live Transcription
-  const TranscriptionTab = () => (
+  // Helper functions
+  const formatTimestamp = (timestamp) => {
+    return new Date(timestamp).toLocaleTimeString('nl-NL');
+  };
+
+  const calculateAgendaProgress = (agendaItems, currentIndex) => {
+    if (!agendaItems || agendaItems.length === 0) return 0;
+    return Math.round(((currentIndex + 1) / agendaItems.length) * 100);
+  };
+
+  const getSpeakerColor = (speakerIndex) => {
+    const colors = [
+      '#3B82F6', '#10B981', '#F59E0B', '#EF4444', 
+      '#8B5CF6', '#06B6D4', '#84CC16', '#F97316'
+    ];
+    return colors[speakerIndex % colors.length];
+  };
+
+  const togglePanel = (panelName) => {
+    setExpandedPanels(prev => ({
+      ...prev,
+      [panelName]: !prev[panelName]
+    }));
+  };
+
+  // Tab definitions
+  const tabs = [
+    {
+      id: 'recording',
+      label: 'Opname',
+      icon: Mic2,
+      count: null,
+      color: 'blue'
+    },
+    {
+      id: 'transcription',
+      label: 'Transcriptie',
+      icon: FileText,
+      count: transcriptionData?.length || 0,
+      color: 'green'
+    },
+    {
+      id: 'participants',
+      label: 'Deelnemers',
+      icon: Users,
+      count: meeting?.participants?.length || 0,
+      color: 'purple'
+    },
+    {
+      id: 'agenda',
+      label: 'Agenda',
+      icon: Clock,
+      count: meeting?.agenda_items?.length || 0,
+      color: 'orange'
+    }
+  ];
+
+  // Tab: Recording (AutoRecordingPanel)
+  const RecordingTab = () => (
     <div className="space-y-6">
-      {/* Enhanced Live Transcription - Main Component */}
-      <EnhancedLiveTranscription
-        meetingId={meetingId}
-        participants={meeting?.participants || []}
-        onTranscriptionUpdate={handlers.handleTranscriptionReceived}
-        onSessionStatsUpdate={handlers.handleSessionStatsUpdate}
+      <AutoRecordingPanel
+        meetingId={meeting?.id || 'unknown'}
+        isExpanded={expandedPanels.recording}
+        onToggleExpand={() => togglePanel('recording')}
+        participants={meeting?.participants?.map(p => ({
+          id: p.id?.toString() || Math.random().toString(),
+          name: p.name || 'Onbekend',
+          role: p.role || 'Deelnemer',
+          status: p.status || 'online',
+          color: getSpeakerColor(meeting.participants.indexOf(p))
+        })) || []}
+        onRecordingStart={(session) => {
+          console.log('📹 Recording started:', session);
+          // Optioneel: update meeting status
+          if (onUpdateMeeting) {
+            onUpdateMeeting({
+              ...meeting,
+              recording_status: 'active',
+              recording_started_at: new Date().toISOString()
+            });
+          }
+        }}
+        onRecordingStop={(session) => {
+          console.log('⏹️ Recording stopped:', session);
+          // Optioneel: update meeting status
+          if (onUpdateMeeting) {
+            onUpdateMeeting({
+              ...meeting,
+              recording_status: 'stopped',
+              recording_ended_at: new Date().toISOString()
+            });
+          }
+        }}
+        onChunkSent={(chunk) => {
+          console.log('📤 Chunk sent to N8N:', chunk);
+        }}
+        onError={(error) => {
+          console.error('❌ Recording error:', error);
+        }}
       />
-
-      {/* Alternative Audio Options */}
-      <div className="modern-card p-6">
-        <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-medium">Alternatieve Audio Opties</h3>
-          <button
-            onClick={() => setShowAudioUploader(!showAudioUploader)}
-            className="btn-neutral px-4 py-2"
-          >
-            {showAudioUploader ? '🔼 Verberg' : '🔽 Toon'} Upload Opties
-          </button>
-        </div>
-
-        {showAudioUploader && (
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Simple Live Transcription */}
-              <SimpleAudioRecorder
-                onTranscriptionReceived={handlers.handleTranscriptionReceived}
-                disabled={false}
-              />
-
-              {/* Audio Upload & Process */}
-              <AudioUploadRecorder
-                onTranscriptionReceived={handlers.handleTranscriptionReceived}
-                meetingId={meetingId}
-                disabled={false}
-              />
-            </div>
-
-            {/* Voice Activity Detection */}
-            <SpeakerDetection
-              isRecording={false}
-              audioStream={null}
-              onVoiceActivity={(level) => console.log('Voice activity:', level)}
-            />
-          </div>
-        )}
-      </div>
     </div>
   );
 
-  // Tab: Participants Management
-  const ParticipantsTab = () => (
+  // Tab: Transcriptie
+  const TranscriptionTab = () => (
     <div className="space-y-6">
-      {/* Current Speaker Selection */}
+      {/* Live Transcriptie */}
       <div className="modern-card p-6">
-        <h3 className="text-lg font-medium mb-4">🎤 Actieve Spreker</h3>
+        <h3 className="text-lg font-medium mb-4 flex items-center">
+          <FileText className="w-5 h-5 mr-2 text-green-600" />
+          Live Transcriptie
+        </h3>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {availableSpeakers.map((speaker) => (
-            <div
-              key={speaker.id}
-              onClick={() => handlers.handleSpeakerChange(speaker)}
-              className={`modern-card p-4 cursor-pointer transition-all duration-300 border-2 ${
-                currentSpeaker?.id === speaker.id
-                  ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold"
-                  style={{ backgroundColor: speaker.color }}
-                >
-                  {speaker.displayName.charAt(0).toUpperCase()}
-                </div>
-                
-                <div className="flex-1">
-                  <h4 className="font-semibold text-gray-800">{speaker.displayName}</h4>
-                  <p className="text-sm text-gray-600 capitalize">{speaker.role}</p>
-                </div>
-
-                {currentSpeaker?.id === speaker.id && (
-                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                )}
-              </div>
-              
-              {/* Speaker Stats */}
-              <div className="mt-3 pt-3 border-t border-gray-200">
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <span className="text-gray-500">Spreektijd:</span>
-                    <div className="font-medium">
-                      {formatSpeakingTime(speakerStats[speaker.id]?.totalTime || 0)}
-                    </div>
+        {transcriptionData && transcriptionData.length > 0 ? (
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            {transcriptionData.map((item, index) => (
+              <div key={index} className="transcription-item bg-gray-50">
+                <div className="flex items-start space-x-3">
+                  <div 
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium text-sm mt-1"
+                    style={{ backgroundColor: getSpeakerColor(item.speaker_index || 1) }}
+                  >
+                    {item.speaker?.charAt(0)?.toUpperCase() || 'S'}
                   </div>
-                  <div>
-                    <span className="text-gray-500">Segmenten:</span>
-                    <div className="font-medium">
-                      {speakerStats[speaker.id]?.segments || 0}
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-gray-800">
+                        {item.speaker || 'Spreker'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {item.timestamp ? formatTimestamp(item.timestamp) : ''}
+                      </span>
                     </div>
+                    <p className="text-gray-700">{item.text}</p>
+                    {item.confidence && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Vertrouwen: {Math.round(item.confidence * 100)}%
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Add New Speaker */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <h4 className="font-medium mb-3">➕ Nieuwe Spreker Toevoegen</h4>
-          <div className="flex space-x-3">
-            <input
-              type="text"
-              placeholder="Naam van nieuwe spreker"
-              className="modern-input flex-1"
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && e.target.value.trim()) {
-                  handlers.handleAddSpeaker(e.target.value.trim());
-                  e.target.value = '';
-                }
-              }}
-            />
-            <button
-              onClick={(e) => {
-                const input = e.target.parentElement.querySelector('input');
-                if (input.value.trim()) {
-                  handlers.handleAddSpeaker(input.value.trim());
-                  input.value = '';
-                }
-              }}
-              className="btn-secondary px-4 py-2"
-            >
-              Toevoegen
-            </button>
+            ))}
           </div>
-        </div>
+        ) : (
+          <div className="text-center py-8 text-gray-500">
+            Nog geen transcriptie data beschikbaar
+          </div>
+        )}
       </div>
 
-      {/* Participants Overview */}
+      {/* Whisper Enhanced Transcriptie */}
+      {whisperData && whisperData.length > 0 && (
+        <div className="modern-card p-6">
+          <h3 className="text-lg font-medium mb-4 flex items-center">
+            <FileText className="w-5 h-5 mr-2 text-blue-600" />
+            Enhanced Transcriptie (Whisper)
+          </h3>
+          
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            {whisperData.map((item, index) => (
+              <div key={index} className="transcription-item bg-blue-50">
+                <div className="flex items-start space-x-3">
+                  <div 
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium text-sm mt-1"
+                    style={{ backgroundColor: getSpeakerColor(item.speaker_index || 1) }}
+                  >
+                    {item.speaker?.charAt(0)?.toUpperCase() || 'S'}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-gray-800">
+                        {item.speaker || 'Spreker'}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {item.timestamp ? formatTimestamp(item.timestamp) : ''}
+                      </span>
+                    </div>
+                    <p className="text-gray-700">{item.text}</p>
+                    {item.confidence && (
+                      <div className="text-xs text-gray-500 mt-1">
+                        Vertrouwen: {Math.round(item.confidence * 100)}%
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  // Tab: Deelnemers
+  const ParticipantsTab = () => (
+    <div className="space-y-6">
       <div className="modern-card p-6">
-        <h3 className="text-lg font-medium mb-4">👥 Geregistreerde Deelnemers</h3>
-        
-        {meeting?.participants?.length > 0 ? (
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium">👥 Geregistreerde Deelnemers</h3>
+          <span className="text-sm text-gray-600">
+            {meeting?.participants?.length || 0} deelnemers
+          </span>
+        </div>
+
+        {meeting?.participants && meeting.participants.length > 0 ? (
           <div className="space-y-3">
             {meeting.participants.map((participant, index) => (
               <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -173,7 +235,7 @@ export const MeetingRoomTabs = ({
                     className="w-8 h-8 rounded-full flex items-center justify-center text-white font-medium text-sm"
                     style={{ backgroundColor: getSpeakerColor(index + 1) }}
                   >
-                    {participant.name.charAt(0).toUpperCase()}
+                    {participant.name?.charAt(0)?.toUpperCase() || 'U'}
                   </div>
                   <div>
                     <h4 className="font-medium text-gray-800">{participant.name}</h4>
@@ -185,6 +247,13 @@ export const MeetingRoomTabs = ({
                   {participant.email && (
                     <div>📧 {participant.email}</div>
                   )}
+                  <div className={`inline-block px-2 py-1 rounded text-xs ${
+                    participant.status === 'online' 
+                      ? 'bg-green-100 text-green-800' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {participant.status || 'offline'}
+                  </div>
                 </div>
               </div>
             ))}
@@ -216,51 +285,23 @@ export const MeetingRoomTabs = ({
             <span>Voortgang</span>
             <span>{calculateAgendaProgress(meeting?.agenda_items, currentAgendaIndex)}%</span>
           </div>
-          <div className="agenda-progress">
+          <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
-              className="agenda-progress-bar"
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
               style={{ 
                 width: `${calculateAgendaProgress(meeting?.agenda_items, currentAgendaIndex)}%` 
               }}
-            ></div>
+            />
           </div>
         </div>
 
-        {/* Navigation Controls */}
-        <div className="flex justify-center space-x-4 mb-6">
-          <button
-            onClick={handlers.handlePreviousAgendaItem}
-            disabled={currentAgendaIndex <= 0}
-            className="btn-neutral px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            ← Vorige
-          </button>
-          
-          <span className="flex items-center px-4 py-2 bg-blue-50 text-blue-700 rounded-lg font-medium">
-            Huidige: {currentAgendaIndex + 1}
-          </span>
-          
-          <button
-            onClick={handlers.handleNextAgendaItem}
-            disabled={!meeting?.agenda_items || currentAgendaIndex >= meeting.agenda_items.length - 1}
-            className="btn-neutral px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Volgende →
-          </button>
-        </div>
-      </div>
-
-      {/* Agenda Items List */}
-      <div className="modern-card p-6">
-        <h3 className="text-lg font-medium mb-4">📝 Agenda Items</h3>
-        
-        {meeting?.agenda_items?.length > 0 ? (
-          <div className="space-y-3">
+        {/* Agenda Items */}
+        {meeting?.agenda_items && meeting.agenda_items.length > 0 ? (
+          <div className="space-y-4">
             {meeting.agenda_items.map((item, index) => (
               <div
                 key={index}
-                onClick={() => handlers.handleGoToAgendaItem(index)}
-                className={`p-4 rounded-lg border-2 cursor-pointer transition-all duration-300 ${
+                className={`p-4 rounded-lg border-2 transition-all ${
                   index === currentAgendaIndex
                     ? 'border-blue-500 bg-blue-50'
                     : index < currentAgendaIndex
@@ -315,6 +356,8 @@ export const MeetingRoomTabs = ({
   // Render active tab content
   const renderTabContent = () => {
     switch (activeTab) {
+      case 'recording':
+        return <RecordingTab />;
       case 'transcription':
         return <TranscriptionTab />;
       case 'participants':
@@ -322,13 +365,48 @@ export const MeetingRoomTabs = ({
       case 'agenda':
         return <AgendaTab />;
       default:
-        return <TranscriptionTab />;
+        return <RecordingTab />;
     }
   };
 
   return (
-    <div className="mt-6">
-      {renderTabContent()}
+    <div className="space-y-6">
+      {/* Tab Navigation */}
+      <div className="flex space-x-1 bg-gray-100 p-1 rounded-lg">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 flex items-center justify-center space-x-2 px-4 py-3 rounded-md font-medium transition-all ${
+                isActive
+                  ? `bg-white text-${tab.color}-600 shadow-sm`
+                  : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{tab.label}</span>
+              {tab.count !== null && (
+                <span className={`px-2 py-0.5 text-xs rounded-full ${
+                  isActive
+                    ? `bg-${tab.color}-100 text-${tab.color}-700`
+                    : 'bg-gray-200 text-gray-600'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Tab Content */}
+      <div className="min-h-[400px]">
+        {renderTabContent()}
+      </div>
     </div>
   );
 };
