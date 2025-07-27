@@ -68,72 +68,82 @@ const AutoRecordingPanel: React.FC<AutoRecordingPanelProps> = ({
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
-  // Helper: Verzend audio chunk naar N8N
+  // Helper: Verzend audio chunk naar N8N (Simplified - send WebM directly)
   const sendChunkToN8N = useCallback(async (chunk: Blob, chunkNumber: number) => {
     try {
-      const formData = new FormData();
-      formData.append('audio', chunk, `chunk_${chunkNumber}_${Date.now()}.webm`);
-      formData.append('meetingId', meetingId);
-      formData.append('chunkNumber', chunkNumber.toString());
-      formData.append('timestamp', new Date().toISOString());
-      formData.append('duration', CHUNK_DURATION.toString());
+      console.log(`📤 Sending chunk ${chunkNumber} to N8N...`, {
+        size: chunk.size,
+        type: chunk.type,
+        timestamp: new Date().toISOString()
+      });
+
+      // Convert to base64 for reliable transport
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          const base64 = result.split(',')[1]; // Remove data URL prefix
+          resolve(base64);
+        };
+        reader.onerror = () => reject(new Error('Failed to read audio blob'));
+        reader.readAsDataURL(chunk);
+      });
+
+      // Send as JSON with base64 audio data (WebM format - let N8N/Whisper handle conversion)
+      const payload = {
+        meetingId: meetingId,
+        chunkNumber: chunkNumber,
+        timestamp: new Date().toISOString(),
+        duration: CHUNK_DURATION,
+        audioData: base64Data,
+        audioType: chunk.type, // Keep original WebM format
+        audioSize: chunk.size,
+        filename: `chunk_${chunkNumber}_${Date.now()}.webm`
+      };
 
       const response = await fetch(N8N_WEBHOOK_URL, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
       });
 
       if (!response.ok) {
-        throw new Error(`N8N webhook error: ${response.status}`);
+        throw new Error(`N8N webhook error: ${response.status} ${response.statusText}`);
       }
 
+      const result = await response.text();
+      console.log(`✅ Audio chunk ${chunkNumber} successfully sent to N8N:`, result);
+      
       setLastChunkSent(new Date());
-      console.log(`✅ Audio chunk ${chunkNumber} verzonden naar N8N`);
       
     } catch (error) {
-      console.error('❌ Fout bij verzenden chunk naar N8N:', error);
-      setError(`Fout bij verzenden audio: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
+      console.error('❌ Error sending chunk to N8N:', error);
+      setError(`Error sending audio: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }, [meetingId]);
 
-  // Helper: Start nieuwe audio chunk opname
-  const startNewChunk = useCallback(() => {
-    if (!mediaRecorderRef.current || session?.status !== 'recording') return;
-
-    currentChunkRef.current = [];
-    
-    if (mediaRecorderRef.current.state === 'inactive') {
-      mediaRecorderRef.current.start();
+  // Helper: Maak nieuwe chunk en verzend huidige
+  const processCurrentChunk = useCallback(async () => {
+    if (currentChunkRef.current.length === 0) {
+      console.log('⚠️ Geen audio data voor chunk, skippen...');
+      return;
     }
-  }, [session?.status]);
-
-  // Helper: Stop en verzend huidige chunk
-  const stopAndSendChunk = useCallback(async () => {
-    if (!mediaRecorderRef.current || currentChunkRef.current.length === 0) return;
 
     try {
-      // Stop opname als actief
-      if (mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
-      }
-
-      // Wacht tot data beschikbaar is
-      await new Promise<void>((resolve) => {
-        const checkData = () => {
-          if (currentChunkRef.current.length > 0) {
-            resolve();
-          } else {
-            setTimeout(checkData, 100);
-          }
-        };
-        checkData();
-      });
-
       // Maak blob van chunk data
       const chunkBlob = new Blob(currentChunkRef.current, { type: 'audio/webm' });
+      console.log(`🎵 Processing chunk:`, {
+        size: chunkBlob.size,
+        blobCount: currentChunkRef.current.length,
+        duration: CHUNK_DURATION
+      });
       
       if (chunkBlob.size > 0) {
         const chunkNumber = session?.chunks.length || 0;
+        
+        // Verzend naar N8N (wordt geconverteerd naar WAV in sendChunkToN8N)
         await sendChunkToN8N(chunkBlob, chunkNumber + 1);
 
         // Update session met nieuwe chunk
@@ -152,6 +162,9 @@ const AutoRecordingPanel: React.FC<AutoRecordingPanelProps> = ({
         }
       }
 
+      // Reset voor volgende chunk
+      currentChunkRef.current = [];
+
     } catch (error) {
       console.error('❌ Fout bij chunk verwerking:', error);
       setError(`Fout bij chunk verwerking: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
@@ -160,70 +173,64 @@ const AutoRecordingPanel: React.FC<AutoRecordingPanelProps> = ({
 
   // Setup MediaRecorder
   const setupMediaRecorder = useCallback((stream: MediaStream) => {
+    console.log('🔧 setupMediaRecorder called with stream:', stream);
+    
+    console.log('🎥 Creating MediaRecorder...');
+    const recorder = new MediaRecorder(stream, {
+      mimeType: 'audio/webm;codecs=opus'
+    });
+    console.log('✅ MediaRecorder created:', recorder);
 
-console.log('🔧 setupMediaRecorder called with stream:', stream); // DEBUG
-    try {
-      console.log('🎥 Creating MediaRecorder...');
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
-      console.log('✅ MediaRecorder created:', mediaRecorder);
+    // Event handlers
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        console.log(`📊 Data available: ${event.data.size} bytes`);
+        currentChunkRef.current.push(event.data);
+      }
+    };
 
-      mediaRecorder.ondataavailable = (event) => {
-console.log('📊 Data available event:', event.data.size, 'bytes'); // DEBUG
-        if (event.data.size > 0) {
-          currentChunkRef.current.push(event.data);
-        }
-      };
+    recorder.onstart = () => {
+      console.log('🎙️ MediaRecorder gestart');
+      currentChunkRef.current = [];
+    };
 
-      mediaRecorder.onstart = () => {
-        console.log('📹 MediaRecorder gestart');
-      };
+    recorder.onstop = () => {
+      console.log('⏹️ MediaRecorder gestopt');
+    };
 
-      mediaRecorder.onstop = () => {
-        console.log('⏹️ MediaRecorder gestopt');
-      };
+    recorder.onerror = (event) => {
+      console.error('❌ MediaRecorder error:', event);
+      setError('Fout bij audio opname');
+    };
 
-      mediaRecorder.onerror = (event) => {
-        console.error('❌ MediaRecorder fout:', event);
-        setError('MediaRecorder fout opgetreden');
-      };
-
-      mediaRecorderRef.current = mediaRecorder;
-      return mediaRecorder;
-
-    } catch (error) {
-      console.error('❌ Fout bij MediaRecorder setup:', error);
-      throw new Error(`MediaRecorder setup mislukt: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
-    }
+    mediaRecorderRef.current = recorder;
+    return recorder;
   }, []);
 
-  // Start automatische opname
+  // Start recording
   const startRecording = useCallback(async () => {
+    console.log('🚀 startRecording called');
     setIsInitializing(true);
     setError(null);
 
-    console.log('🚀 startRecording called'); // DEBUG
-
     try {
-      // Vraag microfoon toegang
+      // Get microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: 44100
         }
       });
       console.log('✅ Microphone access granted, stream:', stream);
+
       audioStreamRef.current = stream;
-
-      // Setup MediaRecorder
+      
       console.log('🔧 Setting up MediaRecorder...');
-      const mediaRecorder = setupMediaRecorder(stream);
-      console.log('✅ MediaRecorder setup complete:', mediaRecorder);
+      const recorder = setupMediaRecorder(stream);
+      console.log('✅ MediaRecorder setup complete:', recorder);
 
-      // Maak nieuwe session
+      // Create session
       const newSession: RecordingSession = {
         id: `session_${Date.now()}`,
         meetingId,
@@ -231,19 +238,20 @@ console.log('📊 Data available event:', event.data.size, 'bytes'); // DEBUG
         chunks: [],
         status: 'recording'
       };
-
       setSession(newSession);
 
-      // Start eerste chunk
-      startNewChunk();
+      // Start recording
+      recorder.start(1000); // Collect data every 1 second for smooth chunks
+      console.log('🎙️ Recording gestart met 1s intervals');
 
-      // Setup chunk interval (elke 90 seconden)
-      chunkIntervalRef.current = setInterval(async () => {
-        await stopAndSendChunk();
-        startNewChunk();
+      // Start chunk interval (elke 90 seconden)
+      console.log('⏰ Setting up 90s chunk interval...');
+      chunkIntervalRef.current = setInterval(() => {
+        console.log('⏰ 90s interval triggered - processing chunk');
+        processCurrentChunk();
       }, CHUNK_DURATION * 1000);
 
-      // Setup timer
+      // Start recording time counter
       recordingIntervalRef.current = setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
@@ -256,58 +264,77 @@ console.log('📊 Data available event:', event.data.size, 'bytes'); // DEBUG
     } finally {
       setIsInitializing(false);
     }
-  }, [meetingId, setupMediaRecorder, startNewChunk, stopAndSendChunk]);
+  }, [meetingId, setupMediaRecorder, processCurrentChunk]);
 
-  // Stop opname
+  // Stop recording
   const stopRecording = useCallback(async () => {
+    console.log('🛑 stopRecording called');
+
     try {
-      // Clear intervals
+      // Stop intervals first
       if (chunkIntervalRef.current) {
         clearInterval(chunkIntervalRef.current);
         chunkIntervalRef.current = null;
+        console.log('⏰ Chunk interval gestopt');
       }
 
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
         recordingIntervalRef.current = null;
+        console.log('⏰ Recording interval gestopt');
       }
 
-      // Stop en verzend laatste chunk
-      await stopAndSendChunk();
-
-      // Stop MediaRecorder
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      // Stop MediaRecorder and wait for final data
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         mediaRecorderRef.current.stop();
+        console.log('⏹️ MediaRecorder gestopt');
+
+        // Wait a moment for final ondataavailable event
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+
+      // Process final chunk if any data exists
+      if (currentChunkRef.current.length > 0) {
+        console.log('🎵 Processing final chunk on stop...', {
+          blobCount: currentChunkRef.current.length,
+          totalSize: currentChunkRef.current.reduce((total, blob) => total + blob.size, 0)
+        });
+        await processCurrentChunk();
+      } else {
+        console.log('⚠️ No final chunk data to process');
       }
 
       // Stop audio stream
       if (audioStreamRef.current) {
         audioStreamRef.current.getTracks().forEach(track => track.stop());
         audioStreamRef.current = null;
+        console.log('📴 Audio stream gestopt');
       }
 
       // Update session
-      if (session) {
-        setSession(prev => prev ? {
-          ...prev,
-          status: 'stopped',
-          endTime: new Date()
-        } : null);
-      }
+      setSession(prev => prev ? {
+        ...prev,
+        status: 'stopped',
+        endTime: new Date()
+      } : null);
 
-      console.log('⏹️ Opname gestopt');
+      console.log('✅ Opname volledig gestopt');
 
     } catch (error) {
       console.error('❌ Fout bij stoppen opname:', error);
       setError(`Fout bij stoppen opname: ${error instanceof Error ? error.message : 'Onbekende fout'}`);
     }
-  }, [session, stopAndSendChunk]);
+  }, [processCurrentChunk]);
 
-  // Cleanup bij unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (chunkIntervalRef.current) clearInterval(chunkIntervalRef.current);
-      if (recordingIntervalRef.current) clearInterval(recordingIntervalRef.current);
+      if (chunkIntervalRef.current) {
+        clearInterval(chunkIntervalRef.current);
+      }
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
       if (audioStreamRef.current) {
         audioStreamRef.current.getTracks().forEach(track => track.stop());
       }
@@ -316,182 +343,134 @@ console.log('📊 Data available event:', event.data.size, 'bytes'); // DEBUG
 
   // Render
   return (
-    <div className="bg-white rounded-lg border shadow-sm">
+    <div className="bg-white rounded-lg border border-gray-200 shadow-sm">
       {/* Header */}
       <div 
-        className="p-4 border-b bg-gradient-to-r from-blue-50 to-indigo-50 cursor-pointer"
+        className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50"
         onClick={onToggleExpand}
       >
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <div className={`p-2 rounded-lg ${session?.status === 'recording' ? 'bg-red-100' : 'bg-blue-100'}`}>
-              <Mic className={`w-5 h-5 ${session?.status === 'recording' ? 'text-red-600' : 'text-blue-600'}`} />
-            </div>
-            <div>
-              <h3 className="font-medium text-gray-800">Automatische Opname</h3>
-              <p className="text-sm text-gray-600">
-                {session?.status === 'recording' 
-                  ? `Actief sinds ${formatTime(recordingTime)}`
-                  : 'Real-time transcriptie met N8N'
-                }
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex items-center space-x-2">
-            {session?.status === 'recording' && (
-              <div className="flex items-center space-x-1 text-red-600">
-                <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-medium">REC</span>
-              </div>
-            )}
-            
-            <button className="p-1 hover:bg-gray-100 rounded">
-              {isExpanded ? (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              )}
-            </button>
-          </div>
+        <div className="flex items-center space-x-3">
+          <div className={`w-3 h-3 rounded-full ${
+            session?.status === 'recording' ? 'bg-red-500 animate-pulse' : 'bg-gray-300'
+          }`} />
+          <h3 className="text-lg font-semibold text-gray-900">Automatische Opname</h3>
+          {session?.status === 'recording' && (
+            <span className="text-sm text-gray-500">
+              {formatTime(recordingTime)}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center space-x-2">
+          {session?.chunks.length > 0 && (
+            <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+              {session.chunks.length} chunks
+            </span>
+          )}
+          {lastChunkSent && (
+            <span className="text-xs text-green-600">
+              Laatste verzending: {lastChunkSent.toLocaleTimeString()}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Content */}
+      {/* Expanded Content */}
       {isExpanded && (
-        <div className="p-6">
+        <div className="p-4 border-t border-gray-200">
           {/* Error Display */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-              <div className="flex items-center space-x-2">
-                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="text-sm text-red-800">{error}</span>
-              </div>
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+              <p className="text-sm text-red-700">{error}</p>
+              <button 
+                onClick={() => setError(null)}
+                className="mt-2 text-xs text-red-600 hover:text-red-800"
+              >
+                Sluiten
+              </button>
             </div>
           )}
 
-          {/* Recording Status */}
-          <div className="text-center mb-6">
-            <div className="text-4xl font-mono text-slate-800 mb-2">
-              {formatTime(recordingTime)}
-            </div>
-            
-            {session?.status === 'recording' && (
-              <div className="text-sm text-slate-600 space-y-1">
-                <div className="flex items-center justify-center space-x-2">
-                  <Clock className="w-4 h-4" />
-                  <span>Gestart: {session.startTime.toLocaleTimeString('nl-NL')}</span>
-                </div>
-                {lastChunkSent && (
-                  <div className="text-xs text-green-600">
-                    Laatste chunk verzonden: {lastChunkSent.toLocaleTimeString('nl-NL')}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Main Controls */}
-          <div className="flex justify-center space-x-4 mb-6">
-            {!session || session.status === 'stopped' ? (
+          {/* Controls */}
+          <div className="flex items-center space-x-4 mb-4">
+            {session?.status !== 'recording' ? (
               <button
                 onClick={startRecording}
                 disabled={isInitializing}
-                className={`bg-red-600 text-white px-8 py-3 rounded-lg hover:bg-red-700 transition-colors flex items-center space-x-2 ${
-                  isInitializing ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
+                className="flex items-center space-x-2 px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isInitializing ? (
-                  <>
-                    <svg className="animate-spin w-5 h-5" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    <span>Initialiseren...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-5 h-5" />
-                    <span>Start Opname</span>
-                  </>
-                )}
+                <Mic className="w-4 h-4" />
+                <span>{isInitializing ? 'Initialiseren...' : 'Start Opname'}</span>
               </button>
             ) : (
               <button
                 onClick={stopRecording}
-                className="bg-gray-600 text-white px-8 py-3 rounded-lg hover:bg-gray-700 transition-colors flex items-center space-x-2"
+                className="flex items-center space-x-2 px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
               >
-                <Square className="w-5 h-5" />
+                <Square className="w-4 h-4" />
                 <span>Stop Opname</span>
               </button>
             )}
+
+            {session?.status === 'recording' && (
+              <div className="flex items-center space-x-2 text-sm text-gray-600">
+                <Clock className="w-4 h-4" />
+                <span>Opname loopt: {formatTime(recordingTime)}</span>
+              </div>
+            )}
           </div>
 
-          {/* Recording Info */}
+          {/* Session Info */}
           {session && (
-            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Sessie ID:</span>
-                <span className="font-mono text-gray-800">{session.id}</span>
-              </div>
-              
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">Chunks verzonden:</span>
-                <span className="font-medium text-gray-800">{session.chunks.length}</span>
-              </div>
-              
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-gray-600">N8N Endpoint:</span>
-                <span className="font-mono text-xs text-gray-600">{N8N_WEBHOOK_URL}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Participants Info */}
-          {participants.length > 0 && (
-            <div className="mt-6 bg-blue-50 rounded-lg p-4">
-              <div className="flex items-center space-x-2 mb-3">
-                <Users className="w-4 h-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-800">
-                  Deelnemers ({participants.length})
-                </span>
-              </div>
-              
-              <div className="space-y-2">
-                {participants.slice(0, 3).map((participant) => (
-                  <div key={participant.id} className="flex items-center space-x-2 text-sm">
-                    <div className={`w-2 h-2 rounded-full ${
-                      participant.status === 'online' ? 'bg-green-500' : 'bg-gray-400'
-                    }`}></div>
-                    <span className="text-gray-700">{participant.name}</span>
-                    <span className="text-gray-500">({participant.role})</span>
-                  </div>
-                ))}
-                
-                {participants.length > 3 && (
-                  <div className="text-xs text-gray-500">
-                    +{participants.length - 3} meer...
+            <div className="bg-gray-50 p-3 rounded-md">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="font-medium text-gray-700">Status:</span>
+                  <span className={`ml-2 px-2 py-1 rounded-full text-xs ${
+                    session.status === 'recording' 
+                      ? 'bg-red-100 text-red-800' 
+                      : 'bg-gray-100 text-gray-800'
+                  }`}>
+                    {session.status === 'recording' ? 'Opname actief' : 'Gestopt'}
+                  </span>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Chunks verzonden:</span>
+                  <span className="ml-2">{session.chunks.length}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-gray-700">Gestart:</span>
+                  <span className="ml-2">{session.startTime.toLocaleTimeString()}</span>
+                </div>
+                {session.endTime && (
+                  <div>
+                    <span className="font-medium text-gray-700">Gestopt:</span>
+                    <span className="ml-2">{session.endTime.toLocaleTimeString()}</span>
                   </div>
                 )}
               </div>
             </div>
           )}
 
-          {/* Technical Info */}
-          <div className="mt-6 text-xs text-gray-500 border-t pt-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <span className="font-medium">Chunk grootte:</span> {CHUNK_DURATION}s
-              </div>
-              <div>
-                <span className="font-medium">Audio format:</span> WebM/Opus
-              </div>
+          {/* Participants */}
+          <div className="mt-4">
+            <div className="flex items-center space-x-2 mb-2">
+              <Users className="w-4 h-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">
+                Deelnemers ({participants.length})
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {participants.map((participant) => (
+                <span
+                  key={participant.id}
+                  className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800"
+                >
+                  <span className={`w-2 h-2 rounded-full mr-2 ${
+                    participant.status === 'online' ? 'bg-green-400' : 'bg-gray-400'
+                  }`} />
+                  {participant.name}
+                </span>
+              ))}
             </div>
           </div>
         </div>
