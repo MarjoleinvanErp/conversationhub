@@ -108,67 +108,21 @@ const MaterialProHeader = ({ toggleMobileSidebar, toggleSidebar, isSidebarOpen, 
           </Typography>
         )}
 
-        {/* Status Indicators */}
-        <Box sx={{ display: "flex", alignItems: "center", gap: 2, mr: 2 }}>
-          {/* Recording Status */}
-          <Chip
-            icon={<FiberManualRecordIcon />}
-            label={isRecording ? "Opname actief" : "Niet actief"}
-            size="small"
-            color={isRecording ? "error" : "default"}
-            variant={isRecording ? "filled" : "outlined"}
-          />
-          
-          {/* Privacy Status */}
-          <Chip
-            label="🔒 Privé modus"
-            size="small"
-            sx={{
-              backgroundColor: "#10b981",
-              color: "white",
-              "&:hover": { backgroundColor: "#059669" },
-            }}
-          />
-        </Box>
+
 
         {/* Spacer */}
         <Box sx={{ flexGrow: 1 }} />
 
         {/* Right Side Actions */}
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-          {/* New Meeting Button */}
-          <Button
-            variant="contained"
-            startIcon={<VideoCallIcon />}
-            onClick={handleNewMeeting}
-            sx={{
-              backgroundColor: "#3b82f6",
-              "&:hover": { backgroundColor: "#2563eb" },
-              borderRadius: 2,
-              textTransform: "none",
-              display: { xs: "none", md: "flex" },
-            }}
-          >
-            Nieuw Gesprek
-          </Button>
 
-          {/* Notifications */}
-          <IconButton
-            color="inherit"
-            onClick={handleNotificationClick}
-            sx={{ ml: 1 }}
-          >
-            <Badge badgeContent={notificationCount} color="error">
-              <NotificationsIcon />
-            </Badge>
-          </IconButton>
 
           {/* User Menu */}
           <IconButton color="inherit" onClick={handleUserClick} sx={{ ml: 1 }}>
             <Avatar
               sx={{
-                width: 35,
-                height: 35,
+                width: 40,
+                height: 40,
                 backgroundColor: "#3b82f6",
                 fontSize: "0.875rem",
               }}

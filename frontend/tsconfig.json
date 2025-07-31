@@ -5,45 +5,55 @@
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "skipLibCheck": true,
-    "allowJs": true,
-    "checkJs": false,
-
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    
     /* Bundler mode */
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
-    "jsx": "react-jsx",
-
-    /* Linting */
-    "strict": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noFallthroughCasesInSwitch": true,
-
-    /* Path mapping for clean imports */
+    "noEmitOnError": false,
+    
+    /* Path mapping voor clean imports */
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@/components/*": ["./src/components/*"],
-      "@/types/*": ["./src/types/*"],
-      "@/services/*": ["./src/services/*"],
+      "@/pages/*": ["./src/pages/*"],
       "@/hooks/*": ["./src/hooks/*"],
-      "@/utils/*": ["./src/utils/*"]
-    }
+      "@/services/*": ["./src/services/*"],
+      "@/types/*": ["./src/types/*"],
+      "@/utils/*": ["./src/utils/*"],
+      "@/styles/*": ["./src/styles/*"],
+      "@/assets/*": ["./src/assets/*"]
+    },
+    
+    /* Linting */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    
+    /* React specifiek */
+    "jsx": "react-jsx",
+    "allowJs": true
   },
   "include": [
-    "src/**/*",
     "src/**/*.ts",
     "src/**/*.tsx",
     "src/**/*.js",
-    "src/**/*.jsx"
+    "src/**/*.jsx",
+    "vite.config.ts"
   ],
   "exclude": [
     "node_modules",
     "dist",
-    "build"
-  ],
-  "references": [{ "path": "./tsconfig.node.json" }]
+    "build",
+    "archive",
+    "src-backup",
+    "materialpro-react-lite-master"
+  ]
 }

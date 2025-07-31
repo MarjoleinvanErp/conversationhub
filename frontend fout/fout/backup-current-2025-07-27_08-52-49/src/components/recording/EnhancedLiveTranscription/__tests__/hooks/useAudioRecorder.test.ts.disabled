@@ -1,0 +1,273 @@
+// useAudioRecorder Hook Test Complete File
+import { renderHook, act } from '@testing-library/react';
+import { useAudioRecorder } from '../../hooks/useAudioRecorder';
+import enhancedLiveTranscriptionService from '@/services/api/enhancedLiveTranscriptionService';
+
+// ===== MOCK SETUP =====
+jest.mock('@/services/api/enhancedLiveTranscriptionService');
+
+const mockService = enhancedLiveTranscriptionService as jest.Mocked<typeof enhancedLiveTranscriptionService>;
+
+// Mock MediaStream
+const createMockMediaStream = () => ({
+  getTracks: () => [{ stop: jest.fn() }],
+  getAudioTracks: () => [{ stop: jest.fn() }]
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  
+  // Setup default mocks
+  mockService.startRecording = jest.fn().mockResolvedValue({
+    success: true,
+    sessionId: 'test-session',
+    features: {
+      mediaRecorder: true,
+      speechRecognition: true,
+      audioStream: true
+    }
+  });
+
+  mockService.stopRecording = jest.fn().mockResolvedValue({
+    success: true
+  });
+
+  mockService.pauseRecording = jest.fn().mockResolvedValue({
+    success: true
+  });
+
+  mockService.resumeRecording = jest.fn().mockResolvedValue({
+    success: true
+  });
+
+  mockService.getCurrentAudioChunk = jest.fn().mockResolvedValue(
+    new Blob(['test'], { type: 'audio/webm' })
+  );
+
+  // Mock getUserMedia
+  global.navigator.mediaDevices = {
+    getUserMedia: jest.fn().mockResolvedValue(createMockMediaStream())
+  } as any;
+});
+
+// ===== TESTS =====
+describe('useAudioRecorder', () => {
+  test('initializes with correct default state', () => {
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError: jest.fn()
+    }));
+
+    expect(result.current.recordingState.isRecording).toBe(false);
+    expect(result.current.recordingState.isPaused).toBe(false);
+    expect(result.current.recordingState.recordingTime).toBe(0);
+    expect(result.current.recordingState.error).toBe(null);
+  });
+
+  test('starts recording successfully', async () => {
+    const onTranscription = jest.fn();
+    const onError = jest.fn();
+    
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription,
+      onError
+    }));
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(mockService.startRecording).toHaveBeenCalledWith({
+      sessionId: 'test-session',
+      onTranscription: expect.any(Function),
+      onError: expect.any(Function)
+    });
+
+    expect(result.current.recordingState.isRecording).toBe(true);
+  });
+
+  test('stops recording successfully', async () => {
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError: jest.fn()
+    }));
+
+    // Start recording first
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // Then stop recording
+    await act(async () => {
+      await result.current.stopRecording();
+    });
+
+    expect(mockService.stopRecording).toHaveBeenCalled();
+    expect(result.current.recordingState.isRecording).toBe(false);
+  });
+
+  test('pauses and resumes recording', async () => {
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError: jest.fn()
+    }));
+
+    // Start recording
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // Pause recording
+    await act(async () => {
+      await result.current.pauseRecording();
+    });
+
+    expect(mockService.pauseRecording).toHaveBeenCalled();
+    expect(result.current.recordingState.isPaused).toBe(true);
+
+    // Resume recording
+    await act(async () => {
+      await result.current.resumeRecording();
+    });
+
+    expect(mockService.resumeRecording).toHaveBeenCalled();
+    expect(result.current.recordingState.isPaused).toBe(false);
+  });
+
+  test('handles recording errors', async () => {
+    const onError = jest.fn();
+    mockService.startRecording.mockRejectedValue(new Error('Recording failed'));
+
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError
+    }));
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.recordingState.error).toBe('Recording failed');
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+  });
+
+  test('processes audio chunks during recording', async () => {
+    const onTranscription = jest.fn();
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription,
+      onError: jest.fn()
+    }));
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // Simulate audio chunk processing
+    await act(async () => {
+      await result.current.processAudioChunk();
+    });
+
+    expect(mockService.getCurrentAudioChunk).toHaveBeenCalled();
+  });
+
+  test('clears errors correctly', () => {
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError: jest.fn()
+    }));
+
+    // Simulate error state
+    act(() => {
+      result.current.recordingState.error = 'Test error';
+    });
+
+    // Clear the error
+    act(() => {
+      result.current.clearError();
+    });
+
+    expect(result.current.recordingState.error).toBe(null);
+  });
+
+  test('handles session cleanup on unmount', async () => {
+    const { result, unmount } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError: jest.fn()
+    }));
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    unmount();
+
+    expect(mockService.stopRecording).toHaveBeenCalled();
+  });
+
+  test('updates recording time correctly', async () => {
+    jest.useFakeTimers();
+    
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError: jest.fn()
+    }));
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    // Fast-forward time
+    act(() => {
+      jest.advanceTimersByTime(5000); // 5 seconds
+    });
+
+    expect(result.current.recordingState.recordingTime).toBeGreaterThan(0);
+
+    jest.useRealTimers();
+  });
+
+  test('handles microphone permission denied', async () => {
+    const onError = jest.fn();
+    mockService.startRecording.mockRejectedValue(new Error('Permission denied'));
+
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError
+    }));
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.recordingState.error).toBe('Permission denied');
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+  });
+
+  test('handles service unavailable errors', async () => {
+    const onError = jest.fn();
+    mockService.startRecording.mockRejectedValue(new Error('Service unavailable'));
+
+    const { result } = renderHook(() => useAudioRecorder({
+      sessionId: 'test-session',
+      onTranscription: jest.fn(),
+      onError
+    }));
+
+    await act(async () => {
+      await result.current.startRecording();
+    });
+
+    expect(result.current.recordingState.error).toBe('Service unavailable');
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+  });
+});

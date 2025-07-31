@@ -1,0 +1,31 @@
+ConversationHub Frontend Backup 
+Aangemaakt op: zo 27-07-2025  8:26:23,91 
+Van directory: C:\conversationhub\frontend 
+ 
+===== INHOUD VOOR BACKUP ===== 
+.dockerignore
+.env
+backup-temp
+backup-temp-old
+cleanup-frontend.bat
+coverage
+dist
+Dockerfile
+e2e
+index.html
+jest.config.cjs
+jest.config.js.broken
+node_modules
+package-lock.json
+package-scripts-update.txt
+package.json
+playwright-report
+playwright.config.ts
+postcss.config.js
+public
+src
+tailwind.config.js
+test-results
+tsconfig.json
+tsconfig.node.json
+vite.config.ts

@@ -1,0 +1,22 @@
+{
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:recording": "jest src/components/recording/clean/__tests__",
+    "test:recording:watch": "jest src/components/recording/clean/__tests__ --watch",
+    "test:recording:coverage": "jest src/components/recording/clean/__tests__ --coverage",
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:recording": "playwright test e2e/meeting/auto-recording.spec.ts",
+    "e2e:recording:debug": "playwright test e2e/meeting/auto-recording.spec.ts --debug",
+    "e2e:recording:headed": "playwright test e2e/meeting/auto-recording.spec.ts --headed",
+    "test:all": "npm run test:recording && npm run e2e:recording",
+    "lint": "eslint src --ext .js,.jsx,.ts,.tsx",
+    "lint:fix": "eslint src --ext .js,.jsx,.ts,.tsx --fix",
+    "type-check": "tsc --noEmit",
+    "dev": "react-scripts start",
+    "build": "react-scripts build",
+    "serve": "serve -s build"
+  }
+}

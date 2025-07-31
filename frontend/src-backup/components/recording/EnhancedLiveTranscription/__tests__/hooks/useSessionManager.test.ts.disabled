@@ -1,0 +1,324 @@
+// useSessionManager Hook Test Complete File
+import { renderHook, act } from '@testing-library/react';
+import { useSessionManager } from '../../hooks/useSessionManager';
+import enhancedLiveTranscriptionService from '@/services/api/enhancedLiveTranscriptionService';
+import type { SessionConfig, Participant } from '../../types';
+
+// ===== MOCK SETUP =====
+jest.mock('@/services/api/enhancedLiveTranscriptionService');
+
+const mockService = enhancedLiveTranscriptionService as jest.Mocked<typeof enhancedLiveTranscriptionService>;
+
+const mockConfig: SessionConfig = {
+  live_webspeech_enabled: true,
+  whisper_enabled: true,
+  whisper_chunk_duration: 10,
+  n8n_transcription_enabled: true,
+  default_transcription_service: 'auto',
+  available_services: {
+    whisper: true,
+    n8n: true
+  }
+};
+
+const mockParticipants: Participant[] = [
+  { id: '1', name: 'John Doe', role: 'host' },
+  { id: '2', name: 'Jane Smith', role: 'participant' }
+];
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  
+  // Setup default mocks
+  mockService.startEnhancedSession = jest.fn().mockResolvedValue({
+    success: true,
+    sessionId: 'test-session-123',
+    features: {
+      mediaRecorder: true,
+      speechRecognition: true,
+      audioStream: true
+    }
+  });
+
+  mockService.stopRecording = jest.fn().mockResolvedValue({
+    success: true
+  });
+});
+
+// ===== TESTS =====
+describe('useSessionManager', () => {
+  test('initializes with correct default state', () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    expect(result.current.sessionState.sessionActive).toBe(false);
+    expect(result.current.sessionState.sessionId).toBe(null);
+    expect(result.current.sessionState.isStartingSession).toBe(false);
+    expect(result.current.sessionState.error).toBe(null);
+  });
+
+  test('starts session successfully without voice setup', async () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    let sessionResult;
+    await act(async () => {
+      sessionResult = await result.current.startSession(false);
+    });
+
+    expect(mockService.startEnhancedSession).toHaveBeenCalledWith({
+      meetingId: 1,
+      participants: expect.any(Array),
+      config: mockConfig,
+      useVoiceSetup: true
+    });
+
+    expect(sessionResult).toEqual({
+      success: true,
+      sessionId: 'test-session-123'
+    });
+
+    expect(result.current.sessionState.sessionActive).toBe(true);
+    expect(result.current.sessionState.sessionId).toBe('test-session-123');
+  });
+
+  test('handles session start errors', async () => {
+    mockService.startEnhancedSession.mockRejectedValue(new Error('Session start failed'));
+
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    let sessionResult;
+    await act(async () => {
+      sessionResult = await result.current.startSession(false);
+    });
+
+    expect(sessionResult).toEqual({
+      success: false,
+      error: 'Session start failed'
+    });
+
+    expect(result.current.sessionState.sessionActive).toBe(false);
+    expect(result.current.sessionState.error).toBe('Session start failed');
+  });
+
+  test('stops session successfully', async () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    // Start session first
+    await act(async () => {
+      await result.current.startSession(false);
+    });
+
+    // Then stop session
+    await act(async () => {
+      await result.current.stopSession();
+    });
+
+    expect(mockService.stopRecording).toHaveBeenCalled();
+    expect(result.current.sessionState.sessionActive).toBe(false);
+    expect(result.current.sessionState.sessionId).toBe(null);
+  });
+
+  test('clears errors correctly', async () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    // Simulate error state
+    mockService.startEnhancedSession.mockRejectedValue(new Error('Test error'));
+    
+    await act(async () => {
+      await result.current.startSession(false);
+    });
+
+    expect(result.current.sessionState.error).toBe('Test error');
+
+    // Clear the error
+    act(() => {
+      result.current.clearError();
+    });
+
+    expect(result.current.sessionState.error).toBe(null);
+  });
+
+  test('handles empty participants list', async () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: [],
+      config: mockConfig
+    }));
+
+    let sessionResult;
+    await act(async () => {
+      sessionResult = await result.current.startSession(false);
+    });
+
+    expect(sessionResult).toEqual({
+      success: false,
+      error: 'No participants provided for session'
+    });
+
+    expect(result.current.sessionState.sessionActive).toBe(false);
+  });
+
+  test('handles undefined participants', async () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: undefined,
+      config: mockConfig
+    }));
+
+    let sessionResult;
+    await act(async () => {
+      sessionResult = await result.current.startSession(false);
+    });
+
+    expect(sessionResult).toEqual({
+      success: false,
+      error: 'No participants provided for session'
+    });
+
+    expect(result.current.sessionState.sessionActive).toBe(false);
+  });
+
+  test('processes participants correctly', async () => {
+    const participantsWithoutIds: Participant[] = [
+      { name: 'John Doe', role: 'host' },
+      { name: 'Jane Smith', role: 'participant' }
+    ];
+
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: participantsWithoutIds,
+      config: mockConfig
+    }));
+
+    await act(async () => {
+      await result.current.startSession(false);
+    });
+
+    expect(mockService.startEnhancedSession).toHaveBeenCalledWith({
+      meetingId: 1,
+      participants: expect.arrayContaining([
+        expect.objectContaining({
+          id: expect.any(String),
+          name: 'John Doe',
+          color: expect.any(String)
+        }),
+        expect.objectContaining({
+          id: expect.any(String),
+          name: 'Jane Smith',
+          color: expect.any(String)
+        })
+      ]),
+      config: mockConfig,
+      useVoiceSetup: false
+    });
+  });
+
+  test('handles session service unavailable', async () => {
+    mockService.startEnhancedSession.mockRejectedValue(new Error('Service unavailable'));
+
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    let sessionResult;
+    await act(async () => {
+      sessionResult = await result.current.startSession(false);
+    });
+
+    expect(sessionResult).toEqual({
+      success: false,
+      error: 'Service unavailable'
+    });
+
+    expect(result.current.sessionState.error).toBe('Service unavailable');
+  });
+
+  test('handles concurrent session start attempts', async () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    // Start two sessions concurrently
+    const promise1 = act(async () => {
+      return await result.current.startSession(false);
+    });
+
+    const promise2 = act(async () => {
+      return await result.current.startSession(false);
+    });
+
+    const [result1, result2] = await Promise.all([promise1, promise2]);
+
+    // Only one should succeed
+    expect(mockService.startEnhancedSession).toHaveBeenCalledTimes(1);
+    expect(result.current.sessionState.sessionActive).toBe(true);
+  });
+
+  test('handles stop session when no active session', async () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    // Try to stop session without starting one
+    await act(async () => {
+      await result.current.stopSession();
+    });
+
+    // Should not call service methods
+    expect(mockService.stopRecording).not.toHaveBeenCalled();
+    expect(result.current.sessionState.sessionActive).toBe(false);
+  });
+});Config,
+      useVoiceSetup: false
+    });
+
+    expect(sessionResult).toEqual({
+      success: true,
+      sessionId: 'test-session-123'
+    });
+
+    expect(result.current.sessionState.sessionActive).toBe(true);
+    expect(result.current.sessionState.sessionId).toBe('test-session-123');
+  });
+
+  test('starts session successfully with voice setup', async () => {
+    const { result } = renderHook(() => useSessionManager({
+      meetingId: 1,
+      participants: mockParticipants,
+      config: mockConfig
+    }));
+
+    let sessionResult;
+    await act(async () => {
+      sessionResult = await result.current.startSession(true);
+    });
+
+    expect(mockService.startEnhancedSession).toHaveBeenCalledWith({
+      meetingId: 1,
+      participants: expect.any(Array),
+      config: mock

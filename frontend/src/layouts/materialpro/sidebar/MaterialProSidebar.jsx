@@ -27,6 +27,7 @@ import AnalyticsIcon from "@mui/icons-material/Analytics";
 import DescriptionIcon from "@mui/icons-material/Description";
 import ChevronLeftIcon from "@mui/icons-material/ChevronLeft";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import BugReportIcon from "@mui/icons-material/BugReport";
 
 const menuItems = [
   {
@@ -35,7 +36,7 @@ const menuItems = [
     href: "/dashboard",
   },
   {
-    title: "Nieuw Gesprek",
+    title: "Nieuw Gesprek", 
     icon: VideoCallIcon,
     href: "/meetings/create",
   },
@@ -44,8 +45,14 @@ const menuItems = [
     icon: HistoryIcon,
     href: "/meetings",
   },
+  {
+    title: "UI Integration Test",
+    icon: BugReportIcon,
+    href: "/test-integration",
+  },
 ];
 
+// VOEG DEZE TOE:
 const settingsItems = [
   {
     title: "Instellingen",
@@ -53,6 +60,7 @@ const settingsItems = [
     href: "/settings",
   },
 ];
+
 
 const MaterialProSidebar = ({
   isSidebarOpen,
@@ -229,28 +237,9 @@ const MaterialProSidebar = ({
           })}
         </List>
       </Box>
-
-      {/* Privacy Badge */}
-      <Box sx={{ p: 2 }}>
-        <Box
-          sx={{
-            backgroundColor: "#10b981",
-            color: "white",
-            px: 2,
-            py: 1,
-            borderRadius: 2,
-            textAlign: "center",
-          }}
-        >
-          <Typography variant="caption" sx={{ fontWeight: 600 }}>
-            🔒 GDPR/AVG Compliant
-          </Typography>
-        </Box>
-      </Box>
     </Box>
   );
 
-  // Desktop sidebar - kan inklappen
   if (lgUp) {
     return (
       <Drawer

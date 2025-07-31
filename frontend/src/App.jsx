@@ -1,6 +1,12 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import TestTailwind from './components/TestTailwind.jsx';
+import TestComponents from './components/ui/TestComponents.jsx'; 
+import TestExistingComponents from './components/ui/TestExistingComponents';
+import TestLayout from './components/ui/TestLayout';
+import TestMaterialProIntegration from './components/ui/TestMaterialProIntegration';
+import DashboardModern from './pages/dashboard/DashboardModern';
+import MeetingRoomModern from './pages/meeting/MeetingRoomModern';
 
 // Import contexts
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
@@ -92,7 +98,13 @@ function App() {
               <Route path="templates/progress" element={<TemplatesPage />} />
               <Route path="templates/custom" element={<TemplatesPage />} />
               <Route path="settings" element={<SettingsPage />} />
-			  <Route path="/test-tailwind" element={<TestTailwind />} />
+	      <Route path="/test-tailwind" element={<TestTailwind />} />
+	      <Route path="test-components" element={<TestComponents />} />
+	<Route path="test-existing" element={<TestExistingComponents />} />
+	<Route path="test-layout" element={<TestLayout />} />
+	<Route path="test-integration" element={<TestMaterialProIntegration />} />
+<Route path="dashboard-modern" element={<DashboardModern />} />
+<Route path="meetings/:id/room-modern" element={<MeetingRoomModern />} />
             </Route>
           </Routes>
         </div>
