@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { Card, Button, Input, Badge, Alert, LoadingSpinner } from '../../../ui';
 import { agendaService } from '../../../../services/agendaService';
+import AddAgendaItemModal from './AddAgendaItemModal';
 
 const AgendaPanel = () => {
   const { id: meetingId } = useParams();
@@ -30,14 +31,11 @@ const AgendaPanel = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [error, setError] = useState(null);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);  // NEW: Modal state
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [itemToDelete, setItemToDelete] = useState(null);
-  const [newItem, setNewItem] = useState({
-    title: '',
-    description: '',
-    estimated_duration: ''
-  });
+  const [isAddingItem, setIsAddingItem] = useState(false);  // NEW: Adding state
+  // REMOVED: showAddForm and newItem states - not needed anymore
 
   // Load agenda items on mount
   useEffect(() => {
@@ -129,18 +127,17 @@ const AgendaPanel = () => {
     }
   };
 
-  const addAgendaItem = async () => {
-    if (!newItem.title.trim()) return;
-
+  // NEW: Updated addAgendaItem to work with modal
+  const handleAddAgendaItem = async (agendaItemData) => {
     try {
-      setIsUpdating(true);
+      setIsAddingItem(true);
       const tempId = `temp_${Date.now()}`;
       
       const newAgendaItem = {
         id: tempId,
-        title: newItem.title,
-        description: newItem.description,
-        estimated_duration: newItem.estimated_duration ? parseInt(newItem.estimated_duration) : null,
+        title: agendaItemData.title,
+        description: agendaItemData.description,
+        estimated_duration: agendaItemData.estimated_duration,
         status: 'pending',
         completed: false,
         order: agendaItems.length + 1,
@@ -150,16 +147,13 @@ const AgendaPanel = () => {
       // Immediate UI update
       setAgendaItems(prevItems => [...prevItems, newAgendaItem]);
       
-      // Reset form
-      const formData = { ...newItem };
-      setNewItem({ title: '', description: '', estimated_duration: '' });
-      setShowAddForm(false);
+      console.log('🔨 Adding agenda item via modal:', agendaItemData);
 
       // Background API call to save to database
       const response = await agendaService.addAgendaItem(meetingId, {
-        title: formData.title,
-        description: formData.description,
-        estimated_duration: formData.estimated_duration ? parseInt(formData.estimated_duration) : null
+        title: agendaItemData.title,
+        description: agendaItemData.description,
+        estimated_duration: agendaItemData.estimated_duration
       });
 
       if (response.success && response.data) {
@@ -185,12 +179,9 @@ const AgendaPanel = () => {
       // Rollback on error
       setAgendaItems(prevItems => prevItems.filter(item => !item.id.toString().startsWith('temp_')));
       
-      // Restore form
-      setNewItem(formData);
-      setShowAddForm(true);
-      setError('Kon agenda item niet toevoegen: ' + err.message);
+      throw err; // Re-throw so modal can handle the error
     } finally {
-      setIsUpdating(false);
+      setIsAddingItem(false);
     }
   };
 
@@ -247,7 +238,7 @@ const AgendaPanel = () => {
 
   return (
     <Card variant="default" padding="md">
-      {/* Header */}
+      {/* Header - UNCHANGED */}
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -294,7 +285,7 @@ const AgendaPanel = () => {
         </Box>
       </Box>
 
-      {/* Error Display */}
+      {/* Error Display - UNCHANGED */}
       {error && (
         <Box sx={{ mb: 3 }}>
           <Alert variant="error" dismissible onDismiss={() => setError(null)}>
@@ -303,7 +294,7 @@ const AgendaPanel = () => {
         </Box>
       )}
 
-      {/* Agenda Items List */}
+      {/* Agenda Items List - UNCHANGED */}
       <Box sx={{ mb: 3 }}>
         {agendaItems.length === 0 ? (
           <Box sx={{ textAlign: 'center', py: 6 }}>
@@ -313,7 +304,12 @@ const AgendaPanel = () => {
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
               Nog geen agenda items toegevoegd
             </Typography>
-            <Button variant="primary" onClick={() => setShowAddForm(true)}>
+            {/* CHANGED: Use modal instead of inline form */}
+            <Button 
+              variant="primary" 
+              onClick={() => setShowAddModal(true)}
+              disabled={isUpdating}
+            >
               <AddIcon sx={{ mr: 1 }} />
               Eerste Item Toevoegen
             </Button>
@@ -406,82 +402,31 @@ const AgendaPanel = () => {
         )}
       </Box>
 
-      {/* Add New Item Section */}
+      {/* Add New Item Section - CHANGED: Use modal instead of inline form */}
       {agendaItems.length > 0 && (
         <Box sx={{ borderTop: '1px solid #e2e8f0', pt: 3 }}>
-          {!showAddForm ? (
-            <Button 
-              variant="primary" 
-              fullWidth
-              onClick={() => setShowAddForm(true)}
-              disabled={isUpdating}
-            >
-              <AddIcon sx={{ mr: 1 }} />
-              Agenda Item Toevoegen
-            </Button>
-          ) : (
-            <Box sx={{ space: 2 }}>
-              <Input
-                label="Titel"
-                placeholder="Bijv. Budget bespreking"
-                value={newItem.title}
-                onChange={(e) => setNewItem(prev => ({ ...prev, title: e.target.value }))}
-                fullWidth
-                required
-                disabled={isUpdating}
-              />
-              
-              <Box sx={{ mt: 2 }}>
-                <Input
-                  label="Beschrijving (optioneel)"
-                  placeholder="Korte beschrijving van het agenda item"
-                  value={newItem.description}
-                  onChange={(e) => setNewItem(prev => ({ ...prev, description: e.target.value }))}
-                  fullWidth
-                  disabled={isUpdating}
-                />
-              </Box>
-              
-              <Box sx={{ mt: 2 }}>
-                <Input
-                  label="Geschatte tijd (minuten)"
-                  type="number"
-                  placeholder="15"
-                  value={newItem.estimated_duration}
-                  onChange={(e) => setNewItem(prev => ({ ...prev, estimated_duration: e.target.value }))}
-                  fullWidth
-                  disabled={isUpdating}
-                />
-              </Box>
-              
-              <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
-                <Button 
-                  variant="primary" 
-                  onClick={addAgendaItem}
-                  disabled={!newItem.title.trim() || isUpdating}
-                  loading={isUpdating}
-                  fullWidth
-                >
-                  Toevoegen
-                </Button>
-                <Button 
-                  variant="neutral" 
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setNewItem({ title: '', description: '', estimated_duration: '' });
-                  }}
-                  disabled={isUpdating}
-                  fullWidth
-                >
-                  Annuleren
-                </Button>
-              </Box>
-            </Box>
-          )}
+          <Button 
+            variant="primary" 
+            fullWidth
+            onClick={() => setShowAddModal(true)}
+            disabled={isUpdating}
+          >
+            <AddIcon sx={{ mr: 1 }} />
+            Agenda Item Toevoegen
+          </Button>
         </Box>
       )}
 
-      {/* Delete Confirmation Dialog */}
+      {/* NEW: Add Agenda Item Modal */}
+      <AddAgendaItemModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAddAgendaItem={handleAddAgendaItem}
+        isAdding={isAddingItem}
+        existingItems={agendaItems}
+      />
+
+      {/* Delete Confirmation Dialog - UNCHANGED */}
       <Dialog 
         open={showDeleteDialog} 
         onClose={() => !isUpdating && setShowDeleteDialog(false)}

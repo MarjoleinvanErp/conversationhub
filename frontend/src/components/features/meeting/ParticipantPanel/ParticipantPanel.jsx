@@ -19,152 +19,94 @@ import {
   MicOff as MicOffIcon
 } from '@mui/icons-material';
 import { Card, Button, Badge, LoadingSpinner, Alert } from '../../../ui';
+import AddParticipantModal from './AddParticipantModal';
 
-const ParticipantPanel = () => {
+const ParticipantPanel = ({
+  // Props from existing SpeakerPanel pattern
+  currentSpeaker,
+  setCurrentSpeaker,
+  availableSpeakers,
+  setAvailableSpeakers,
+  speakerStats,
+  getSpeakerColor,
+  onRefresh,
+  isRefreshing = false,
+  // Additional props for expanded functionality
+  expandedState = true,
+  onToggleExpanded,
+  // NEW: Props for participant management
+  setSpeakerStats
+}) => {
   const { id: meetingId } = useParams();
-  const [participants, setParticipants] = useState([]);
-  const [currentSpeaker, setCurrentSpeaker] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [speakerStats, setSpeakerStats] = useState({});
-
-  // Load participants on mount
-  useEffect(() => {
-    loadParticipants();
-  }, [meetingId]);
-
-  const loadParticipants = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-
-      console.log('🔍 Loading participants for meeting:', meetingId);
-      
-      // TODO: Replace with actual API call
-      // For now, use enhanced mock data based on your structure
-      const mockParticipants = [
-        {
-          id: 1,
-          name: 'Jan van der Berg',
-          displayName: 'Jan van der Berg',
-          role: 'Moderator',
-          isActive: true,
-          isParticipant: true,
-          status: 'online',
-          joinedAt: new Date(Date.now() - 300000).toISOString(),
-          speakingTime: 145,
-          segments: 8
-        },
-        {
-          id: 2,
-          name: 'Maria Pietersen',
-          displayName: 'Maria Pietersen', 
-          role: 'Deelnemer',
-          isActive: true,
-          isParticipant: true,
-          status: 'online',
-          joinedAt: new Date(Date.now() - 240000).toISOString(),
-          speakingTime: 89,
-          segments: 5
-        },
-        {
-          id: 3,
-          name: 'Peter de Vries',
-          displayName: 'Peter de Vries',
-          role: 'Deelnemer',
-          isActive: false,
-          isParticipant: true,
-          status: 'away',
-          joinedAt: new Date(Date.now() - 180000).toISOString(),
-          speakingTime: 34,
-          segments: 2
-        },
-        {
-          id: 4,
-          name: 'Lisa Jansen',
-          displayName: 'Lisa Jansen',
-          role: 'Notulist',
-          isActive: true,
-          isParticipant: true,
-          status: 'online',
-          joinedAt: new Date(Date.now() - 120000).toISOString(),
-          speakingTime: 67,
-          segments: 4
-        }
-      ];
-
-      setParticipants(mockParticipants);
-      
-      // Set initial current speaker to first active participant
-      const activeSpeaker = mockParticipants.find(p => p.isActive);
-      if (activeSpeaker) {
-        setCurrentSpeaker(activeSpeaker);
-      }
-
-      // Calculate speaker stats
-      const stats = {};
-      mockParticipants.forEach(participant => {
-        stats[participant.name] = {
-          segments: participant.segments || 0,
-          totalTime: participant.speakingTime || 0
-        };
-      });
-      setSpeakerStats(stats);
-
-      console.log('✅ Loaded', mockParticipants.length, 'participants');
-
-    } catch (err) {
-      console.error('❌ Failed to load participants:', err);
-      setError('Kon deelnemers niet laden: ' + err.message);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const refreshParticipants = async () => {
-    try {
-      setIsRefreshing(true);
-      await loadParticipants();
-      console.log('✅ Participants refreshed successfully');
-    } catch (err) {
-      console.error('❌ Failed to refresh participants:', err);
-      setError('Kon deelnemers niet vernieuwen: ' + err.message);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [isAddingParticipant, setIsAddingParticipant] = useState(false);
 
   const handleSpeakerChange = (participant) => {
-    if (!isRefreshing) {
+    if (!isRefreshing && setCurrentSpeaker) {
       setCurrentSpeaker(participant);
-      console.log('🎤 Current speaker changed to:', participant.name);
-      
-      // TODO: Update current speaker in backend
-      // await participantService.setCurrentSpeaker(meetingId, participant.id);
+      console.log('🎤 Current speaker changed to:', participant.name || participant);
     }
   };
 
-  const getSpeakerColor = (index) => {
-    const colors = [
-      '#3b82f6', // Blue
-      '#10b981', // Emerald  
-      '#f59e0b', // Amber
-      '#ef4444', // Red
-      '#8b5cf6', // Violet
-      '#06b6d4', // Cyan
-      '#84cc16', // Lime
-      '#ec4899'  // Pink
-    ];
-    return colors[index % colors.length];
+  const handleRefresh = () => {
+    if (onRefresh) {
+      onRefresh('speaker'); // Use same refresh method as SpeakerPanel
+    }
   };
 
-  const getStatusBadge = (status, isActive) => {
-    if (isActive) {
+  const handleAddParticipant = async (participantData) => {
+    try {
+      setIsAddingParticipant(true);
+      console.log('🔨 Adding new participant:', participantData);
+
+      // Generate unique ID for new participant
+      const newParticipant = {
+        ...participantData,
+        id: Date.now(), // Simple ID generation for now
+        joinedAt: new Date().toISOString()
+      };
+
+      // Add to availableSpeakers list
+      if (setAvailableSpeakers) {
+        setAvailableSpeakers(prev => [...prev, newParticipant]);
+      }
+
+      // Initialize stats for new participant
+      if (setSpeakerStats) {
+        setSpeakerStats(prev => ({
+          ...prev,
+          [newParticipant.name]: {
+            segments: 0,
+            totalTime: 0
+          }
+        }));
+      }
+
+      console.log('✅ Participant added successfully:', newParticipant.name);
+
+      // TODO: Also send to backend
+      // await participantService.addParticipant(meetingId, participantData);
+
+    } catch (error) {
+      console.error('❌ Failed to add participant:', error);
+      throw error;
+    } finally {
+      setIsAddingParticipant(false);
+    }
+  };
+
+  const getStatusBadge = (participant) => {
+    // Handle both string speakers and object participants
+    if (typeof participant === 'string') {
+      return <Badge variant="success">Online</Badge>;
+    }
+
+    if (participant.isActive) {
       return <Badge variant="success">Online</Badge>;
     }
     
-    switch (status) {
+    switch (participant.status) {
       case 'online':
         return <Badge variant="success">Online</Badge>;
       case 'away':
@@ -176,15 +118,34 @@ const ParticipantPanel = () => {
     }
   };
 
-  if (isLoading) {
-    return (
-      <Card variant="default" padding="md">
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
-          <LoadingSpinner size="md">Deelnemers laden...</LoadingSpinner>
-        </Box>
-      </Card>
-    );
-  }
+  const getParticipantName = (participant) => {
+    if (typeof participant === 'string') {
+      return participant;
+    }
+    return participant.displayName || participant.name || 'Onbekende Spreker';
+  };
+
+  const getParticipantRole = (participant) => {
+    if (typeof participant === 'string') {
+      return 'Deelnemer';
+    }
+    return participant.role || 'Deelnemer';
+  };
+
+  const getParticipantId = (participant, index) => {
+    if (typeof participant === 'string') {
+      return `speaker-${index}`;
+    }
+    return participant.id || `participant-${index}`;
+  };
+
+  const getParticipantStats = (participant) => {
+    const name = getParticipantName(participant);
+    return speakerStats && speakerStats[name] ? speakerStats[name] : null;
+  };
+
+  // Convert availableSpeakers to consistent format
+  const participants = availableSpeakers || [];
 
   return (
     <Card variant="default" padding="md">
@@ -199,7 +160,7 @@ const ParticipantPanel = () => {
           <Button 
             variant="neutral" 
             size="sm"
-            onClick={refreshParticipants}
+            onClick={handleRefresh}
             loading={isRefreshing}
           >
             <RefreshIcon sx={{ fontSize: 16, mr: 0.5 }} />
@@ -217,6 +178,26 @@ const ParticipantPanel = () => {
         </Box>
       )}
 
+      {/* Refresh Status Indicator */}
+      {isRefreshing && (
+        <Box sx={{ mb: 3, p: 2, bgcolor: '#fff3cd', borderRadius: 2, border: '1px solid #ffeaa7' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box sx={{ 
+              animation: 'spin 1s linear infinite',
+              '@keyframes spin': {
+                '0%': { transform: 'rotate(0deg)' },
+                '100%': { transform: 'rotate(360deg)' }
+              }
+            }}>
+              <RefreshIcon sx={{ fontSize: 16, color: '#856404' }} />
+            </Box>
+            <Typography variant="body2" sx={{ color: '#856404' }}>
+              Deelnemer gegevens worden vernieuwd...
+            </Typography>
+          </Box>
+        </Box>
+      )}
+
       {/* Current Speaker Section */}
       {currentSpeaker && (
         <Box sx={{ mb: 3, p: 2, bgcolor: '#eff6ff', borderRadius: 2, border: '1px solid #93c5fd' }}>
@@ -228,23 +209,40 @@ const ParticipantPanel = () => {
               sx={{ 
                 width: 32, 
                 height: 32, 
-                bgcolor: getSpeakerColor(0),
+                bgcolor: getSpeakerColor ? getSpeakerColor(0) : '#3b82f6',
                 fontSize: '0.875rem',
                 fontWeight: 600
               }}
             >
-              {currentSpeaker.name.charAt(0)}
+              {getParticipantName(currentSpeaker).charAt(0).toUpperCase()}
             </Avatar>
             <Box sx={{ flex: 1 }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {currentSpeaker.name}
+                {getParticipantName(currentSpeaker)}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {currentSpeaker.role}
+                {getParticipantRole(currentSpeaker)}
               </Typography>
             </Box>
             <MicIcon color="primary" sx={{ fontSize: 20 }} />
           </Box>
+
+          {/* Current Speaker Stats */}
+          {getParticipantStats(currentSpeaker) && (
+            <Box sx={{ mt: 2, pt: 2, borderTop: '1px solid #bfdbfe' }}>
+              <Typography variant="caption" color="primary" sx={{ fontWeight: 600 }}>
+                📊 Spreektijd Info
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  {getParticipantStats(currentSpeaker).segments || 0} segmenten
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {Math.round(getParticipantStats(currentSpeaker).totalTime || 0)}s spreektijd
+                </Typography>
+              </Box>
+            </Box>
+          )}
         </Box>
       )}
 
@@ -256,96 +254,116 @@ const ParticipantPanel = () => {
             <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
               Nog geen deelnemers
             </Typography>
-            <Button variant="primary" size="sm">
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              Voeg de eerste deelnemer toe om te beginnen
+            </Typography>
+            <Button 
+              variant="primary" 
+              size="sm"
+              onClick={() => setShowAddModal(true)}
+              disabled={isRefreshing}
+            >
               <PersonAddIcon sx={{ mr: 1 }} />
-              Deelnemer Uitnodigen
+              Eerste Deelnemer Toevoegen
             </Button>
           </Box>
         ) : (
           <List sx={{ p: 0 }}>
-            {participants.map((participant, index) => (
-              <ListItem 
-                key={participant.id}
-                sx={{ 
-                  px: 0, 
-                  py: 1,
-                  borderRadius: 2,
-                  mb: 1,
-                  border: '1px solid',
-                  borderColor: currentSpeaker?.id === participant.id ? '#3b82f6' : '#e5e7eb',
-                  bgcolor: currentSpeaker?.id === participant.id ? '#eff6ff' : 'white',
-                  cursor: 'pointer',
-                  '&:hover': { 
-                    bgcolor: currentSpeaker?.id === participant.id ? '#eff6ff' : '#f8fafc',
-                    borderColor: '#3b82f6'
-                  },
-                  transition: 'all 0.2s ease',
-                  ...(isRefreshing && { opacity: 0.6 })
-                }}
-                onClick={() => handleSpeakerChange(participant)}
-              >
-                <ListItemAvatar>
-                  <Avatar
-                    sx={{ 
-                      width: 36, 
-                      height: 36, 
-                      bgcolor: getSpeakerColor(index),
-                      fontSize: '0.875rem',
-                      fontWeight: 600
-                    }}
-                  >
-                    {participant.name.charAt(0)}
-                  </Avatar>
-                </ListItemAvatar>
-                
-                <ListItemText 
-                  primary={
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                        {participant.name}
-                      </Typography>
-                      {currentSpeaker?.id === participant.id && (
-                        <Box sx={{ 
-                          width: 8, 
-                          height: 8, 
-                          bgcolor: '#10b981', 
-                          borderRadius: '50%',
-                          animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
-                        }} />
-                      )}
-                    </Box>
-                  }
-                  secondary={
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        {participant.role}
-                      </Typography>
-                      {participant.speakingTime > 0 && (
-                        <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                          • {participant.segments} segmenten • {Math.round(participant.speakingTime)}s
-                        </Typography>
-                      )}
-                    </Box>
-                  }
-                />
+            {participants.map((participant, index) => {
+              const participantName = getParticipantName(participant);
+              const participantRole = getParticipantRole(participant);
+              const participantId = getParticipantId(participant, index);
+              const participantStats = getParticipantStats(participant);
+              const isCurrentSpeaker = currentSpeaker && getParticipantName(currentSpeaker) === participantName;
 
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
-                  {getStatusBadge(participant.status, participant.isActive)}
+              return (
+                <ListItem 
+                  key={participantId}
+                  sx={{ 
+                    px: 0, 
+                    py: 1,
+                    borderRadius: 2,
+                    mb: 1,
+                    border: '1px solid',
+                    borderColor: isCurrentSpeaker ? '#3b82f6' : '#e5e7eb',
+                    bgcolor: isCurrentSpeaker ? '#eff6ff' : 'white',
+                    cursor: 'pointer',
+                    '&:hover': { 
+                      bgcolor: isCurrentSpeaker ? '#eff6ff' : '#f8fafc',
+                      borderColor: '#3b82f6'
+                    },
+                    transition: 'all 0.2s ease',
+                    ...(isRefreshing && { opacity: 0.6 })
+                  }}
+                  onClick={() => handleSpeakerChange(participant)}
+                >
+                  <ListItemAvatar>
+                    <Avatar
+                      sx={{ 
+                        width: 36, 
+                        height: 36, 
+                        bgcolor: getSpeakerColor ? getSpeakerColor(index) : '#3b82f6',
+                        fontSize: '0.875rem',
+                        fontWeight: 600
+                      }}
+                    >
+                      {participantName.charAt(0).toUpperCase()}
+                    </Avatar>
+                  </ListItemAvatar>
                   
-                  {participant.isActive ? (
-                    <MicIcon sx={{ fontSize: 16, color: '#10b981' }} />
-                  ) : (
-                    <MicOffIcon sx={{ fontSize: 16, color: '#6b7280' }} />
-                  )}
-                </Box>
-              </ListItem>
-            ))}
+                  <ListItemText 
+                    primary={
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                          {participantName}
+                        </Typography>
+                        {isCurrentSpeaker && (
+                          <Box sx={{ 
+                            width: 8, 
+                            height: 8, 
+                            bgcolor: '#10b981', 
+                            borderRadius: '50%',
+                            animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                            '@keyframes pulse': {
+                              '0%, 100%': { opacity: 1 },
+                              '50%': { opacity: 0.5 }
+                            }
+                          }} />
+                        )}
+                      </Box>
+                    }
+                    secondary={
+                      <Box>
+                        <Typography variant="caption" color="text.secondary">
+                          {participantRole}
+                        </Typography>
+                        {participantStats && (
+                          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                            • {participantStats.segments || 0} segmenten • {Math.round(participantStats.totalTime || 0)}s
+                          </Typography>
+                        )}
+                      </Box>
+                    }
+                  />
+
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                    {getStatusBadge(participant)}
+                    
+                    {isCurrentSpeaker ? (
+                      <MicIcon sx={{ fontSize: 16, color: '#10b981' }} />
+                    ) : (
+                      <MicOffIcon sx={{ fontSize: 16, color: '#6b7280' }} />
+                    )}
+                  </Box>
+                </ListItem>
+              );
+            })}
           </List>
         )}
       </Box>
 
       {/* Speaking Time Statistics */}
-      {Object.keys(speakerStats).length > 0 && (
+      {speakerStats && Object.keys(speakerStats).length > 0 && (
         <Box sx={{ borderTop: '1px solid #e5e7eb', pt: 3 }}>
           <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
             📊 Spreektijd Verdeling
@@ -366,7 +384,7 @@ const ParticipantPanel = () => {
                         width: 12,
                         height: 12,
                         borderRadius: '50%',
-                        bgcolor: getSpeakerColor(index),
+                        bgcolor: getSpeakerColor ? getSpeakerColor(index) : '#3b82f6',
                         flexShrink: 0
                       }}
                     />
@@ -374,7 +392,7 @@ const ParticipantPanel = () => {
                     <Box sx={{ flex: 1, minWidth: 0 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                          {speakerName}
+                          {speakerName.length > 20 ? `${speakerName.substring(0, 20)}...` : speakerName}
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
                           {percentage}% • {Math.round(stats.totalTime || 0)}s
@@ -392,7 +410,7 @@ const ParticipantPanel = () => {
                         <Box sx={{
                           width: `${percentage}%`,
                           height: '100%',
-                          bgcolor: getSpeakerColor(index),
+                          bgcolor: getSpeakerColor ? getSpeakerColor(index) : '#3b82f6',
                           transition: 'width 0.3s ease'
                         }} />
                       </Box>
@@ -404,13 +422,87 @@ const ParticipantPanel = () => {
         </Box>
       )}
 
-      {/* Quick Actions */}
-      <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid #e5e7eb' }}>
-        <Button variant="neutral" size="sm" fullWidth>
-          <PersonAddIcon sx={{ mr: 1 }} />
-          Deelnemer Uitnodigen
-        </Button>
-      </Box>
+      {/* Quick Speaker Switch */}
+      {participants.length > 1 && (
+        <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid #e5e7eb' }}>
+          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
+            ⚡ Snel Wisselen
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+            {participants.slice(0, 4).map((participant, index) => {
+              const participantName = getParticipantName(participant);
+              const isCurrentSpeaker = currentSpeaker && getParticipantName(currentSpeaker) === participantName;
+              
+              return (
+                <Button
+                  key={getParticipantId(participant, index)}
+                  variant={isCurrentSpeaker ? "primary" : "neutral"}
+                  size="sm"
+                  onClick={() => handleSpeakerChange(participant)}
+                  disabled={isRefreshing}
+                  sx={{ 
+                    minWidth: 40,
+                    ...(isRefreshing && { opacity: 0.5 })
+                  }}
+                >
+                  {participantName.charAt(0).toUpperCase()}
+                </Button>
+              );
+            })}
+          </Box>
+        </Box>
+      )}
+
+      {/* Show More Participants */}
+      {participants.length > 4 && (
+        <Box sx={{ mt: 2, textAlign: 'center' }}>
+          <Button variant="neutral" size="sm" fullWidth disabled={isRefreshing}>
+            Toon alle {participants.length} deelnemers →
+          </Button>
+        </Box>
+      )}
+
+      {/* Quick Actions - Only show when there are participants */}
+      {participants.length > 0 && (
+        <Box sx={{ mt: 3, pt: 3, borderTop: '1px solid #e5e7eb' }}>
+          <Button 
+            variant="primary" 
+            size="sm" 
+            fullWidth
+            onClick={() => setShowAddModal(true)}
+            disabled={isRefreshing}
+          >
+            <PersonAddIcon sx={{ mr: 1 }} />
+            Nieuwe Deelnemer Toevoegen
+          </Button>
+        </Box>
+      )}
+
+      {/* Add Participant Modal */}
+      <AddParticipantModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAddParticipant={handleAddParticipant}
+        isAdding={isAddingParticipant}
+      />
+
+      {/* Loading skeleton when refreshing */}
+      {isRefreshing && (
+        <Box sx={{ mt: 3, display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {[1, 2, 3].map((i) => (
+            <Box key={i} sx={{ 
+              height: 40, 
+              bgcolor: '#f1f5f9', 
+              borderRadius: 2,
+              animation: 'pulse 1.5s ease-in-out infinite',
+              '@keyframes pulse': {
+                '0%, 100%': { opacity: 1 },
+                '50%': { opacity: 0.5 }
+              }
+            }} />
+          ))}
+        </Box>
+      )}
     </Card>
   );
 };

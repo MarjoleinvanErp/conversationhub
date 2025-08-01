@@ -1,8 +1,0 @@
- 
-// Voeg deze scripts toe aan package.json: 
-"scripts": { 
-  "test:transcription": "jest src/components/recording/EnhancedLiveTranscription", 
-  "test:transcription:watch": "jest src/components/recording/EnhancedLiveTranscription --watch", 
-  "test:transcription:coverage": "jest src/components/recording/EnhancedLiveTranscription --coverage", 
-  "e2e:transcription": "playwright test enhanced-live-transcription.spec.ts" 
-} 

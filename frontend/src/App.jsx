@@ -1,23 +1,16 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import TestTailwind from './components/TestTailwind.jsx';
-import TestComponents from './components/ui/TestComponents.jsx'; 
-import TestExistingComponents from './components/ui/TestExistingComponents';
-import TestLayout from './components/ui/TestLayout';
-import TestMaterialProIntegration from './components/ui/TestMaterialProIntegration';
-import DashboardModern from './pages/dashboard/DashboardModern';
-import MeetingRoomModern from './pages/meeting/MeetingRoomModern';
-
-// Import contexts
 import { AuthProvider, useAuth } from './contexts/AuthContext.jsx';
-
-// Import components
-import MaterialProLayout from './layouts/materialpro/MaterialProLayout.jsx';
-import Dashboard from './pages/dashboard/Dashboard.jsx';
+//import MaterialProLayout from './layouts/materialpro/MaterialProLayout.jsx';
+import MainLayout from './components/layout/MainLayout.jsx';
 import Login from './pages/auth/Login.jsx';
+import Dashboard from './pages/dashboard/Dashboard.jsx';
 import CreateMeeting from './pages/meeting/CreateMeeting.jsx';
+import MeetingRoomReadOnly from './pages/meeting/ReadOnlyMeetingRoom.jsx';
 import MeetingRoom from './pages/meeting/MeetingRoom.jsx';
 import MeetingTypes from './pages/meeting/MeetingTypes.jsx';
+import Allmeetings from './pages/meeting/AllMeetings.jsx';
+import Profile from './components/features/Profile.jsx';
 
 // Placeholder components voor nieuwe routes
 const MeetingsPage = () => (
@@ -78,34 +71,28 @@ function App() {
             {/* Protected routes met Material Pro Layout */}
             <Route path="/" element={
               <ProtectedRoute>
-                <MaterialProLayout />
+                <MainLayout />
               </ProtectedRoute>
             }>
-              <Route index element={<Navigate to="/dashboard" />} />
-              <Route path="dashboard" element={<Dashboard />} />
-              <Route path="meetings/create" element={<CreateMeeting />} />
-              <Route path="meetings/:id/room" element={<MeetingRoom />} />
-              <Route path="meeting-types" element={<MeetingTypes />} />
-              
-              {/* Nieuwe routes */}
-              <Route path="meetings" element={<MeetingsPage />} />
-              <Route path="meetings/active" element={<MeetingsPage />} />
-              <Route path="meetings/scheduled" element={<MeetingsPage />} />
-              <Route path="meetings/history" element={<MeetingsPage />} />
-              <Route path="participants" element={<ParticipantsPage />} />
-              <Route path="templates" element={<TemplatesPage />} />
-              <Route path="templates/intake" element={<TemplatesPage />} />
-              <Route path="templates/progress" element={<TemplatesPage />} />
-              <Route path="templates/custom" element={<TemplatesPage />} />
-              <Route path="settings" element={<SettingsPage />} />
-	      <Route path="/test-tailwind" element={<TestTailwind />} />
-	      <Route path="test-components" element={<TestComponents />} />
-	<Route path="test-existing" element={<TestExistingComponents />} />
-	<Route path="test-layout" element={<TestLayout />} />
-	<Route path="test-integration" element={<TestMaterialProIntegration />} />
-<Route path="dashboard-modern" element={<DashboardModern />} />
-<Route path="meetings/:id/room-modern" element={<MeetingRoomModern />} />
-            </Route>
+            <Route index element={<Navigate to="/dashboard" />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="meetings/create" element={<CreateMeeting />} />
+            <Route path="meetings/:id/room" element={<MeetingRoom />} />
+			<Route path="meetings/:id" element={<MeetingRoomReadOnly />} />
+            <Route path="meeting-types" element={<MeetingTypes />} />
+            <Route path="meetings" element={<MeetingsPage />} />
+            <Route path="meetings/active" element={<MeetingsPage />} />
+            <Route path="meetings/scheduled" element={<MeetingsPage />} />
+            <Route path="meetings/history" element={<MeetingsPage />} />
+            <Route path="participants" element={<ParticipantsPage />} />
+            <Route path="templates" element={<TemplatesPage />} />
+            <Route path="templates/intake" element={<TemplatesPage />} />
+            <Route path="templates/progress" element={<TemplatesPage />} />
+            <Route path="templates/custom" element={<TemplatesPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+            <Route path="alle-gesprekken" element={<Allmeetings />} />
+			<Route path="/profile" element={<Profile />} />
+	    </Route>
           </Routes>
         </div>
       </Router>
