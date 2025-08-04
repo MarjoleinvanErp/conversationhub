@@ -202,7 +202,7 @@ const TranscriptiePanel = () => {
       <Box sx={{ mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            📝 Whisper Transcriptie
+            📝 Transcriptie
             <Badge variant="success">Live</Badge>
             {allTranscriptions.length > 0 && (
               <Badge variant="info">{allTranscriptions.length} items</Badge>

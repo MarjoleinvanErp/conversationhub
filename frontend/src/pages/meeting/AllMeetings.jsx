@@ -133,14 +133,7 @@ const AllMeetings = () => {
             {meetings.length} gesprekken gevonden
           </Typography>
         </Box>
-        <Button
-          variant="primary"
-          onClick={() => navigate('/meetings/create')}
-          startIcon={<AddIcon />}
-          sx={{ ml: 2 }}
-        >
-          Nieuw Gesprek
-        </Button>
+
       </Box>
 
       {/* Error Display */}
@@ -271,49 +264,6 @@ const AllMeetings = () => {
                         </Typography>
                       )}
                     </Box>
-
-                    {/* Participants Avatars */}
-                    {meeting.participants && meeting.participants.length > 0 && (
-                      <Box sx={{ mb: 2 }}>
-                        <AvatarGroup max={4} sx={{ '& .MuiAvatar-root': { width: 28, height: 28, fontSize: '0.75rem' } }}>
-                          {meeting.participants.map((participant, index) => (
-                            <Avatar
-                              key={participant.id}
-                              sx={{ 
-                                bgcolor: `hsl(${(index * 137) % 360}, 70%, 50%)`,
-                                width: 28,
-                                height: 28,
-                                fontSize: '0.75rem'
-                              }}
-                              title={participant.name}
-                            >
-                              {participant.name.charAt(0)}
-                            </Avatar>
-                          ))}
-                        </AvatarGroup>
-                      </Box>
-                    )}
-
-                    {/* Meeting Type & Privacy */}
-                    <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                      {meeting.type && (
-                        <Chip
-                          label={meeting.type}
-                          size="small"
-                          variant="outlined"
-                          sx={{ fontSize: '0.7rem', height: 20 }}
-                        />
-                      )}
-                      {meeting.privacy_level && meeting.privacy_level !== 'minimal' && (
-                        <Chip
-                          label="🔒"
-                          size="small"
-                          variant="outlined"
-                          sx={{ fontSize: '0.7rem', height: 20 }}
-                          title={`Privacy: ${meeting.privacy_level}`}
-                        />
-                      )}
-                    </Box>
                   </CardContent>
 
                   <CardActions sx={{ p: 2, pt: 0 }}>
@@ -321,7 +271,7 @@ const AllMeetings = () => {
                       variant="primary"
                       size="sm"
                       fullWidth
-                      onClick={() => handleViewMeeting(meeting)}
+                      onClick={() => handleViewMeeting(meetings)}
                       startIcon={<ViewIcon />}
                     >
                       {meeting.status === 'active' ? 'Deelnemen' : 'Bekijken'}

@@ -12,7 +12,7 @@ export const useAudioRecorder = () => {
   const [n8nConnected, setN8nConnected] = useState(true);
   const [lastChunkSent, setLastChunkSent] = useState(null);
   const [audioQuality, setAudioQuality] = useState('medium');
-  const [chunkInterval, setChunkInterval] = useState(10);
+  const [chunkInterval, setChunkInterval] = useState(90); // GEWIJZIGD: 90 seconden
   const [error, setError] = useState(null);
   const [processingChunk, setProcessingChunk] = useState(false);
   const [processingFinalAudio, setProcessingFinalAudio] = useState(false);
@@ -25,6 +25,7 @@ export const useAudioRecorder = () => {
   const timerRef = useRef(null);
   const chunkTimerRef = useRef(null);
   const recordedChunksRef = useRef([]);
+  const chunkCounterRef = useRef(0); // TOEGEVOEGD: voor chunk tracking
 
   // N8N Webhook URLs
   const N8N_WEBHOOK_URL = 'http://localhost:5678/webhook-test/transcription';
@@ -67,12 +68,14 @@ export const useAudioRecorder = () => {
 
       mediaRecorderRef.current = mediaRecorder;
       recordedChunksRef.current = [];
+      chunkCounterRef.current = 0; // TOEGEVOEGD: reset counter
 
       // Handle audio data
       mediaRecorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
-          console.log('📦 Audio chunk received:', event.data.size, 'bytes');
+          console.log('📦 Audio chunk received:', event.data.size, 'bytes', 
+                     'Total chunks:', recordedChunksRef.current.length); // UITGEBREID: logging
         }
       };
 
@@ -89,9 +92,13 @@ export const useAudioRecorder = () => {
       setDuration(0);
       setChunksProcessed(0);
       startTimer();
-      startChunkProcessing();
+      
+      // GEWIJZIGD: setTimeout voor betere timing
+      setTimeout(() => {
+        startChunkProcessing();
+      }, 100);
 
-      console.log('✅ Recording started successfully');
+      console.log('✅ Recording started successfully - chunks will be sent every', chunkInterval, 'seconds'); // UITGEBREID: logging
 
     } catch (err) {
       console.error('❌ Failed to start recording:', err);
@@ -105,6 +112,7 @@ export const useAudioRecorder = () => {
       mediaRecorderRef.current.pause();
       setIsPaused(true);
       stopTimer();
+      clearChunkTimer(); // TOEGEVOEGD: stop chunk processing tijdens pause
       console.log('⏸️ Recording paused');
     }
   };
@@ -114,6 +122,10 @@ export const useAudioRecorder = () => {
       mediaRecorderRef.current.resume();
       setIsPaused(false);
       startTimer();
+      // TOEGEVOEGD: herstart chunk processing na resume
+      setTimeout(() => {
+        startChunkProcessing();
+      }, 100);
       console.log('▶️ Recording resumed');
     }
   };
@@ -250,13 +262,16 @@ export const useAudioRecorder = () => {
   const sendAudioToN8N = async (audioBlob, type = 'chunk') => {
     try {
       setProcessingChunk(true);
-      console.log(`📤 Sending ${type} audio to N8N...`, audioBlob.size, 'bytes');
+      chunkCounterRef.current += 1; // TOEGEVOEGD: increment counter
+      console.log(`📤 Sending ${type} audio to N8N...`, audioBlob.size, 'bytes', 
+                 'Chunk #', chunkCounterRef.current); // UITGEBREID: logging
 
       // Create form data
       const formData = new FormData();
-      formData.append('audio', audioBlob, `meeting_${meetingId}_${type}_${Date.now()}.wav`);
+      formData.append('audio', audioBlob, `meeting_${meetingId}_${type}_${chunkCounterRef.current}_${Date.now()}.wav`); // GEWIJZIGD: chunk number in filename
       formData.append('meeting_id', meetingId);
       formData.append('type', type);
+      formData.append('chunk_number', chunkCounterRef.current.toString()); // TOEGEVOEGD: chunk number
       formData.append('timestamp', new Date().toISOString());
 
       // Try primary URL first
@@ -283,10 +298,10 @@ export const useAudioRecorder = () => {
 
       // Update UI
       setChunksProcessed(prev => prev + 1);
-      setLastChunkSent(`${type}: ${new Date().toLocaleTimeString()}`);
+      setLastChunkSent(`Chunk #${chunkCounterRef.current} (${type}): ${new Date().toLocaleTimeString()}`); // GEWIJZIGD: chunk number in UI
       setN8nConnected(true);
 
-      console.log(`✅ ${type} audio sent successfully to N8N`);
+      console.log(`✅ Chunk #${chunkCounterRef.current} (${type}) sent successfully to N8N`); // UITGEBREID: logging
 
     } catch (err) {
       console.error('❌ Failed to send audio to N8N:', err);
@@ -346,29 +361,62 @@ export const useAudioRecorder = () => {
     }
   };
 
+  // VOLLEDIG HERSCHREVEN: startChunkProcessing voor 90-seconde chunks
   const startChunkProcessing = () => {
-    // Send intermediate chunks to N8N for real-time processing
+    // Clear any existing timer first
+    clearChunkTimer();
+    
+    console.log(`🕐 Starting chunk processing timer - chunks will be sent every ${chunkInterval} seconds`);
+    
+    // Send chunks to N8N at the specified interval (90 seconds)
     chunkTimerRef.current = setInterval(async () => {
-      if (recordedChunksRef.current.length > 0 && isRecording && !isPaused) {
+      console.log(`⏰ ${chunkInterval}s interval reached - checking conditions...`);
+      console.log(`📊 Recording state: isRecording=${isRecording}, isPaused=${isPaused}, chunks available: ${recordedChunksRef.current.length}`);
+      
+      // Use refs and MediaRecorder state to avoid stale closure issues
+      const currentChunks = recordedChunksRef.current;
+      
+      if (currentChunks.length > 0 && mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
         try {
-          // Create chunk from recent data
-          const recentChunks = recordedChunksRef.current.splice(0, Math.floor(recordedChunksRef.current.length / 2));
-          if (recentChunks.length > 0) {
-            const chunkBlob = new Blob(recentChunks, { type: 'audio/webm;codecs=opus' });
+          console.log(`📊 Processing chunk with ${currentChunks.length} audio segments`);
+
+          // Create chunk from ALL available data since last send
+          const chunksToSend = [...currentChunks];
+          
+          if (chunksToSend.length > 0) {
+            const chunkBlob = new Blob(chunksToSend, { type: 'audio/webm;codecs=opus' });
+            console.log(`📦 Created chunk blob: ${chunkBlob.size} bytes from ${chunksToSend.length} segments`);
+            
+            // Convert to WAV and send to N8N (behoud originele format)
             const wavChunk = await convertToWav(chunkBlob);
             await sendAudioToN8N(wavChunk, 'chunk');
+            
+            // Clear the chunks that were sent (keep recording for next interval)
+            recordedChunksRef.current = [];
+            console.log(`✅ Chunk processed and cleared. Next chunk in ${chunkInterval}s`);
+          } else {
+            console.log('⚠️ No audio chunks available to process');
           }
         } catch (err) {
-          console.error('Failed to process chunk:', err);
+          console.error('❌ Failed to process chunk:', err);
+          setError(`Chunk verwerking gefaald: ${err.message}`);
         }
+      } else {
+        console.log('⏸️ Skipping chunk processing:', {
+          chunksAvailable: currentChunks.length,
+          mediaRecorderState: mediaRecorderRef.current?.state || 'no recorder'
+        });
       }
     }, chunkInterval * 1000);
+    
+    console.log(`✅ Chunk timer started with ${chunkInterval}s interval`);
   };
 
   const clearChunkTimer = () => {
     if (chunkTimerRef.current) {
       clearInterval(chunkTimerRef.current);
       chunkTimerRef.current = null;
+      console.log('🛑 Chunk processing timer cleared'); // TOEGEVOEGD: logging
     }
   };
 
